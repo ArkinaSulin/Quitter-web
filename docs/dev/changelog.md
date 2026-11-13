@@ -1,5 +1,21 @@
 # QuiTTER Changelog
 
+## Halloween Siege saved sequences (2026-11-12, migration 165)
+**Files:** supabase/migrations/165_halloween_siege_presets.sql, src/packages/world/{index.ts,lib/halloweenSiege.ts,lib/halloweenSiegePresets.ts,tests/halloweenSiegePresets.test.ts}, src/components/ScenarioMap/{HalloweenSiegeWindow.tsx,HalloweenSiegePresetBar.tsx}, docs/dev/{02-schema-and-migrations,20-halloween-siege,changelog}.md, docs/players/player-manual.md
+
+- Adds a global DM **saved-sequence library** for the Halloween Siege wave plan
+  (`turnsPerWave` + `waves[]`). Runtime markers are never saved.
+- `halloween_siege_presets` (migration 165): UUID id, unique name, description,
+  plan columns, created/updated timestamps; RLS reuses `create_scenario`
+  (admin + dm). Presets are shared across scenarios.
+- The Siege window gains a **Saved sequence** bar: select + Load, name input +
+  Save (upsert by name; overwrite confirm), Delete, refresh. Loading fills the
+  draft and warns about template ids that no longer exist; **Save & arm** remains
+  the only arming action.
+- Shared plan helpers in `halloweenSiegePresets.ts`; config validation now reuses
+  `parseSiegeWaves` / `isSiegePlanValid`.
+- Verification: `tsc --noEmit`; tests.
+
 ## Fog of war: DM/replay veil alpha 0.8 -> 0.7 (2026-11-12)
 **Files:** src/packages/world/lib/fogOfWar.ts, docs/dev/{changelog,11-fog-of-war}.md
 

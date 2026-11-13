@@ -4,6 +4,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { UnitTemplate } from '@/types/gameProtocol';
 import { useUnitTemplates } from '@/hooks/useUnitTemplates';
 import {
+  applyPlanToConfig,
   assignSiegeTeams,
   defaultHalloweenSiegeConfig,
   isHalloweenSiegeConfigValid,
@@ -11,8 +12,10 @@ import {
   newSiegeWave,
   nextEnemyTurnNumber,
   type HalloweenSiegeConfig,
+  type HalloweenSiegePlan,
   type SiegeWave,
 } from '@/packages/world';
+import { HalloweenSiegePresetBar } from './HalloweenSiegePresetBar';
 
 interface HalloweenSiegeWindowProps {
   config: HalloweenSiegeConfig | null;
@@ -91,6 +94,12 @@ export function HalloweenSiegeWindow({
     for (const template of templates) map.set(template.id, template);
     return map;
   }, [templates]);
+  const knownTemplateIds = useMemo(() => new Set(templateById.keys()), [templateById]);
+
+  const loadPlan = (plan: HalloweenSiegePlan) => {
+    setDraft(current => applyPlanToConfig(current, plan));
+    setActiveWaveId(plan.waves[0]?.id ?? null);
+  };
 
   const pickerTemplates = useMemo(
     () => templates
@@ -204,6 +213,12 @@ export function HalloweenSiegeWindow({
               {expectedTurns > 0 ? `${expectedTurns}+ enemy turns (plus DM-started pauses)` : 'No waves configured'}
             </span>
           </div>
+
+          <HalloweenSiegePresetBar
+            config={draft}
+            knownTemplateIds={knownTemplateIds}
+            onLoad={loadPlan}
+          />
 
           <div className="grid flex-1 min-h-0 grid-cols-[1fr_240px] gap-4">
             <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">

@@ -115,6 +115,40 @@ Enemy turn begins. Once the wave starts it cannot be cancelled.
   are parsed into `waveStartTurns[0]`.
 - Migration 133 must be applied in Supabase.
 
+## Saved sequences (presets)
+
+A **sequence** is the reusable part of a siege setup: `turnsPerWave` + `waves[]`.
+It excludes every runtime marker (`enabled`, `waveStartTurns`,
+`nextWaveStartTurn`, `lastSpawnedTurn`, `announcedWave`,
+`announcedWaveTurn`). Loading a sequence fills the editor draft; only
+**Save & arm** arms the siege.
+
+`halloween_siege_presets` (migration 165) is a global DM library:
+
+```ts
+{
+  id: uuid;
+  name: text;          // unique; Save upserts by name
+  description: text;
+  turns_per_wave: number;
+  waves: SiegeWave[];  // { id, count, entries: { templateId, percent }[] }
+  created_by: uuid | null;
+  created_at / updated_at: timestamptz;
+}
+```
+
+- RLS uses the existing `create_scenario` capability (admin + dm) for select,
+  insert, update and delete — no new permission columns. Presets are shared by
+  all DMs.
+- Template ids inside `waves` have no FK (matching the live scenario config). A
+  load warns when referenced templates no longer exist; the spawner already
+  skips missing templates.
+- UI: `HalloweenSiegePresetBar` above the wave editor — select + **Load**, name
+  input + **Save** (save-as when the name is new, overwrite after confirm when it
+  collides), and **Delete** (confirm). Saving a preset never arms the siege.
+- Load applies the plan and resets runtime markers (`applyPlanToConfig`), so a
+  sequence with a different wave count cannot inherit stale starts.
+
 ## Spawning
 
 On an Enemy turn the GM client:
@@ -148,8 +182,13 @@ log, so undo soft-deletes the placed unit; replay reconstructs it from the
   arming/begin/toggle helpers, completion + announcement helpers, weighted
   picks, team split, rim selection, spawn plans.
 - `src/packages/world/tests/halloweenSiege.test.ts` — 19 unit tests.
+- `src/packages/world/lib/halloweenSiegePresets.ts` reusable plan helpers
+  (extract/apply, preset row mappers, plan validation, template-id scan).
+- `src/packages/world/tests/halloweenSiegePresets.test.ts` preset helpers.
 - `src/components/ScenarioMap/HalloweenSiegeWindow.tsx` — DM configuration
   window (waves, percentages, drag/drop monster picker).
+- `src/components/ScenarioMap/HalloweenSiegePresetBar.tsx` saved-sequence
+  selector + Save/Load/Delete.
 - `src/components/ScenarioMap/ScenarioMap.tsx` — load/save, End Turn guard, GM
   arming/spawn/completion effect, top-bar status, toast render.
 - `src/components/ScenarioMap/TopBar.tsx` — public wave/turn badge and the
@@ -159,6 +198,7 @@ log, so undo soft-deletes the placed unit; replay reconstructs it from the
 - `src/hooks/useUnitTemplates.ts` — shared template fetch (used by the modal,
   spawner and Unit Selector).
 - `supabase/migrations/133_halloween_siege.sql`.
+- `supabase/migrations/165_halloween_siege_presets.sql`.
 
 ## Limitations
 

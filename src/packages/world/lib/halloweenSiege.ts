@@ -92,23 +92,27 @@ function finiteNumberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Normalise a raw `waves` array (scenario config or saved preset). */
+export function parseSiegeWaves(raw: unknown): SiegeWave[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((wave: any, index: number) => ({
+    id: typeof wave?.id === 'string' && wave.id ? wave.id : `wave-${index + 1}`,
+    count: finiteInt(wave?.count, 1, 1, 999),
+    entries: Array.isArray(wave?.entries)
+      ? wave.entries
+          .filter((entry: any) => entry && typeof entry.templateId === 'string' && entry.templateId)
+          .map((entry: any) => ({
+            templateId: entry.templateId,
+            percent: Math.min(100, Math.max(0, Number(entry.percent) || 0)),
+          }))
+      : [],
+  }));
+}
+
 export function parseHalloweenSiegeConfig(raw: unknown): HalloweenSiegeConfig | null {
   if (!raw || typeof raw !== 'object') return null;
   const source = raw as Record<string, any>;
-  const waves: SiegeWave[] = Array.isArray(source.waves)
-    ? source.waves.map((wave: any, index: number) => ({
-        id: typeof wave?.id === 'string' && wave.id ? wave.id : `wave-${index + 1}`,
-        count: finiteInt(wave?.count, 1, 1, 999),
-        entries: Array.isArray(wave?.entries)
-          ? wave.entries
-              .filter((entry: any) => entry && typeof entry.templateId === 'string' && entry.templateId)
-              .map((entry: any) => ({
-                templateId: entry.templateId,
-                percent: Math.min(100, Math.max(0, Number(entry.percent) || 0)),
-              }))
-          : [],
-      }))
-    : [];
+  const waves = parseSiegeWaves(source.waves);
 
   const waveStartTurns: (number | null)[] = waves.map((_, index) => {
     if (Array.isArray(source.waveStartTurns)) return finiteNumberOrNull(source.waveStartTurns[index]);
@@ -128,17 +132,23 @@ export function parseHalloweenSiegeConfig(raw: unknown): HalloweenSiegeConfig | 
   };
 }
 
-export function isHalloweenSiegeConfigValid(config: HalloweenSiegeConfig | null | undefined): boolean {
-  if (!config) return false;
-  if (!Number.isFinite(config.turnsPerWave) || config.turnsPerWave < 1) return false;
-  if (!Array.isArray(config.waves) || config.waves.length === 0) return false;
-  return config.waves.every(wave => {
+/** Validate a reusable plan (turns per wave + waves), shared by the live config
+ *  and saved-sequence presets. */
+export function isSiegePlanValid(turnsPerWave: number, waves: SiegeWave[] | null | undefined): boolean {
+  if (!Number.isFinite(turnsPerWave) || turnsPerWave < 1) return false;
+  if (!Array.isArray(waves) || waves.length === 0) return false;
+  return waves.every(wave => {
     if (!Number.isFinite(wave.count) || wave.count < 1) return false;
     if (!Array.isArray(wave.entries) || wave.entries.length === 0) return false;
     if (wave.entries.some(entry => !entry.templateId || !Number.isFinite(entry.percent))) return false;
     const sum = wave.entries.reduce((total, entry) => total + entry.percent, 0);
     return Math.abs(sum - 100) < 1e-6;
   });
+}
+
+export function isHalloweenSiegeConfigValid(config: HalloweenSiegeConfig | null | undefined): boolean {
+  if (!config) return false;
+  return isSiegePlanValid(config.turnsPerWave, config.waves);
 }
 
 export function nextEnemyTurnNumber(currentAlliance: string | null, turnNumber: number): number {

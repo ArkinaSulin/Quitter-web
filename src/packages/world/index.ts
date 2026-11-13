@@ -8,3 +8,4 @@ export * from './lib/librarySelection';
 export * from './lib/mapGeometry';
 export * from './lib/placedShips';
 export * from './lib/halloweenSiege';
+export * from './lib/halloweenSiegePresets';

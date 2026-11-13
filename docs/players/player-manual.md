@@ -1471,6 +1471,10 @@ be edited while the monster picker stays visible. **Add wave** is below the last
 wave card. Each wave has **Up** / **Down** controls to reorder the spawn sequence
 without deleting and re-adding it.
 
+Use the **Saved sequence** bar to keep a named wave plan and reuse it later
+(Load / Save / Delete). Saving a sequence does not arm the siege; loading fills
+the editor, then **Save & arm** starts it.
+
 - **Wave 1** starts on the next Enemy turn. During each of its turns, the wave
   spawns its configured monsters at the grid rim (inner rings if the rim is
   full), distributed across teams assigned to the Enemy alliance.
