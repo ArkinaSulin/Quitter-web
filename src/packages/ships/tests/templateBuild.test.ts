@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ShipArmor, ShipComponent, ShipTemplate, ShipWeapon } from '@/types/ship';
-import { buildShipFromTemplate, createDefaultDeckLayout } from '@/packages/ships';
+import { buildShipFromTemplate, createDefaultDeckLayout, findCardKeyForComponent } from '@/packages/ships';
 
 const ARMORS: ShipArmor[] = [
   { id: 'wood', name: 'wood', massPct: 0, ac: 15, hpMult: 1 },
@@ -58,6 +58,14 @@ describe('buildShipFromTemplate', () => {
     expect(build!.reinforcements).toEqual(['weapon:w1:0']);
     expect(build!.deckLayout!.bow.some(slot => slot.cardKey?.startsWith('weapon:'))).toBe(true);
     expect(build!.deckLayout!.body.some(slot => slot.cardKey?.startsWith('component:'))).toBe(true);
+  });
+
+  it('resolves per-unit and aggregate card keys by component name', () => {
+    const build = buildShipFromTemplate(TEMPLATE, ARMORS, COMPONENTS, WEAPONS)!;
+    expect(findCardKeyForComponent(build, 'Helm')).toBe('component:helm:0');
+    expect(findCardKeyForComponent(build, 'Crew quarters')).toBe('component:quarters');
+    expect(findCardKeyForComponent(build, 'Hull')).toBe('component:hull');
+    expect(findCardKeyForComponent(build, 'Missing')).toBeNull();
   });
 
   it('returns null when no armor is available', () => {

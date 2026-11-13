@@ -119,7 +119,7 @@ describe('mapShipTemplateRow', () => {
       { id: 'row-2', weaponId: 'wpn-catapult', count: 1 },
       { id: 'row-1', weaponId: 'wpn-ballista', count: 2 },
     ]);
-    expect(t.deckLayout.bow).toHaveLength(4);
+    expect(t.deckLayout.bow).toHaveLength(3);
     expect(t.deckLayout.body).toHaveLength(8);
   });
 });

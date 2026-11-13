@@ -24,6 +24,73 @@
   about-turn entry point), so they can no longer about-turn.
 - Verification: `tsc --noEmit`; tests.
 
+## Spelljammer card UI: disembark drag, weapon Fire, occupant slots (2026-11-09)
+**Files:** src/components/ScenarioMap/{ShipWindow,ScenarioMap}.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, docs/dev/{changelog,21-ship-runtime,outstanding}.md
+
+- Dragging a hero token off the ship window onto an **adjacent map hex** now
+  disembarks it (same elevation, on-grid, unoccupied, target-hex terrain MP).
+- Weapon cards show `AC / DT / Dmg`, plus `load x/y` or `Armed` and a **Fire**
+  button at the bottom. The separate ship-window Weapons list was removed.
+- Cards show **actual occupants** in their crew slots (heroes first, then crew),
+  solid circles with names; remaining slots stay hollow. Heroes are added to the
+  top of the card’s crew list and push the last crew to reserve; moving a hero
+  away auto-fills one reserve crew.
+- **Fix:** helm/bridge card keys are per-unit (`component:<uuid>:0`), so the
+  previous lookup (`component:<uuid>`) missed the helmsman. Added
+  `findCardKeyForComponent` and used it for the helm label, owner/alliance glow,
+  and pilot routing. The ship image glow now shows the helmsman’s alliance.
+- **Glow:** two-pass brighter alliance silhouette glow on the ship image.
+- **Helm ownership:** ownership/control scans **functional** helm cards in deck
+  order (first with a hero, else first with crew team); a destroyed first helm
+  automatically hands control to the next functional helm.
+- **Ship-layout hero tokens** scale with `min(card width, card height)` (min card
+  width stays 64px), so fat cards cannot make the token spill vertically. The
+  draggable hitbox is 50% of the token; horizontal clamping uses the hitbox while
+  vertical clamping uses the full token, so transparent edges may extrude
+  sideways without crossing cards above/below. The scenario-map token is
+  unchanged.
+- Removed the “Heroes aboard” list from the ship window; heroes move between
+  cards and disembark by dragging the token.
+- Hero mount/ship transitions are adjacent-hex only: boarding now requires the
+  hero to be beside the ship, and detaching from a unit requires an adjacent
+  destination (same-hex detach still allowed). Attach and ship disembark already
+  enforced adjacency.
+- Ship Editor Add/Edit Crew modal widened from 420px to 630px so double-digit
+  values fit the inputs.
+- **Deck spacing:** 4px card gaps, 4px region gaps, 4px vertical region/card
+  spacing; region `px-1` + outer `px-1` keep the 8px frame-to-region gap.
+  Applies to both the ship window and Ship Editor.
+- **Default Bow is now 3 slots**, matching Stern; legacy layouts reshape to 3.
+- Verification: `tsc --noEmit`; 1271 tests.
+
+## Spelljammer per-card boxes, efficiency colours, hero tokens (2026-11-09, migration 164)
+**Files:** supabase/migrations/164_card_boxes.sql, src/packages/ships/lib/{shipCombat,shipRuntime}.ts, src/components/ShipRenderer/ShipLayout.tsx, src/components/ScenarioMap/{ShipWindow,ScenarioMap}.tsx, docs/dev/{changelog,outstanding,21-ship-runtime}.md
+
+- Damage boxes are now **per card key** (`boxState[cardKey]`); old aggregate
+  group entries are reset by migration 164. Combat picks a hittable, non-zero
+  card weighted by tons and increments that card.
+- Card status tint: **red** when all boxes are destroyed or the card cannot
+  operate (weapon crew short); **yellow** when crew is below the requirement for
+  the *remaining* capacity; normal otherwise. Rudders use 1.5 t per unit and
+  crew 1 per 2; sails 1 t and 1 per 4.
+- Non-hittable/zero-mass cards are hidden in both the window and editor. Hull
+  and Deck are hittable (migration 164).
+- Bow/Stern sparse-card squashing fixed (`rowSize = 1` now uses 100% width).
+  The deck now derives one `--card-w` from the widest active row (CSS container
+  query, min 64px), so every weapon/component card is exactly the same width.
+  Empty Bow/Stern/Port/Starboard regions reserve no space; the middle row uses
+  4/3/2 columns depending on present regions and centers. Bow/Stern frames
+  shrink to their card count in both runtime and Ship Editor (editor bow/stern
+  use slot count; middle stays 4 columns).
+- Ship window minimum width is 560px; hero tokens doubled to 64×48 CSS px
+  (128×96 canvas).
+- Hero tokens: fixed 32×24 canvases using the scenario-map `drawToken`
+  renderer, percentages stored in `stations[cardKey].heroPositions`, pointer
+  drag between cards with centre-clamping/centre-nudge and partial stacking.
+  Hold Shift/1 to hide tokens and read the card.
+- Verification: `tsc --noEmit`; 1270 tests; depcruise 0 errors. `next build`
+  blocked by the `.next\trace` file lock.
+
 ## War-machine, flyer, stats-share, and toast fixes (2026-11-10, no migration)
 **Files:** src/hooks/{useMagicCast,useSharedStats}.ts, src/components/{Toast.tsx,ScenarioMap/ScenarioStatsModal.tsx,ScenarioMap/ScenarioMap.tsx,ScenarioMap/MagicCastModal.tsx,ScenarioMap/SoftEnforcementModals.tsx,ScenarioMap/useCombatActions.ts,ScenarioMap/useReactionActions.ts,ScenarioMap/useMoveActions.ts,ScenarioMap/useOverlay.ts}, src/packages/{primitives/lib/boundedList.ts,primitives/index.ts,primitives/tests/boundedList.test.ts,movement/lib/flying.ts,movement/tests/flying.test.ts,units/lib/weaponParser.ts,units/tests/weaponParser.test.ts,ai/lib/board.ts}, docs/dev/changelog.md
 
@@ -65,8 +132,12 @@
   total was updated.
 - **Ship window** is resizable from its bottom-right, starts at **500×420**, and
   remembers its size in `localStorage`; the deck is fluid (percentage cards).
-- **Layout spacing:** outer `px-1`, region `px-0.5`, no max-width; card widths
-  remain percentage-based.
+- **Layout spacing:** outer `px-1 py-1` + region `px-1 py-1` (8px total
+  frame-to-region), 4px region/card gaps and card-row spacing, no max-width;
+  card widths remain percentage-based.
+- **Runtime deck filtering:** empty Bow/Stern/Port/Starboard regions are removed
+  (Body always present); a Bow/Stern with 1–2 cards shrinks its region box to the
+  same card width. Ship Editor keeps all regions.
 - Legacy snapshots are normalised at load (Deck + hull split) and migration 163
   also rewrites template/snapshot JSON.
 - Verification: `tsc --noEmit`; 1263 tests; full `npm run check` (build included).

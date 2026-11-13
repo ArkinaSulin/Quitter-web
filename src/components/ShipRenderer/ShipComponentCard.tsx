@@ -31,9 +31,17 @@ export interface ShipComponentCardData {
   onContextMenu?: (event: React.MouseEvent, data: ShipComponentCardData) => void;
 }
 
+export interface ShipCardWeaponInfo {
+  damage: string;
+  reloadLabel: string;
+  armed: boolean;
+  canFire: boolean;
+  onFire?: () => void;
+}
+
 const MAX_BOXES = 120;
 
-export function ShipComponentCard({ data }: { data: ShipComponentCardData }) {
+export function ShipComponentCard({ data, weaponInfo }: { data: ShipComponentCardData; weaponInfo?: ShipCardWeaponInfo }) {
   if (data.empty) {
     return (
       <button
@@ -89,6 +97,7 @@ export function ShipComponentCard({ data }: { data: ShipComponentCardData }) {
       <div className="mt-0.5 flex items-center gap-2 text-[8px] text-gray-400">
         <span>AC: {data.ac}</span>
         <span>DT: {data.dt}</span>
+        {data.kind === 'weapon' && weaponInfo && <span>Dmg: {weaponInfo.damage}</span>}
       </div>
 
       {slots.length > 0 && (
@@ -111,11 +120,26 @@ export function ShipComponentCard({ data }: { data: ShipComponentCardData }) {
         </div>
       )}
 
-      {data.note && (
+      {data.kind === 'weapon' && weaponInfo ? (
+        <div className="mt-auto flex items-center justify-between gap-1 pt-0.5">
+          <span className={`text-[8px] ${weaponInfo?.armed ? 'text-emerald-300' : 'text-gray-400'}`}>
+            {weaponInfo?.reloadLabel ?? 'load 0/0'}
+          </span>
+          <button
+            type="button"
+            disabled={!weaponInfo?.canFire}
+            onClick={e => { e.stopPropagation(); weaponInfo?.onFire?.(); }}
+            onMouseDown={e => e.stopPropagation()}
+            className="rounded border border-amber-600 px-1 py-0.5 text-[8px] text-amber-200 hover:bg-amber-700/30 disabled:opacity-30"
+          >
+            Fire
+          </button>
+        </div>
+      ) : data.note ? (
         <div className="mt-auto pt-0.5 text-[7px] text-gray-500 truncate" title={data.note}>
           {data.note}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

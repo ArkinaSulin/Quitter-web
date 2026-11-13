@@ -468,6 +468,17 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
 
+    // Attached heroes dismount only onto an adjacent hex (same-hex detach is
+    // still allowed); this aligns detach with attach and ship disembark.
+    if (
+      unit.attachedToUnitId &&
+      (unit.hex.q !== targetHex.q || unit.hex.r !== targetHex.r) &&
+      !areHexesAdjacent(unit.hex, targetHex)
+    ) {
+      addError(`${unit.unitName} must dismount to an adjacent hex.`);
+      return;
+    }
+
     // A host dragging with an attached hero moves the combined unit: the hero
     // shares the move cost (its own MP/actions) and its hex follows the host.
     // The hero itself (attached) is a drag-away detach, not a combined move.

@@ -27,7 +27,7 @@ function slot(): ShipDeckSlot {
 export function createDefaultDeckLayout(): ShipDeckLayout {
   return {
     version: 2,
-    bow: [slot(), slot(), slot(), slot()],
+    bow: [slot(), slot(), slot()],
     stern: [slot(), slot(), slot()],
     port: [slot(), slot(), slot(), slot()],
     body: [slot(), slot(), slot(), slot(), slot(), slot(), slot(), slot()],
@@ -82,7 +82,6 @@ function reshapeLegacyLayout(layout: ShipDeckLayout): ShipDeckLayout {
   copy('bow', 1, 'bow', 0);
   copy('bow', 3, 'bow', 1);
   copy('bow', 4, 'bow', 2);
-  copy('bow', 5, 'bow', 3);
   for (let i = 0; i < 3; i += 1) copy('stern', i, 'stern', i);
   for (let i = 0; i < 4; i += 1) {
     copy('port', i, 'port', i);

@@ -13,9 +13,9 @@ import {
 } from '@/packages/ships';
 
 describe('deck layout', () => {
-  it('starts with Bow 4, Stern 3, Port/Starboard 4, and Body 8', () => {
+  it('starts with Bow 3, Stern 3, Port/Starboard 4, and Body 8', () => {
     const layout = createDefaultDeckLayout();
-    expect(layout.bow).toHaveLength(4);
+    expect(layout.bow).toHaveLength(3);
     expect(layout.stern).toHaveLength(3);
     expect(layout.port).toHaveLength(4);
     expect(layout.body).toHaveLength(8);
@@ -49,7 +49,7 @@ describe('deck layout', () => {
       { key: 'component:removed-port', kind: 'component' },
     ]);
     expect(layout.version).toBe(2);
-    expect(layout.bow).toHaveLength(4);
+    expect(layout.bow).toHaveLength(3);
     expect(layout.stern).toHaveLength(3);
     expect(layout.body).toHaveLength(8);
     expect(findCardSlot(layout, 'component:bow-top')?.region).toBe('bow');
@@ -67,8 +67,7 @@ describe('deck layout', () => {
     expect(layout.stern).toHaveLength(1);
     expect(canRemoveLastEmptySlot(layout, 'stern')).toBe(false);
     layout = removeLastEmptySlot(layout, 'bow');
-    expect(layout.bow).toHaveLength(3);
-    layout = removeLastEmptySlot(layout, 'bow');
+    expect(layout.bow).toHaveLength(2);
     layout = removeLastEmptySlot(layout, 'bow');
     expect(layout.bow).toHaveLength(1);
     expect(canRemoveLastEmptySlot(layout, 'bow')).toBe(false);
@@ -81,7 +80,7 @@ describe('deck layout', () => {
   it('does not re-add a removed slot during sync', () => {
     const layout = removeLastEmptySlot(createDefaultDeckLayout(), 'bow');
     const synced = syncDeckLayout(layout, []);
-    expect(synced.bow).toHaveLength(3);
+    expect(synced.bow).toHaveLength(2);
   });
 
   it('skips occupied slots and removes the last empty one', () => {

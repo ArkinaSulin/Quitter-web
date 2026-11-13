@@ -44,7 +44,10 @@ import {
   shipWeaponCards,
   shipAttackMode,
   pickShipComponent,
+  shipHitCards,
   fireShipWeapon,
+  findCardKeyForComponent,
+  findCardKeysForComponent,
   type ShipRuntime,
 } from '@/packages/ships';
 import { ShipWindow } from './ShipWindow';
@@ -73,7 +76,7 @@ import { getFormationMultiplier, getFormationModifier, computeEffectiveMovement,
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, mpCostOverrides, isHexOnGrid } from '@/packages/world';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, makeCostOfHex, mpCostOverrides, isHexOnGrid } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax, elevationOffset, hexDirection } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
@@ -324,27 +327,52 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
 /** Free Move auto-disables after this long once explicitly turned ON mid-session. */
 const FREE_MOVE_AUTO_OFF_MS = 60_000;
 
+/** Card keys for a component that still have at least one box (not destroyed). */
+function shipFunctionalCardKeys(ship: ShipRuntime, name: string): string[] {
+  const build = ship.snapshot?.build;
+  if (!build) return [];
+  const keys = findCardKeysForComponent(build, name);
+  const hitCards = new Map(shipHitCards(build).map(c => [c.key, c.tons]));
+  return keys.filter(key => {
+    const tons = hitCards.get(key) ?? 0;
+    const destroyed = Number(ship.boxState?.[key] ?? 0);
+    return tons - destroyed > 0;
+  });
+}
+
 function shipHelmOccupant(ship: ShipRuntime, units: Unit[], alliances: Record<string, AllianceGroup>): {
   hero: Unit | null;
   crewCount: number;
   team: string | null;
   alliance: AllianceGroup | null;
 } {
-  const key = shipComponentCardKey(ship, 'Helm');
-  const station = key ? ship.stations?.[key] : undefined;
-  const heroId = station?.heroIds?.[0] ?? station?.heroId;
-  const hero = heroId ? units.find(u => u.id === heroId && !u.isDeleted) ?? null : null;
-  const crewCount = station?.crewIds?.length ?? 0;
-  const team = hero?.team ?? (crewCount > 0 ? ship.crewTeam : null);
-  const alliance = team ? allianceOf(team, alliances) : null;
-  return { hero, crewCount, team, alliance };
+  const keys = shipFunctionalCardKeys(ship, 'Helm');
+  const read = (key: string) => {
+    const station = ship.stations?.[key];
+    const heroId = station?.heroIds?.[0] ?? station?.heroId;
+    const hero = heroId ? units.find(u => u.id === heroId && !u.isDeleted) ?? null : null;
+    return { station, hero, crewCount: station?.crewIds?.length ?? 0 };
+  };
+  const crewed = keys.map(key => ({ key, ...read(key) }));
+  const chosen = crewed.find(c => !!c.hero) ?? crewed.find(c => c.crewCount > 0) ?? null;
+  if (!chosen) return { hero: null, crewCount: 0, team: null, alliance: null };
+  const team = chosen.hero?.team ?? (chosen.crewCount > 0 ? ship.crewTeam : null);
+  return {
+    hero: chosen.hero,
+    crewCount: chosen.crewCount,
+    team,
+    alliance: team ? allianceOf(team, alliances) : null,
+  };
 }
 
 function shipBridgeHero(ship: ShipRuntime, units: Unit[]): Unit | null {
-  const key = shipComponentCardKey(ship, 'Command bridge');
-  const station = key ? ship.stations?.[key] : undefined;
-  const heroId = station?.heroIds?.[0] ?? station?.heroId;
-  return heroId ? units.find(u => u.id === heroId && !u.isDeleted) ?? null : null;
+  for (const key of shipFunctionalCardKeys(ship, 'Command bridge')) {
+    const station = ship.stations?.[key];
+    const heroId = station?.heroIds?.[0] ?? station?.heroId;
+    const hero = heroId ? units.find(u => u.id === heroId && !u.isDeleted) ?? null : null;
+    if (hero) return hero;
+  }
+  return null;
 }
 
 /** Ship colour/owner alliance: helm hero -> helm crew team -> none. */
@@ -440,8 +468,7 @@ function shipCardHeroCapacity(ship: ShipRuntime, cardKey: string): number {
 
 /** Card key for a built-in component name (Helm, Command bridge, Crew quarters...). */
 function shipComponentCardKey(ship: ShipRuntime, name: string): string | null {
-  const component = ship.snapshot?.build?.components.find(c => c.name === name);
-  return component ? `component:${component.id}` : null;
+  return ship.snapshot?.build ? findCardKeyForComponent(ship.snapshot.build, name) : null;
 }
 
 function abilityMod(score: number): number {
@@ -1149,6 +1176,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (!ship) return;
     if (!hero.isHero) { addError('Only heroes can board a ship.'); return; }
     if (hero.attachedToUnitId || hero.attachedToShipId) { addError('That hero is already attached.'); return; }
+    if (!ship.hex || !areHexesAdjacent(hero.hex, ship.hex)) {
+      addError('Board from a hex adjacent to the ship.');
+      return;
+    }
     const maxSize = getSetting('hero_attach_max_size', 200);
     if ((hero.sizeCategory ?? 100) > maxSize) { addError('That hero is too large to board.'); return; }
     if ((hero.elevation ?? 0) !== (ship.elevation ?? 0)) {
@@ -1208,7 +1239,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const ship = shipRuntime.find(s =>
       !s.isDeleted && s.hex && s.hex.q === targetHex.q && s.hex.r === targetHex.r,
     );
-    if (!ship) return false;
+    if (!ship || !ship.hex) return false;
+    if (!areHexesAdjacent(unit.hex, ship.hex)) {
+      addError('Board from a hex adjacent to the ship.');
+      return true;
+    }
     const maxSize = getSetting('hero_attach_max_size', 200);
     if ((unit.sizeCategory ?? 100) > maxSize) {
       addError('That hero is too large to board.');
@@ -1222,7 +1257,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     return true;
   }, [shipRuntime, handleBoardHero, addError]);
 
-  const handleAssignHero = useCallback(async (heroId: string, station: string | null) => {
+
+  const handleMoveHeroToken = useCallback(async (heroId: string, toCardKey: string, xPct: number, yPct: number) => {
     const hero = units.find(u => u.id === heroId && !u.isDeleted);
     const shipId = hero?.attachedToShipId;
     const ship = shipId ? shipRuntime.find(s => s.id === shipId) : undefined;
@@ -1231,53 +1267,97 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError('You can only move your own heroes.');
       return;
     }
-    if (station) {
-      const capacity = shipCardHeroCapacity(ship, station);
-      const occupied = units.filter(u =>
-        u.id !== heroId &&
-        !u.isDeleted &&
-        u.attachedToShipId === shipId &&
-        u.shipStationKey === station,
-      ).length;
-      if (occupied >= capacity) {
-        addError(capacity === 0
-          ? 'That card has no crew capacity for a hero.'
-          : 'That card already has its maximum number of heroes.');
-        return;
-      }
-    }
-    const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = { ...ship.stations };
-    for (const key of Object.keys(nextStations)) {
-      const entry = nextStations[key] ?? {};
-      const heroIds = (entry.heroIds ?? []).filter(id => id !== heroId);
-      const heroIdField = entry.heroId === heroId ? null : entry.heroId;
-      nextStations[key] = { ...entry, heroIds, heroId: heroIdField };
-    }
-    if (station) {
-      const entry = nextStations[station] ?? {};
-      nextStations[station] = {
+    const fromKey = hero.shipStationKey ?? null;
+    const nextStations: Record<string, {
+      heroId?: string | null;
+      heroIds?: string[];
+      crewIds?: string[];
+      heroPositions?: Record<string, { xPct: number; yPct: number }>;
+    }> = {};
+    for (const [key, entry] of Object.entries(ship.stations ?? {})) {
+      nextStations[key] = {
         ...entry,
-        heroId,
-        heroIds: Array.from(new Set([...(entry.heroIds ?? []), heroId])),
+        heroIds: [...(entry.heroIds ?? [])],
+        crewIds: [...(entry.crewIds ?? [])],
+        heroPositions: { ...(entry.heroPositions ?? {}) },
       };
     }
-    await execute('ATTACH_HERO', [
-      {
-        type: 'ATTACH_HERO',
+    const nextCrewState = { ...(ship.crewState ?? {}) };
+    const target = nextStations[toCardKey] ?? { heroIds: [], crewIds: [], heroPositions: {} };
+    const targetHeroIds = new Set([...(target.heroIds ?? []), ...(target.heroId ? [target.heroId] : [])]);
+    const capacity = shipCardHeroCapacity(ship, toCardKey);
+
+    if (fromKey !== toCardKey) {
+      const occupantCount = targetHeroIds.size + (target.crewIds?.length ?? 0);
+      if (occupantCount >= capacity) {
+        const lastCrew = target.crewIds?.[target.crewIds.length - 1];
+        if (!lastCrew) {
+          addError('That card is full.');
+          return;
+        }
+        target.crewIds = (target.crewIds ?? []).slice(0, -1);
+        const templateCrew = ship.snapshot?.template?.crews?.find(c => c.id === lastCrew);
+        nextCrewState[lastCrew] = {
+          ...(nextCrewState[lastCrew] ?? { hp: templateCrew?.hp ?? 1 }),
+          station: null,
+        };
+      }
+      if (fromKey && nextStations[fromKey]) {
+        const old = nextStations[fromKey];
+        old.heroIds = (old.heroIds ?? []).filter(id => id !== heroId);
+        if (old.heroPositions) delete old.heroPositions[heroId];
+        if (old.heroId === heroId) old.heroId = null;
+        // Auto-fill the vacated card with one reserve crew.
+        const oldCapacity = shipCardHeroCapacity(ship, fromKey);
+        if (fromKey !== toCardKey && oldCapacity !== Number.POSITIVE_INFINITY) {
+          const assigned = new Set<string>();
+          for (const entry of Object.values(nextStations)) {
+            for (const id of entry.crewIds ?? []) assigned.add(id);
+          }
+          const reserve = (ship.snapshot?.template?.crews ?? []).find(c => {
+            const st = nextCrewState[c.id];
+            return !st?.dead && !st?.station && !assigned.has(c.id);
+          });
+          const oldOccupants =
+            (old.heroIds?.length ?? 0) +
+            (old.heroId ? 1 : 0) +
+            (old.crewIds?.length ?? 0);
+          if (reserve && oldOccupants < oldCapacity) {
+            old.crewIds = [...(old.crewIds ?? []), reserve.id];
+            nextCrewState[reserve.id] = { ...(nextCrewState[reserve.id] ?? { hp: reserve.hp }), station: fromKey };
+          }
+        }
+      }
+      target.heroIds = Array.from(new Set([...(target.heroIds ?? []), heroId]));
+      if (capacity === 1) target.heroId = heroId;
+      target.heroPositions = { ...(target.heroPositions ?? {}), [heroId]: { xPct, yPct } };
+      nextStations[toCardKey] = target;
+    } else {
+      target.heroPositions = { ...(target.heroPositions ?? {}), [heroId]: { xPct, yPct } };
+      nextStations[toCardKey] = target;
+    }
+
+    const subSteps: SubStep[] = [
+      ...(fromKey !== toCardKey ? [{
+        type: 'ATTACH_HERO' as const,
         unitId: hero.id,
         description: `${hero.unitName} moved station`,
-        changes: [{ field: 'shipStationKey', from: hero.shipStationKey ?? null, to: station }],
-      },
+        changes: [{ field: 'shipStationKey', from: fromKey, to: toCardKey }],
+      }] : []),
       {
-        type: 'SHIP',
+        type: 'SHIP' as const,
         unitId: ship.id,
-        description: `${ship.name} station changed`,
-        changes: [{ field: 'stations', from: ship.stations, to: nextStations }],
+        description: `${ship.name} hero moved`,
+        changes: [
+          { field: 'stations', from: ship.stations ?? {}, to: nextStations },
+          { field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState },
+        ],
       },
-    ], `${hero.unitName} moved station`);
+    ];
+    await execute('ATTACH_HERO', subSteps, `${hero.unitName} moved on ${ship.name}`);
   }, [units, shipRuntime, execute, addError, effectiveIsGM, myTeam]);
 
-  const handleDisembarkHero = useCallback(async (heroId: string) => {
+  const handleDisembarkHero = useCallback(async (heroId: string, targetHex?: Hex) => {
     const hero = units.find(u => u.id === heroId && !u.isDeleted);
     const shipId = hero?.attachedToShipId;
     const ship = shipId ? shipRuntime.find(s => s.id === shipId) : undefined;
@@ -1288,7 +1368,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
     const occupied = computeOccupiedHexes(units, hero.id, ship.elevation ?? 0);
-    const dest = HEX_DIRS
+    const dest = targetHex ?? HEX_DIRS
       .map(d => ({ q: ship.hex!.q + d.q, r: ship.hex!.r + d.r, s: -ship.hex!.q - d.q - ship.hex!.r - d.r }))
       .find(h =>
         isHexOnGrid(h, radius) &&
@@ -1296,25 +1376,49 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         !shipRuntime.some(s => s.id !== ship.id && s.hex && !s.isDeleted && s.hex.q === h.q && s.hex.r === h.r),
       );
     if (!dest) { addError('No free adjacent hex to disembark.'); return; }
-    const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = { ...ship.stations };
+    if (!areHexesAdjacent(ship.hex, dest)) {
+      addError('Disembark onto a hex next to the ship.');
+      return;
+    }
+    if (!isHexOnGrid(dest, radius) || occupied.has(`${dest.q},${dest.r}`) ||
+        shipRuntime.some(s => s.id !== ship.id && s.hex && !s.isDeleted && s.hex.q === dest.q && s.hex.r === dest.r)) {
+      addError('That hex is not available for disembarking.');
+      return;
+    }
+    const rawCost = makeCostOfHex(zoneMpCosts, walls, {
+      structures,
+      templates: structureTemplates,
+      isMounted: false,
+    })(dest.q, dest.r, ship.hex.q, ship.hex.r);
+    if (rawCost < 0) { addError('That hex is blocked.'); return; }
+    const spent = freeMove ? null : applyHeroMoveCost(moveBudgetUnit(hero, 'ground'), rawCost, unitMaxMP(hero));
+    const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[]; heroPositions?: Record<string, { xPct: number; yPct: number }> }> = { ...ship.stations };
     for (const key of Object.keys(nextStations)) {
       const entry = nextStations[key] ?? {};
+      const heroPositions = { ...(entry.heroPositions ?? {}) };
+      delete heroPositions[heroId];
       nextStations[key] = {
         ...entry,
         heroId: entry.heroId === heroId ? null : entry.heroId,
         heroIds: (entry.heroIds ?? []).filter(id => id !== heroId),
+        heroPositions,
       };
+    }
+    const changes: { field: string; from: unknown; to: unknown }[] = [
+      { field: 'attachedToShipId', from: hero.attachedToShipId ?? null, to: null },
+      { field: 'shipStationKey', from: hero.shipStationKey ?? null, to: null },
+      { field: 'hex', from: hero.hex, to: dest },
+    ];
+    if (spent) {
+      changes.push({ field: 'movementPointsAvailable', from: hero.movementPointsAvailable, to: spent.movementPointsAvailable });
+      changes.push({ field: 'actionsAvailable', from: hero.actionsAvailable, to: spent.actionsAvailable });
     }
     await execute('DETACH_HERO', [
       {
         type: 'DETACH_HERO',
         unitId: hero.id,
         description: `${hero.unitName} disembarked`,
-        changes: [
-          { field: 'attachedToShipId', from: hero.attachedToShipId ?? null, to: null },
-          { field: 'shipStationKey', from: hero.shipStationKey ?? null, to: null },
-          { field: 'hex', from: hero.hex, to: dest },
-        ],
+        changes,
       },
       {
         type: 'SHIP',
@@ -1323,7 +1427,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         changes: [{ field: 'stations', from: ship.stations, to: nextStations }],
       },
     ], `${hero.unitName} disembarked`);
-  }, [units, shipRuntime, backgroundConfig, execute, addError, effectiveIsGM, myTeam]);
+  }, [units, shipRuntime, backgroundConfig, execute, addError, effectiveIsGM, myTeam, zoneMpCosts, walls, structures, structureTemplates, freeMove, unitMaxMP]);
 
   const handleAssignCrew = useCallback(async (shipId: string, crewId: string, station: string | null) => {
     const ship = shipRuntime.find(s => s.id === shipId);
@@ -1541,13 +1645,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const dt = Math.max(tStats?.damageThreshold ?? 15, card.weapon.dt ?? 15);
       const newHp = Math.max(0, targetShip.shipHp - damage);
       const nextBox = { ...(targetShip.boxState ?? {}) };
-      if (damage >= dt && tStats) {
-        const hitCard = pickShipComponent(
-          tStats.boxGroups.map(g => ({ key: g.id, name: g.label, tons: g.boxes, safe: g.safe })),
-        );
+      if (damage >= dt && tStats && targetShip.snapshot?.build) {
+        const cards = shipHitCards(targetShip.snapshot.build)
+          .map(c => ({ ...c, tons: Math.max(0, c.tons - Number(nextBox[c.key] ?? 0)) }))
+          .filter(c => c.tons > 0);
+        const hitCard = pickShipComponent(cards);
         if (hitCard) {
           const destroyed = Number(nextBox[hitCard.key] ?? 0);
-          nextBox[hitCard.key] = Math.min(hitCard.tons, destroyed + 1);
+          nextBox[hitCard.key] = destroyed + 1;
         }
       }
       const nextStations: Record<string, { heroId?: string | null; heroIds?: string[]; crewIds?: string[] }> = {
@@ -3542,6 +3647,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   });
   // Keep the dragged unit visible in every filter mode (read by useCanvasDraw).
   draggedUnitIdRef.current = draggingUnitId;
+
+  const handleHeroDropToMap = useCallback((heroId: string, clientX: number, clientY: number) => {
+    const hero = units.find(u => u.id === heroId && !u.isDeleted);
+    const shipId = hero?.attachedToShipId;
+    const ship = shipId ? shipRuntime.find(s => s.id === shipId) : undefined;
+    if (!hero || !ship?.hex) return;
+    const hex = getHexFromScreen(clientX, clientY);
+    if (!hex) return;
+    void handleDisembarkHero(heroId, hex);
+  }, [units, shipRuntime, getHexFromScreen, handleDisembarkHero]);
 
   // When the rout modal opens: center the map on the routed unit and clear hover
   // so the tooltip never covers it.
@@ -5624,14 +5739,27 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           onAssignCrew={(crewId, station) => void handleAssignCrew(shipWindow.id, crewId, station)}
           boardedHeroes={units
             .filter(u => !u.isDeleted && u.attachedToShipId === shipWindow.id)
-            .map(u => ({ id: u.id, name: u.unitName, shipStationKey: u.shipStationKey ?? null, team: u.team }))}
-          onAssignHero={(heroId, station) => void handleAssignHero(heroId, station)}
-          onDisembarkHero={heroId => void handleDisembarkHero(heroId)}
+            .map(u => {
+              const stationKey = u.shipStationKey ?? null;
+              const pos = stationKey ? shipWindow.stations?.[stationKey]?.heroPositions?.[u.id] : undefined;
+              return {
+                id: u.id,
+                name: u.unitName,
+                shipStationKey: stationKey,
+                team: u.team,
+                unit: u,
+                xPct: pos?.xPct,
+                yPct: pos?.yPct,
+              };
+            })}
           onFireWeapon={cardKey => handleFireWeapon(shipWindow.id, cardKey)}
           canManageCrew={shipWindowCanManageCrew}
           canFillHelm={shipWindowCanFillHelm}
           onSetCrewTeam={team => void handleSetCrewTeam(shipWindow.id, team)}
           onFillHelm={() => void handleFillHelm(shipWindow.id)}
+          teamAlliances={alliances}
+          onMoveHeroToken={(heroId, toCardKey, xPct, yPct) => void handleMoveHeroToken(heroId, toCardKey, xPct, yPct)}
+          onHeroDropToMap={(heroId, x, y) => handleHeroDropToMap(heroId, x, y)}
         />
       )}
 

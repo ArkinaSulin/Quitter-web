@@ -6,7 +6,7 @@
 import { Hex } from '@/types/gameProtocol';
 import { ShipBuild, ShipDerivedStats, computeShipBuild } from './shipStats';
 import { ShipComponent, ShipTemplate } from '@/types/ship';
-import { ensureDeckSlot } from './deckLayout';
+import { deckOrderedCardKeys, ensureDeckSlot } from './deckLayout';
 
 const DEFAULT_DECK_COMPONENT: ShipComponent = {
   id: 'Deck',
@@ -33,9 +33,11 @@ export interface ShipSnapshot {
 export interface ShipStationAssignment {
   /** Single-hero stations (Helm/Bridge/weapons/etc.). */
   heroId?: string | null;
-  /** Multi-hero stations (Crew Quarters). */
+  /** Multi-hero stations (Crew Quarters/Deck). */
   heroIds?: string[];
   crewIds?: string[];
+  /** Hero token positions as percentages of the card's inner box. */
+  heroPositions?: Record<string, { xPct: number; yPct: number }>;
 }
 
 export interface ShipCrewState {
@@ -115,7 +117,9 @@ export function parseStepBudget(raw: unknown): number[] {
 /** Add the mandatory Deck card to legacy snapshots and refresh derived stats. */
 function normalizeSnapshot(snapshot: ShipSnapshot): ShipSnapshot {
   const build: ShipBuild = { ...snapshot.build };
-  const components = [...(build.components ?? [])];
+  const components = [...(build.components ?? [])].map(c =>
+    c.name === 'Hull' || c.name === 'Deck' ? { ...c, hittable: true } : c,
+  );
   let deck = components.find(c => c.name === 'Deck');
   if (!deck) {
     deck = { ...DEFAULT_DECK_COMPONENT };
@@ -131,6 +135,22 @@ function normalizeSnapshot(snapshot: ShipSnapshot): ShipSnapshot {
     build,
     stats: computeShipBuild(build),
   };
+}
+
+/** Actual deck card key for a component name (handles per-unit `:0` keys). */
+export function findCardKeysForComponent(build: ShipBuild, name: string): string[] {
+  const component = (build.components ?? []).find(c => c.name === name);
+  if (!component) return [];
+  if (!build.deckLayout) return [`component:${component.id}`];
+  const keys = deckOrderedCardKeys(build.deckLayout);
+  const matches = keys.filter(
+    k => k === `component:${component.id}` || k.startsWith(`component:${component.id}:`),
+  );
+  return matches.length > 0 ? matches : [`component:${component.id}`];
+}
+
+export function findCardKeyForComponent(build: ShipBuild, name: string): string | null {
+  return findCardKeysForComponent(build, name)[0] ?? null;
 }
 
 export function mapShipRuntimeRow(row: any): ShipRuntime {

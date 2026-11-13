@@ -4,7 +4,10 @@
 // summary + compact deck + roster. Speed declaration lives in its own step-1
 // panel (`SpeedDeclarationPanel`).
 
-import { ShipRuntime, ShipBuild, componentById, deckOrderedCardKeys, ensureDeckSlot, weaponById, shipWeaponCards } from '@/packages/ships';
+import { useEffect, useState } from 'react';
+import { AllianceGroup, Unit } from '@/types/gameProtocol';
+import { ShipRuntime, ShipBuild, componentById, deckOrderedCardKeys, ensureDeckSlot, findCardKeyForComponent, resolveShipWeaponDamage, weaponById, shipWeaponCards } from '@/packages/ships';
+import type { ShipCardWeaponInfo } from '@/components/ShipRenderer/ShipComponentCard';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
 import { DraggablePanel } from '@/components/shared/DraggablePanel';
 import { TEAMS, TEAM_COLORS, type Team } from '@/packages/units';
@@ -14,6 +17,9 @@ export interface BoardedHero {
   name: string;
   shipStationKey: string | null;
   team: string | null;
+  unit: Unit;
+  xPct?: number;
+  yPct?: number;
 }
 
 export interface ShipWindowProps {
@@ -25,13 +31,14 @@ export interface ShipWindowProps {
   /** Assign a crew member to a card key, or null = reserve. */
   onAssignCrew: (crewId: string, station: string | null) => void;
   boardedHeroes: BoardedHero[];
-  onAssignHero: (heroId: string, station: string | null) => void;
-  onDisembarkHero: (heroId: string) => void;
   onFireWeapon: (cardKey: string) => void;
   canManageCrew: boolean;
   canFillHelm: boolean;
   onSetCrewTeam: (team: string | null) => void;
   onFillHelm: () => void;
+  teamAlliances: Record<string, AllianceGroup>;
+  onMoveHeroToken: (heroId: string, toCardKey: string, xPct: number, yPct: number) => void;
+  onHeroDropToMap: (heroId: string, clientX: number, clientY: number) => void;
 }
 
 interface StationOption {
@@ -72,13 +79,14 @@ export function ShipWindow({
   onClose,
   onAssignCrew,
   boardedHeroes,
-  onAssignHero,
-  onDisembarkHero,
   onFireWeapon,
   canManageCrew,
   canFillHelm,
   onSetCrewTeam,
   onFillHelm,
+  teamAlliances,
+  onMoveHeroToken,
+  onHeroDropToMap,
 }: ShipWindowProps) {
   const stats = ship.snapshot?.stats;
   const template = ship.snapshot?.template;
@@ -87,9 +95,13 @@ export function ShipWindow({
   const crewRows = template?.crews ?? [];
   const crewState = ship.crewState ?? {};
   const stations = stationOptions(build);
+  const presentCrewByCard: Record<string, number> = {};
+  for (const [key, entry] of Object.entries(ship.stations ?? {})) {
+    const heroIds = new Set([...(entry.heroIds ?? []), ...(entry.heroId ? [entry.heroId] : [])]);
+    presentCrewByCard[key] = (entry.crewIds?.length ?? 0) + heroIds.size;
+  }
   const weaponCards = build ? shipWeaponCards(build) : [];
-  const helmKey = build?.components.find(c => c.name === 'Helm');
-  const helmCardKey = helmKey ? `component:${helmKey.id}` : null;
+  const helmCardKey = build ? findCardKeyForComponent(build, 'Helm') : null;
   const helmStation = helmCardKey ? ship.stations?.[helmCardKey] : undefined;
   const helmHero = helmStation?.heroId ? boardedHeroes.find(h => h.id === helmStation.heroId) : undefined;
   const helmCrewCount = helmStation?.crewIds?.length ?? 0;
@@ -98,16 +110,63 @@ export function ShipWindow({
     : helmCrewCount > 0
       ? `${helmCrewCount} crew${ship.crewTeam ? ` (${ship.crewTeam})` : ''}`
       : 'unmanned';
-  const crewQuarters = build?.components.find(c => c.name === 'Crew quarters');
-  const crewQuartersKey = crewQuarters ? `component:${crewQuarters.id}` : null;
-  const deckComponent = build?.components.find(c => c.name === 'Deck');
-  const deckCardKey = deckComponent ? `component:${deckComponent.id || 'Deck'}` : null;
-  const heroesByCard: Record<string, { id: string; name: string }[]> = {};
+  const crewQuartersKey = build ? findCardKeyForComponent(build, 'Crew quarters') : null;
+  const deckCardKey = build ? findCardKeyForComponent(build, 'Deck') : null;
+  const heroesByCard: Record<string, BoardedHero[]> = {};
   for (const h of boardedHeroes) {
     const key = h.shipStationKey || deckCardKey || crewQuartersKey;
     if (!key) continue;
-    (heroesByCard[key] ??= []).push({ id: h.id, name: h.name });
+    (heroesByCard[key] ??= []).push(h);
   }
+
+  const occupantsByCard: Record<string, { id: string; name: string; isHero: boolean }[]> = {};
+  for (const h of boardedHeroes) {
+    const key = h.shipStationKey || deckCardKey || crewQuartersKey;
+    if (!key) continue;
+    (occupantsByCard[key] ??= []).push({ id: h.id, name: h.name, isHero: true });
+  }
+  for (const [key, entry] of Object.entries(ship.stations ?? {})) {
+    for (const crewId of entry.crewIds ?? []) {
+      const crew = template?.crews?.find(c => c.id === crewId);
+      (occupantsByCard[key] ??= []).push({
+        id: crewId,
+        name: crew?.name || 'Crew',
+        isHero: false,
+      });
+    }
+  }
+
+  const weaponInfoByCard: Record<string, ShipCardWeaponInfo> = {};
+  for (const card of weaponCards) {
+    const reload = ship.reload?.[card.key];
+    const armed = !!reload?.armed || card.weapon.reloadSteps === 0;
+    const present = presentCrewByCard[card.key] ?? 0;
+    const destroyed = Number((ship.boxState as Record<string, number> | undefined)?.[card.key] ?? 0);
+    const remaining = Math.max(0, card.tons - destroyed);
+    weaponInfoByCard[card.key] = {
+      damage: resolveShipWeaponDamage(card.weapon, stats?.totalMass ?? 0),
+      reloadLabel: armed ? 'Armed' : `load ${reload?.progress ?? 0}/${card.weapon.reloadSteps}`,
+      armed,
+      canFire: !readOnly && armed && remaining > 0 && present >= Math.ceil(card.weapon.crew),
+      onFire: () => onFireWeapon(card.key),
+    };
+  }
+
+  const [hideHeroTokens, setHideHeroTokens] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === '1') setHideHeroTokens(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' || e.key === '1') setHideHeroTokens(false);
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
 
   return (
     <DraggablePanel
@@ -117,7 +176,7 @@ export function ShipWindow({
       className="max-w-[96vw]"
       resizable
       persistKey="quitter.shipWindow.size"
-      minWidth={500}
+      minWidth={560}
       minHeight={420}
     >
       <div className="grid gap-3 p-3 lg:grid-cols-[210px_1fr]">
@@ -204,80 +263,30 @@ export function ShipWindow({
             </div>
           </div>
 
-          <div className="rounded-lg border border-gray-700">
-            <div className="border-b border-gray-800 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-500">Heroes aboard</div>
-            <div className="divide-y divide-gray-800">
-              {boardedHeroes.length === 0 && <div className="p-2 text-[11px] text-gray-500">No heroes aboard.</div>}
-              {boardedHeroes.map(h => (
-                <div key={h.id} className="flex items-center gap-2 px-2 py-1 text-[11px]">
-                  <span className="min-w-0 flex-1 truncate text-amber-200">{h.name}</span>
-                  {readOnly ? (
-                    <span className="text-gray-500">{h.shipStationKey || 'deck'}</span>
-                  ) : (
-                    <select
-                      value={h.shipStationKey || ''}
-                      onChange={e => onAssignHero(h.id, e.target.value || null)}
-                      className="max-w-[120px] rounded border border-gray-600 bg-gray-800 px-1 py-0.5 text-[10px]"
-                    >
-                      <option value="">Deck / reserve</option>
-                      {stations.map(s => (
-                        <option key={s.key} value={s.key}>{s.name}</option>
-                      ))}
-                    </select>
-                  )}
-                  {!readOnly && (
-                    <button
-                      onClick={() => onDisembarkHero(h.id)}
-                      className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-gray-800"
-                    >
-                      Disembark
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="space-y-2">
           <div className="text-[10px] uppercase tracking-wide text-gray-500">Ship layout</div>
           {build && stats ? (
-            <ShipLayout build={build} stats={stats} readOnly hideEmpty heroesByCard={heroesByCard} />
+            <ShipLayout
+              build={build}
+              stats={stats}
+              readOnly
+              hideEmpty
+              heroesByCard={heroesByCard}
+              boxState={ship.boxState as Record<string, number>}
+              presentCrewByCard={presentCrewByCard}
+              occupantsByCard={occupantsByCard}
+              weaponInfoByCard={weaponInfoByCard}
+              teamAlliances={teamAlliances}
+              hideHeroTokens={hideHeroTokens}
+              onHeroDrop={(heroId, _from, toCardKey, xPct, yPct) => onMoveHeroToken(heroId, toCardKey, xPct, yPct)}
+              onHeroDropToMap={onHeroDropToMap}
+            />
           ) : (
             <div className="rounded-lg border border-gray-700 p-3 text-[11px] text-gray-500">Layout unavailable.</div>
           )}
 
-          {weaponCards.length > 0 && (
-            <div className="rounded-lg border border-gray-700">
-              <div className="border-b border-gray-800 px-2 py-1 text-[10px] uppercase tracking-wide text-gray-500">Weapons</div>
-              <div className="divide-y divide-gray-800">
-                {weaponCards.map(card => {
-                  const reload = ship.reload?.[card.key];
-                  const armed = !!reload?.armed || card.weapon.reloadSteps === 0;
-                  const station = ship.stations?.[card.key];
-                  const crewCount = (station?.crewIds?.length ?? 0) + (station?.heroId ? 1 : 0);
-                  const canFire = !readOnly && armed && crewCount > 0;
-                  return (
-                    <div key={card.key} className="flex items-center gap-2 px-2 py-1 text-[11px]">
-                      <span className="min-w-0 flex-1 truncate">{card.weapon.name}</span>
-                      <span className="text-gray-400">Dmg {card.weapon.damage || '—'}</span>
-                      <span className={armed ? 'text-emerald-300' : 'text-gray-500'}>
-                        {armed ? 'armed' : `load ${reload?.progress ?? 0}/${card.weapon.reloadSteps}`}
-                      </span>
-                      <span className="text-gray-400">crew {crewCount}/{Math.ceil(card.weapon.crew)}</span>
-                      <button
-                        disabled={!canFire}
-                        onClick={() => onFireWeapon(card.key)}
-                        className="rounded border border-amber-600 px-1.5 py-0.5 text-[10px] text-amber-200 hover:bg-amber-700/30 disabled:opacity-30"
-                      >
-                        Fire
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </DraggablePanel>

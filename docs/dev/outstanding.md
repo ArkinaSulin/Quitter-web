@@ -39,6 +39,19 @@ through the command log. See `21-ship-runtime.md`.
 - Mandatory Deck card + hull split (migration 163), hero capacity = card crew,
   Deck/Crew Quarters unlimited, sail/rudder crew rule, resizable remembered ship
   window (500×420 min), and deck destruction displacement.
+- Runtime deck filtering: empty Bow/Stern/Port/Starboard regions are removed
+  (Body always present); 1–2 card Bow/Stern boxes shrink to the card width.
+- Per-card damage boxes (migration 164), card efficiency red/yellow (remaining
+  capacity), hidden non-hittable/zero-mass cards, and hero tokens with pointer
+  dragging (`stations.heroPositions`, Shift/1 hide) are shipped.
+- Hero drag-to-adjacent-hex disembark, weapon cards with AC/DT/Dmg + load/Armed
+  and Fire, actual occupant names in crew slots (heroes first), and the removed
+  separate weapon list are shipped.
+- Helm ownership now skips destroyed helms (next functional helm takes over),
+  the ship glow is brighter, and ship-layout hero tokens scale with
+  `min(card width, card height)` with a 50% drag hitbox; scenario-map tokens are
+  unchanged. The separate “Heroes aboard” list was removed (tokens move between
+  cards and disembark).
 - **Later:** downed (HP 0) heroes should move to Crew Quarters once ship damage
   to heroes is wired; currently only Deck/Crew Quarters destruction displaces.
 - Ship combat detail: occupant/crew damage, derelict state, ram/collision

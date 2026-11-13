@@ -6,7 +6,7 @@
 import { Hex } from '@/types/gameProtocol';
 import { HEX_DIRS } from '@/packages/primitives';
 import { ShipAreaShape, ShipDeckRegion, ShipSaveChoice, ShipWeapon, WeaponArc } from '@/types/ship';
-import { ShipBuild } from './shipStats';
+import { COMPONENT_NAMES, ShipBuild, componentById, componentByName, computeMassBreakdown } from './shipStats';
 import { deckOrderedCardKeys, findCardSlot } from './deckLayout';
 import { effectiveWeaponArcs } from './weaponArcs';
 import { weaponById, weaponTons } from './shipStats';
@@ -171,6 +171,63 @@ export function shipWeaponCards(build: ShipBuild): ShipWeaponCard[] {
     });
   }
   return cards;
+}
+
+/** Every hittable card with its box tonnage (used for per-card damage). */
+export function shipHitCards(build: ShipBuild): ShipHitCard[] {
+  const out: ShipHitCard[] = [];
+  if (!build.deckLayout) return out;
+  const m = computeMassBreakdown(build);
+  const weaponMap = new Map(shipWeaponCards(build).map(c => [c.key, c]));
+  for (const key of deckOrderedCardKeys(build.deckLayout)) {
+    const weaponCard = weaponMap.get(key);
+    if (weaponCard) {
+      out.push({
+        key,
+        name: weaponCard.weapon.name,
+        tons: weaponCard.tons,
+        safe: false,
+        kind: 'weapon',
+      });
+      continue;
+    }
+    if (key.startsWith('component:')) {
+      const raw = key.slice('component:'.length);
+      const perUnit = /:\d+$/.test(raw);
+      const id = raw.replace(/:\d+$/, '');
+      const component = componentById(build.components, id);
+      if (!component.name) continue;
+      let tons = 0;
+      switch (component.name) {
+        case COMPONENT_NAMES.hull: tons = m.hull; break;
+        case COMPONENT_NAMES.deck: tons = m.deck; break;
+        case COMPONENT_NAMES.sail: tons = perUnit ? Math.round(component.mass) : m.sails; break;
+        case COMPONENT_NAMES.rudder: tons = perUnit ? Math.round(component.mass) : m.rudders; break;
+        case COMPONENT_NAMES.cargo: tons = m.cargo; break;
+        case COMPONENT_NAMES.crewQuarters: tons = m.crewQuarters; break;
+        case COMPONENT_NAMES.helm: tons = Math.round(build.helm * component.mass); break;
+        case COMPONENT_NAMES.commandBridge: tons = Math.round(build.commandBridge * component.mass); break;
+        default: tons = Math.round(component.mass); break;
+      }
+      out.push({ key, name: component.name, tons, safe: !component.hittable, kind: 'component' });
+      continue;
+    }
+    if (key.startsWith('optional:')) {
+      const parts = key.slice('optional:'.length).split(':');
+      const id = parts[0];
+      const component = componentById(build.components, id);
+      if (!component.name) continue;
+      const count = parts.length > 1 ? 1 : (build.templateComponents.find(r => r.componentId === id)?.count ?? 1);
+      out.push({
+        key,
+        name: component.name,
+        tons: Math.round(component.mass * count),
+        safe: !component.hittable,
+        kind: 'component',
+      });
+    }
+  }
+  return out.filter(c => c.tons > 0 && !c.safe);
 }
 
 export function weaponArea(weapon: Pick<ShipWeapon, 'magicDimension' | 'shape' | 'savingThrow' | 'saveDC' | 'onSaveHalfOrNeg'>): {

@@ -169,6 +169,26 @@ New `SHIP` sub-step (migration 157):
 
 ## 7. Rules locked for the remaining slices
 
+**Helm ownership.** Ownership/control scans functional helm cards in deck order:
+first functional helm with a hero, else first functional helm with crew team. A
+destroyed first helm hands control to the next functional helm. The ship image
+uses a two-pass alliance-colour silhouette glow.
+
+**Hero transitions.** Attach, detach, embark, and disembark are all
+adjacent-hex-only. Boarding requires the hero to be beside the ship; detaching
+from a unit requires an adjacent destination (same-hex detach is allowed).
+
+**Hero tokens on the deck.** Token visual width = `min(card width, card height)`
+(min card width 64px); the drag hitbox is 50% of the token. Horizontal clamping
+uses the hitbox (transparent edges can extrude sideways); vertical clamping uses
+the full token (no spill onto cards above/below).
+
+**Card UI.** Weapon cards show AC/DT/Dmg plus `load x/y`/`Armed` and a Fire
+button. Crew slots show actual occupants (heroes first, then crew), with hollow
+slots for remaining crew requirement. Dragging a hero token off the ship window
+to an adjacent map hex disembarks it (same elevation, unoccupied, target-hex
+terrain MP).
+
 **Deck & hull.** Every ship has a mandatory hittable **Deck** card carved out of
 the hull: `deck = max(1, round(hull × 0.2))`, `hull = allocated − deck`; at 0 hull
 the Hull card is omitted. Deck is movable in the Ship Editor but non-removable.
@@ -176,6 +196,20 @@ Hero capacity per card equals its crew requirement; Deck and Crew Quarters are
 unlimited. Boarded heroes default to the Deck. If the Deck is destroyed, heroes
 move to Crew Quarters (and vice versa) while the other card survives. Sail crew
 = `max(1, floor(sails/4))`, rudder crew = `max(1, ceil(rudders/2))`.
+
+**Deck sizing.** Default regions are Bow 3, Stern 3, Port/Starboard 4, Body 8.
+A single `--card-w` (CSS container query, min 64px) is shared by every card. Spacing is 4px between cards, between regions, and for vertical
+region/card gaps; region `px-1` + outer `px-1` keep the 8px frame-to-region gap. Runtime middle rows use 4/3/2 columns depending on which regions
+have cards; empty regions reserve no space. Bow/Stern frames shrink to their
+card count (editor uses slot count). All cards stay equal width.
+
+**Per-card boxes & status.** `boxState` stores destroyed tons per **deck card
+key**. Combat picks a hittable, non-zero card weighted by tons. Card tint:
+red when all boxes are gone or the card cannot operate; yellow when crew is
+below the requirement for the remaining capacity (rudder 1.5 t/unit + 1 crew per
+2; sail 1 t/unit + 1 crew per 4); normal otherwise. Non-hittable/zero-mass cards
+are hidden. Hero tokens use the scenario-map `drawToken` renderer (32×24), with
+percentage positions in `stations[cardKey].heroPositions`; Shift/1 hides them.
 
 **Weapon reload.** `ship_weapons.reload_steps`: `0` = fire every step, `4` =
 load steps 1–4 and be armed at step 5. Loading progresses only at full crew

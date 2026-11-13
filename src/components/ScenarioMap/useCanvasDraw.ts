@@ -238,8 +238,13 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       const allianceColor = ship.alliance ? ALLIANCE_COLORS[ship.alliance] : null;
       ctx.save();
       if (allianceColor) {
+        // Two glow passes trace the image alpha silhouette.
         ctx.shadowColor = allianceColor;
-        ctx.shadowBlur = 10 * currentZoom;
+        ctx.shadowBlur = 18 * currentZoom;
+        ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+        ctx.shadowBlur = 30 * currentZoom;
+        ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+        ctx.shadowBlur = 0;
       }
       ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
       ctx.restore();

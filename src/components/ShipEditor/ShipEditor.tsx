@@ -1823,7 +1823,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       {/* Add / Edit Crew modal */}
       {showCrewModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-800 p-5 rounded-lg w-[420px] border border-gray-700">
+          <div className="bg-gray-800 p-5 rounded-lg w-[630px] max-w-[95vw] border border-gray-700">
             <h2 className="text-lg font-bold mb-3 text-white">{editingCrewIndex !== null ? 'Edit Crew' : 'Add Crew'}</h2>
             <div className="space-y-2">
               <div className="flex items-end gap-2">
