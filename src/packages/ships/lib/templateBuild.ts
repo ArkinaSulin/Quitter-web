@@ -3,7 +3,7 @@
 // catalogs, deck layout, and derived stats.
 
 import { ShipArmor, ShipComponent, ShipTemplate, ShipWeapon } from '@/types/ship';
-import { COMPONENT_NAMES, DECK_HULL_PCT, ShipBuild, componentById, componentByName, computeHullMass, roundTons } from './shipStats';
+import { COMPONENT_NAMES, ShipBuild, componentById, componentByName } from './shipStats';
 import { DeckCard, syncDeckLayout } from './deckLayout';
 
 export function buildShipFromTemplate(
@@ -39,11 +39,9 @@ export function buildShipFromTemplate(
   if (Math.round(template.crewQuarters) > 0) {
     deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
   }
-  const hullAllocated = roundTons(computeHullMass(template.totalMass));
-  const deckTons = hullAllocated > 0 ? Math.max(1, Math.round(hullAllocated * DECK_HULL_PCT)) : 0;
-  if (hullAllocated - deckTons > 0) {
-    deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
-  }
+  // Hull is always present, even when its remaining boxes are 0 (no-box Hull
+  // exception: it remains the repair station).
+  deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
   const sailComponent = componentByName(components, COMPONENT_NAMES.sail);
   pushComponentCards(`component:${sailComponent.id || 'sail'}`, template.sails, sailComponent.canCombine);
   const rudderComponent = componentByName(components, COMPONENT_NAMES.rudder);

@@ -8,5 +8,6 @@ export * from './lib/templateBuild';
 export * from './lib/shipDamage';
 export * from './lib/weaponArcs';
 export * from './lib/shipRuntime';
+export * from './lib/shipStations';
 export * from './lib/shipMoveCost';
 export * from './lib/shipCombat';

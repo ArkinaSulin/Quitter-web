@@ -48,10 +48,17 @@ import {
   fireShipWeapon,
   findCardKeyForComponent,
   findCardKeysForComponent,
+  shipStationCards,
+  shipStationStat,
+  crewCheckBonus,
+  heroCheckBonus,
+  effectiveMCForSpeed,
+  computeShipBuild,
   type ShipRuntime,
 } from '@/packages/ships';
 import { ShipWindow } from './ShipWindow';
 import { SpeedDeclarationPanel } from './SpeedDeclarationPanel';
+import type { CrewDraft } from '@/components/ShipRenderer/CrewAdjustDialog';
 import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
 import { SailingShipIcon } from './ShipSelector';
 import { AiPanel } from './AiPanel';
@@ -471,29 +478,41 @@ function shipComponentCardKey(ship: ShipRuntime, name: string): string | null {
   return ship.snapshot?.build ? findCardKeyForComponent(ship.snapshot.build, name) : null;
 }
 
-function abilityMod(score: number): number {
-  return Math.floor((Math.max(1, score) - 10) / 2);
-}
-
-function proficiencyBonus(level: number): number {
-  return Math.floor((Math.max(1, level) - 1) / 4) + 2;
-}
-
 /** Best Dex-based attack bonus among the PC/crew assigned to a weapon card. */
 function shipWeaponBestAttacker(ship: ShipRuntime, cardKey: string, units: Unit[]): number | null {
+  const best = bestShipActorBonus(ship, cardKey, 'dex', units);
+  return best ? best.bonus : null;
+}
+
+type ShipCheckStat = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+
+function bestShipActorBonus(
+  ship: ShipRuntime,
+  cardKey: string,
+  stat: ShipCheckStat,
+  units: Unit[],
+): { bonus: number; name: string } | null {
   const station = ship.stations?.[cardKey];
   if (!station) return null;
-  const bonuses: number[] = [];
+  let best: { bonus: number; name: string } | null = null;
   for (const crewId of station.crewIds ?? []) {
     if (ship.crewState?.[crewId]?.dead) continue;
     const crew = ship.snapshot?.template?.crews?.find(c => c.id === crewId);
-    if (crew) bonuses.push(abilityMod(crew.dex) + proficiencyBonus(crew.level));
+    if (!crew) continue;
+    const bonus = crewCheckBonus(crew, stat);
+    if (!best || bonus > best.bonus) best = { bonus, name: crew.name || 'Crew' };
   }
-  if (station.heroId) {
-    const hero = units.find(u => u.id === station.heroId && !u.isDeleted);
-    if (hero) bonuses.push(abilityMod(hero.dex) + proficiencyBonus(hero.level));
+  const heroIds = new Set([
+    ...(station.heroIds ?? []),
+    ...(station.heroId ? [station.heroId] : []),
+  ]);
+  for (const heroId of Array.from(heroIds)) {
+    const hero = units.find(u => u.id === heroId && !u.isDeleted);
+    if (!hero) continue;
+    const bonus = heroCheckBonus(hero, stat);
+    if (!best || bonus > best.bonus) best = { bonus, name: hero.unitName };
   }
-  return bonuses.length > 0 ? Math.max(...bonuses) : null;
+  return best;
 }
 
 export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps) {
@@ -1429,7 +1448,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     ], `${hero.unitName} disembarked`);
   }, [units, shipRuntime, backgroundConfig, execute, addError, effectiveIsGM, myTeam, zoneMpCosts, walls, structures, structureTemplates, freeMove, unitMaxMP]);
 
-  const handleAssignCrew = useCallback(async (shipId: string, crewId: string, station: string | null) => {
+  const handleAssignCrew = useCallback(async (shipId: string, crewIds: string[], station: string | null) => {
     const ship = shipRuntime.find(s => s.id === shipId);
     if (!ship) return;
     const control = shipManageTeam(ship, units, alliances);
@@ -1437,20 +1456,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError('Only the ship controller or DM can manage crew.');
       return;
     }
-    const templateCrew = ship.snapshot?.template?.crews?.find(c => c.id === crewId);
+    const moving = new Set(crewIds);
     const nextCrewState = { ...ship.crewState };
-    nextCrewState[crewId] = {
-      ...(nextCrewState[crewId] ?? { hp: templateCrew?.hp ?? 1 }),
-      station,
-    };
+    for (const crewId of Array.from(moving)) {
+      const templateCrew = ship.snapshot?.template?.crews?.find(c => c.id === crewId);
+      nextCrewState[crewId] = {
+        ...(nextCrewState[crewId] ?? { hp: templateCrew?.hp ?? 1 }),
+        station,
+      };
+    }
     const nextStations = { ...ship.stations };
     for (const key of Object.keys(nextStations)) {
       const entry = nextStations[key] ?? {};
-      nextStations[key] = { ...entry, crewIds: (entry.crewIds ?? []).filter(id => id !== crewId) };
+      nextStations[key] = { ...entry, crewIds: (entry.crewIds ?? []).filter(id => !moving.has(id)) };
     }
     if (station) {
       const entry = nextStations[station] ?? {};
-      nextStations[station] = { ...entry, crewIds: [...(entry.crewIds ?? []), crewId] };
+      nextStations[station] = { ...entry, crewIds: [...(entry.crewIds ?? []), ...Array.from(moving)] };
     }
     await execute('OTHER_ACTION', [{
       type: 'SHIP',
@@ -1523,6 +1545,416 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       ],
     }], `${ship.name} helm crewed`);
   }, [shipRuntime, units, alliances, effectiveIsGM, myTeam, execute, addError]);
+
+  const handleSailSpeed = useCallback(async (shipId: string, cardKey: string, delta: 1 | -1) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const actor = bestShipActorBonus(ship, cardKey, 'con', units);
+    if (!actor) { addError('No crew or hero is manning the sail.'); return; }
+    const speed = ship.declaredSpeed || ship.lastSpeed || 0;
+    const dc = speed + 10;
+    const roll = 1 + Math.floor(Math.random() * 20);
+    const total = roll + actor.bonus;
+    if (total >= dc && ship.sailMaxStep === shipStep) {
+      showToast(`${actor.name}: ${total} vs DC ${dc} — sail already adjusted this step, no effect.`);
+      return;
+    }
+    if (total < dc) {
+      showToast(`${actor.name}: ${total} vs DC ${dc} — sail check failed.`);
+      return;
+    }
+    const stepBudget = [...(ship.stepBudget ?? [0, 0, 0, 0, 0])];
+    const idx = Math.max(0, Math.min(4, shipStep - 1));
+    stepBudget[idx] = Math.max(0, stepBudget[idx] + delta);
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name} sail ${delta > 0 ? '+1' : '-1'}`,
+      changes: [
+        { field: 'stepBudget', from: ship.stepBudget, to: stepBudget },
+        { field: 'sailMaxStep', from: ship.sailMaxStep ?? 0, to: shipStep },
+      ],
+    }], `${ship.name} sail ${delta > 0 ? '+1' : '-1'}`);
+    showToast(`${actor.name}: ${total} vs DC ${dc} — step speed ${delta > 0 ? '+1' : '-1'}.`);
+  }, [shipRuntime, units, shipStep, execute, addError, showToast]);
+
+  const handleRudderTrim = useCallback(async (shipId: string, cardKey: string) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const actor = bestShipActorBonus(ship, cardKey, 'int', units);
+    if (!actor) { addError('No crew or hero is manning the rudder.'); return; }
+    const speed = ship.declaredSpeed || ship.lastSpeed || 0;
+    const mc = effectiveMCForSpeed(ship.snapshot?.stats, speed);
+    const dc = 26 - mc;
+    const roll = 1 + Math.floor(Math.random() * 20);
+    const total = roll + actor.bonus;
+    if (total >= dc && ship.sailTrimStep === shipStep) {
+      showToast(`${actor.name}: ${total} vs DC ${dc} — MC already trimmed this step, no effect.`);
+      return;
+    }
+    if (total < dc) {
+      showToast(`${actor.name}: ${total} vs DC ${dc} — MC check failed.`);
+      return;
+    }
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name} MC trimmed`,
+      changes: [
+        { field: 'mcReduction', from: ship.mcReduction ?? 0, to: (ship.mcReduction ?? 0) + 1 },
+        { field: 'sailTrimStep', from: ship.sailTrimStep ?? 0, to: shipStep },
+      ],
+    }], `${ship.name} MC trimmed`);
+    showToast(`${actor.name}: ${total} vs DC ${dc} — MC reduced by 1 this step.`);
+  }, [shipRuntime, units, shipStep, execute, addError, showToast]);
+
+  const handleRepair = useCallback(async (shipId: string, cardKey: string) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const station = ship.stations?.[cardKey];
+    const present = (station?.crewIds?.length ?? 0) +
+      new Set([...(station?.heroIds ?? []), ...(station?.heroId ? [station.heroId] : [])]).size;
+    if (present < 3) { addError('Repair needs 1 PC + 2 crew or 3 crew.'); return; }
+    const actor = bestShipActorBonus(ship, cardKey, 'str', units);
+    if (!actor) { addError('No crew or hero is manning the hull.'); return; }
+    const amount = rollDamage('4d8', Math.random) + actor.bonus;
+    const cap = Math.floor((ship.shipHpMax || 0) * 0.8);
+    const newHp = Math.min(cap, (ship.shipHp || 0) + amount);
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name} repaired ${Math.max(0, newHp - ship.shipHp)} HP`,
+      changes: [{ field: 'shipHp', from: ship.shipHp, to: newHp }],
+    }], `${ship.name} repaired ${Math.max(0, newHp - ship.shipHp)} HP`);
+    showToast(`${actor.name}: repaired ${Math.max(0, newHp - ship.shipHp)} HP (cap 80%).`);
+  }, [shipRuntime, units, execute, addError, showToast]);
+
+  const handleAdjustCrew = useCallback(async (
+    shipId: string,
+    args: { ids: string[]; draft: CrewDraft; count: number },
+  ) => {
+    if (!effectiveIsGM) { addError('Only the DM can edit the crew roster.'); return; }
+    const ship = shipRuntime.find(s => s.id === shipId);
+    const snapshot = ship?.snapshot;
+    if (!ship || !snapshot) return;
+    const templateCrews = [...(snapshot.template.crews ?? [])];
+    const group = new Set(args.ids);
+    const kept = templateCrews.filter(c => group.has(c.id));
+    const others = templateCrews.filter(c => !group.has(c.id));
+    const targetCount = Math.max(0, Math.min(50, Math.floor(args.count)));
+    const makeCrew = (base?: { id?: string; name?: string | null }) => ({
+      id: base?.id ?? crypto.randomUUID(),
+      name: (args.draft.name.trim() || base?.name || `Crew Level ${args.draft.level}`),
+      level: args.draft.level,
+      hp: args.draft.hp,
+      str: args.draft.str,
+      dex: args.draft.dex,
+      con: args.draft.con,
+      int: args.draft.int,
+      wis: args.draft.wis,
+      cha: args.draft.cha,
+      cost: args.draft.cost,
+    });
+    const updated = kept.slice(0, targetCount).map(c => makeCrew(c));
+    const added = Array.from({ length: Math.max(0, targetCount - kept.length) }, () => makeCrew());
+    const removedIds = kept.slice(targetCount).map(c => c.id);
+    const nextCrews = [...others, ...updated, ...added];
+    const nextCrewState = { ...(ship.crewState ?? {}) };
+    for (const c of [...updated, ...added]) nextCrewState[c.id] = { ...(nextCrewState[c.id] ?? {}), hp: c.hp };
+    for (const id of removedIds) delete nextCrewState[id];
+    const nextStations: Record<string, any> = { ...(ship.stations ?? {}) };
+    for (const [key, entry] of Object.entries(nextStations)) {
+      const crewIds = (entry?.crewIds ?? []).filter((id: string) => !removedIds.includes(id));
+      nextStations[key] = { ...entry, crewIds };
+    }
+    const build = { ...snapshot.build, crews: nextCrews };
+    const nextSnapshot = {
+      ...snapshot,
+      template: { ...snapshot.template, crews: nextCrews },
+      build,
+      stats: computeShipBuild(build),
+    };
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name} crew roster adjusted`,
+      changes: [
+        { field: 'snapshot', from: snapshot, to: nextSnapshot },
+        { field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState },
+        { field: 'stations', from: ship.stations ?? {}, to: nextStations },
+      ],
+    }], `${ship.name} crew roster adjusted`);
+  }, [shipRuntime, effectiveIsGM, execute, addError]);
+
+  const handleReviveCrew = useCallback(async (shipId: string, crewIds: string[], hp: number) => {
+    if (!effectiveIsGM) { addError('Only the DM can revive crew.'); return; }
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const nextCrewState = { ...(ship.crewState ?? {}) };
+    for (const crewId of crewIds) {
+      const crew = ship.snapshot?.template?.crews?.find(c => c.id === crewId);
+      const nextHp = Math.max(1, Math.min(crew?.hp ?? 1, Math.floor(hp)));
+      nextCrewState[crewId] = { ...(nextCrewState[crewId] ?? {}), dead: false, hp: nextHp };
+    }
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `Crew revived`,
+      changes: [{ field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState }],
+    }], `Crew revived on ${ship.name}`);
+  }, [shipRuntime, effectiveIsGM, execute, addError]);
+
+  const handleDiscardCrew = useCallback(async (shipId: string, crewIds: string[]) => {
+    if (!effectiveIsGM) { addError('Only the DM can discard crew.'); return; }
+    const ship = shipRuntime.find(s => s.id === shipId);
+    const snapshot = ship?.snapshot;
+    if (!ship || !snapshot) return;
+    const discarding = new Set(crewIds);
+    const nextCrews = (snapshot.template.crews ?? []).filter(c => !discarding.has(c.id));
+    const nextCrewState = { ...(ship.crewState ?? {}) };
+    for (const crewId of Array.from(discarding)) delete nextCrewState[crewId];
+    const nextStations: Record<string, any> = { ...(ship.stations ?? {}) };
+    for (const [key, entry] of Object.entries(nextStations)) {
+      nextStations[key] = {
+        ...entry,
+        crewIds: (entry?.crewIds ?? []).filter((id: string) => !discarding.has(id)),
+      };
+    }
+    const build = { ...snapshot.build, crews: nextCrews };
+    const nextSnapshot = {
+      ...snapshot,
+      template: { ...snapshot.template, crews: nextCrews },
+      build,
+      stats: computeShipBuild(build),
+    };
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `Crew discarded`,
+      changes: [
+        { field: 'snapshot', from: snapshot, to: nextSnapshot },
+        { field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState },
+        { field: 'stations', from: ship.stations ?? {}, to: nextStations },
+      ],
+    }], `Crew discarded from ${ship.name}`);
+  }, [shipRuntime, effectiveIsGM, execute, addError]);
+
+  const handleAutoAssignCrew = useCallback(async (shipId: string, enabledKeys: string[]) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    const build = ship?.snapshot?.build;
+    if (!ship || !build) return;
+    const control = shipManageTeam(ship, units, alliances);
+    if (!effectiveIsGM && (!control || control !== myTeam)) {
+      addError('Only the ship controller or DM can manage crew.');
+      return;
+    }
+    const nextCrewState = { ...(ship.crewState ?? {}) };
+    const nextStations: Record<string, any> = {};
+    for (const [key, entry] of Object.entries(ship.stations ?? {})) {
+      nextStations[key] = { ...entry, crewIds: [...(entry.crewIds ?? [])] };
+    }
+    const assigned = new Set<string>();
+    for (const entry of Object.values(nextStations)) {
+      for (const id of entry.crewIds ?? []) assigned.add(id);
+    }
+    for (const [id, state] of Object.entries(nextCrewState)) {
+      if (state.station) assigned.add(id);
+    }
+    const templateCrews = ship.snapshot?.template?.crews ?? [];
+    const templateById = new Map(templateCrews.map(c => [c.id, c]));
+    const reserve = templateCrews
+      .filter(c => !nextCrewState[c.id]?.dead && !assigned.has(c.id));
+    const enabled = new Set(enabledKeys);
+    const cards = shipStationCards(build);
+
+    const takeBest = (stat: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'): string | null => {
+      let bestIdx = -1;
+      let bestBonus = -Infinity;
+      for (let i = 0; i < reserve.length; i += 1) {
+        const bonus = crewCheckBonus(reserve[i], stat);
+        if (bonus > bestBonus) { bestBonus = bonus; bestIdx = i; }
+      }
+      if (bestIdx < 0) return null;
+      return reserve.splice(bestIdx, 1)[0].id;
+    };
+    const presentOn = (key: string): number => {
+      const entry = nextStations[key];
+      const heroes = new Set([...(entry?.heroIds ?? []), ...(entry?.heroId ? [entry.heroId] : [])]);
+      return (entry?.crewIds?.length ?? 0) + heroes.size;
+    };
+    const fillCard = (card: { key: string; crewRequired: number }, stat: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', maxSlots = Infinity): number => {
+      const empty = Math.max(0, card.crewRequired - presentOn(card.key));
+      const take = Math.min(empty, maxSlots, reserve.length);
+      if (take <= 0) return 0;
+      const entry = nextStations[card.key] ?? {};
+      const crewIds = [...(entry.crewIds ?? [])];
+      for (let i = 0; i < take; i += 1) {
+        const id = takeBest(stat);
+        if (!id) break;
+        crewIds.push(id);
+        nextCrewState[id] = { ...(nextCrewState[id] ?? { hp: templateById.get(id)?.hp ?? 1 }), station: card.key };
+      }
+      nextStations[card.key] = { ...entry, crewIds };
+      return take;
+    };
+    const fillKinds = (kind: string, stat: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha') => {
+      for (const card of cards) {
+        if (card.kind === kind && enabled.has(card.key)) fillCard(card, stat);
+      }
+    };
+
+    fillKinds('helm', 'wis');
+    fillKinds('bridge', 'int');
+    fillKinds('rudder', 'int');
+    fillKinds('sail', 'con');
+
+    // Left-side guns first: if the target is off the port side and crew are
+    // short, manning the port battery lets those guns bear while the starboard
+    // battery stays uncrewed. Then the best gunner goes to each enabled weapon's
+    // first slot before any second slots, so every manned weapon can use its
+    // best-crew check.
+    const regionRank: Record<string, number> = { port: 0, bow: 1, body: 2, stern: 3, starboard: 4 };
+    const weapons = cards
+      .filter(card => card.kind === 'weapon' && enabled.has(card.key))
+      .sort((a, b) => (regionRank[a.region ?? ''] ?? 99) - (regionRank[b.region ?? ''] ?? 99));
+    for (const card of weapons) fillCard(card, 'dex', 1);
+    for (const card of weapons) fillCard(card, 'dex');
+    // Any remaining enabled vacancies (normally none).
+    for (const card of cards) {
+      if (enabled.has(card.key)) fillCard(card, shipStationStat(card.kind));
+    }
+
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name}: auto-assigned crew`,
+      changes: [
+        { field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState },
+        { field: 'stations', from: ship.stations ?? {}, to: nextStations },
+      ],
+    }], `${ship.name}: auto-assigned crew`);
+  }, [shipRuntime, units, alliances, effectiveIsGM, myTeam, execute, addError]);
+
+  const handleClearCrew = useCallback(async (shipId: string) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship) return;
+    const control = shipManageTeam(ship, units, alliances);
+    if (!effectiveIsGM && (!control || control !== myTeam)) {
+      addError('Only the ship controller or DM can manage crew.');
+      return;
+    }
+    const nextStations: Record<string, any> = {};
+    for (const [key, entry] of Object.entries(ship.stations ?? {})) {
+      nextStations[key] = { ...entry, crewIds: [] };
+    }
+    const nextCrewState = { ...(ship.crewState ?? {}) };
+    for (const id of Object.keys(nextCrewState)) {
+      nextCrewState[id] = { ...(nextCrewState[id] ?? {}), station: null };
+    }
+    for (const crew of ship.snapshot?.template?.crews ?? []) {
+      nextCrewState[crew.id] = { ...(nextCrewState[crew.id] ?? { hp: crew.hp }), station: null };
+    }
+    await execute('SHIP', [{
+      type: 'SHIP',
+      unitId: ship.id,
+      description: `${ship.name}: crew cleared from stations`,
+      changes: [
+        { field: 'crewState', from: ship.crewState ?? {}, to: nextCrewState },
+        { field: 'stations', from: ship.stations ?? {}, to: nextStations },
+      ],
+    }], `${ship.name}: crew cleared from stations`);
+  }, [shipRuntime, units, alliances, effectiveIsGM, myTeam, execute, addError]);
+
+  const handleRam = useCallback(async (shipId: string, cardKey: string) => {
+    const ship = shipRuntime.find(s => s.id === shipId);
+    if (!ship?.hex || !ship.snapshot) return;
+    if ((ship.ramUsedTurn ?? 0) === turnNumber) {
+      showToast('This ship has already rammed this turn.');
+      return;
+    }
+    const actor = bestShipActorBonus(ship, cardKey, 'wis', units);
+    if (!actor) { addError('No crew or hero is manning the helm.'); return; }
+    const front = [4, 5].map(delta => {
+      const dir = HEX_DIRS[(ship.facing + delta) % 6];
+      return { q: ship.hex!.q + dir.q, r: ship.hex!.r + dir.r };
+    });
+    const target = shipRuntime.find(s =>
+      s.id !== ship.id && !s.isDeleted && s.hex &&
+      front.some(h => h.q === s.hex!.q && h.r === s.hex!.r),
+    );
+    if (!target) { addError('No target in the two forward hexes.'); return; }
+    const targetHelm = shipFunctionalCardKeys(target, 'Helm')
+      .map(key => bestShipActorBonus(target, key, 'wis', units))
+      .filter((v): v is { bonus: number; name: string } => !!v)
+      .sort((a, b) => b.bonus - a.bonus)[0];
+    const dc = (targetHelm?.bonus ?? 0) + 8;
+    const roll = 1 + Math.floor(Math.random() * 20);
+    const total = roll + actor.bonus;
+    const hit = total >= dc;
+    const dir = facingToward(ship.hex, target.hex!);
+    const attackerMass = ship.snapshot.stats?.performanceMass ?? ship.snapshot.stats?.totalMass ?? 0;
+    const speed = Math.max(1, ship.declaredSpeed || ship.lastSpeed || 1);
+    const dice = Math.max(1, Math.min(16, Math.floor(attackerMass / 10)));
+    const baseRoll = rollDamage(`${dice}d${speed}`, Math.random);
+    const ramComponent = ship.snapshot.build.components.find(c => c.isRam);
+    const hasRam = !!ramComponent;
+    const piercing = !!ramComponent && /piercing/i.test(ramComponent.name);
+    const targetDamage = hasRam ? baseRoll : Math.floor(baseRoll / 2);
+    const selfDamage = Math.floor(baseRoll / 2);
+
+    const applyShipDamage = (victim: ShipRuntime, amount: number) => {
+      const boxState = { ...(victim.boxState ?? {}) };
+      const cards = victim.snapshot?.build
+        ? shipHitCards(victim.snapshot.build)
+            .map(c => ({ ...c, tons: Math.max(0, c.tons - Number(boxState[c.key] ?? 0)) }))
+            .filter(c => c.tons > 0)
+        : [];
+      const card = pickShipComponent(cards);
+      if (card) boxState[card.key] = Number(boxState[card.key] ?? 0) + 1;
+      return { boxState, hp: Math.max(0, (victim.shipHp || 0) - amount) };
+    };
+
+    const subSteps: SubStep[] = [];
+    if (hit) {
+      const t = applyShipDamage(target, targetDamage);
+      const a = applyShipDamage(ship, selfDamage);
+      const dest = (h: Hex) => {
+        const dirHex = HEX_DIRS[dir];
+        return { q: h.q + dirHex.q, r: h.r + dirHex.r, s: -h.q - dirHex.q - h.r - dirHex.r };
+      };
+      const occupied = new Set(shipRuntime.filter(s => s.id !== ship.id && s.id !== target.id && s.hex).map(s => `${s.hex!.q},${s.hex!.r}`));
+      const targetDest = dest(target.hex!);
+      const attackerDest = dest(ship.hex);
+      const targetShift = !occupied.has(`${targetDest.q},${targetDest.r}`);
+      const attackerShift = piercing && !occupied.has(`${attackerDest.q},${attackerDest.r}`);
+      subSteps.push({
+        type: 'SHIP', unitId: target.id, description: `${target.name} rammed for ${targetDamage}`,
+        changes: [
+          { field: 'shipHp', from: target.shipHp, to: t.hp },
+          { field: 'boxState', from: target.boxState ?? {}, to: t.boxState },
+          ...(targetShift ? [{ field: 'hex', from: target.hex, to: targetDest }] : []),
+        ],
+      });
+      subSteps.push({
+        type: 'SHIP', unitId: ship.id, description: `${ship.name} ram damage ${selfDamage}`,
+        changes: [
+          { field: 'shipHp', from: ship.shipHp, to: a.hp },
+          { field: 'boxState', from: ship.boxState ?? {}, to: a.boxState },
+          { field: 'speedSpent', from: ship.speedSpent ?? 0, to: (ship.stepBudget ?? [])[shipStep - 1] ?? 0 },
+          { field: 'ramUsedTurn', from: ship.ramUsedTurn ?? 0, to: turnNumber },
+          ...(attackerShift ? [{ field: 'hex', from: ship.hex, to: attackerDest }] : []),
+        ],
+      });
+      showToast(`${actor.name}: ram HIT (${total} vs ${dc}). Target ${targetDamage}, self ${selfDamage}.`);
+    } else {
+      subSteps.push({
+        type: 'SHIP', unitId: ship.id, description: `${ship.name} ram missed`,
+        changes: [{ field: 'ramUsedTurn', from: ship.ramUsedTurn ?? 0, to: turnNumber }],
+      });
+      showToast(`${actor.name}: ram MISSED (${total} vs ${dc}).`);
+    }
+    await execute('ATTACK', subSteps, `${ship.name} ram`);
+  }, [shipRuntime, units, execute, addError, showToast, turnNumber, shipStep]);
 
   const shipWindow = shipWindowId ? shipRuntime.find(s => s.id === shipWindowId && !s.isDeleted) ?? null : null;
   const shipWindowReadOnly = inReplay || controlsLocked;
@@ -5736,8 +6168,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           shipMode={shipMode}
           shipStep={shipStep}
           onClose={() => setShipWindowId(null)}
-          onAssignCrew={(crewId, station) => void handleAssignCrew(shipWindow.id, crewId, station)}
-          boardedHeroes={units
+            boardedHeroes={units
             .filter(u => !u.isDeleted && u.attachedToShipId === shipWindow.id)
             .map(u => {
               const stationKey = u.shipStationKey ?? null;
@@ -5760,6 +6191,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           teamAlliances={alliances}
           onMoveHeroToken={(heroId, toCardKey, xPct, yPct) => void handleMoveHeroToken(heroId, toCardKey, xPct, yPct)}
           onHeroDropToMap={(heroId, x, y) => handleHeroDropToMap(heroId, x, y)}
+          onSailSpeed={(cardKey, delta) => void handleSailSpeed(shipWindow.id, cardKey, delta)}
+          onRudderTrim={cardKey => void handleRudderTrim(shipWindow.id, cardKey)}
+          onRepair={cardKey => void handleRepair(shipWindow.id, cardKey)}
+          onRam={cardKey => void handleRam(shipWindow.id, cardKey)}
+          canEditRoster={effectiveIsGM}
+          onAdjustCrew={args => void handleAdjustCrew(shipWindow.id, args)}
+        onReviveCrew={(ids, hp) => void handleReviveCrew(shipWindow.id, ids, hp)}
+        onDiscardCrew={ids => void handleDiscardCrew(shipWindow.id, ids)}
+        onAutoAssignCrew={keys => void handleAutoAssignCrew(shipWindow.id, keys)}
+        onClearCrew={() => void handleClearCrew(shipWindow.id)}
         />
       )}
 

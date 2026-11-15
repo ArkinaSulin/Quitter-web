@@ -52,8 +52,8 @@ export const DEFAULT_CREW_STATS = {
   dex: 14,
   con: 14,
   int: 10,
-  wis: 14,
-  cha: 10,
+  wis: 12,
+  cha: 8,
 } as const;
 
 /** Built-in component names (ship_components.name). */
@@ -155,7 +155,40 @@ export interface ShipBuild {
 
 // --- Crew -------------------------------------------------------------------
 
-/** Generic crew HP default: 10 + 7 per level above 1. */
+export type CheckStat = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+
+export interface CheckActor {
+  level: number;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+}
+
+/** Generic crew get the Spelljammer crew feat: +2 on ship checks. */
+export const CREW_SKILL_BONUS = 2;
+
+export function abilityModifier(score: number): number {
+  return Math.floor((Math.max(1, score) - 10) / 2);
+}
+
+export function proficiencyBonus(level: number): number {
+  return Math.floor((Math.max(1, level) - 1) / 4) + 2;
+}
+
+/** Generic crew check modifier: stat + proficiency + CrewSkill. */
+export function crewCheckBonus(actor: CheckActor, stat: CheckStat): number {
+  return abilityModifier(actor[stat]) + proficiencyBonus(actor.level) + CREW_SKILL_BONUS;
+}
+
+/** Hero check modifier: stat + proficiency (no CrewSkill). */
+export function heroCheckBonus(actor: CheckActor, stat: CheckStat): number {
+  return abilityModifier(actor[stat]) + proficiencyBonus(actor.level);
+}
+
+/** Generic crew HP default: 10 + 7 per level above 1 (3 + 7 × level). */
 export function computeCrewHp(level: number): number {
   const lvl = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1));
   return CREW_BASE_HP + CREW_HP_PER_LEVEL * (lvl - 1);

@@ -68,6 +68,11 @@ describe('buildShipFromTemplate', () => {
     expect(findCardKeyForComponent(build, 'Missing')).toBeNull();
   });
 
+  it('keeps a no-box Hull card for tiny ships', () => {
+    const build = buildShipFromTemplate({ ...TEMPLATE, totalMass: 1 }, ARMORS, COMPONENTS, WEAPONS)!;
+    expect(build.deckLayout!.body.some(s => s.cardKey === 'component:hull')).toBe(true);
+  });
+
   it('returns null when no armor is available', () => {
     expect(buildShipFromTemplate(TEMPLATE, [], COMPONENTS, WEAPONS)).toBeNull();
   });

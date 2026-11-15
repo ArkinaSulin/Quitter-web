@@ -1,5 +1,108 @@
 # QuiTTER Changelog
 
+## Fix stale ability/save field names in scenario unit editor/tooltip (2026-11-14)
+**Files:** src/components/ScenarioMap/{UnitEditorModal,UnitTemplateTooltip}.tsx, docs/dev/changelog.md
+
+- Migration 151 split `str…cha` into ability scores and `str_sav…cha_sav`
+  saving-throw bonuses. The scenario `UnitEditorModal` still edited/rendered
+  `str…cha` as saves, so ability edits looked like saves and real saves were
+  never written. It now has separate **Ability scores** (`str…cha`) and
+  **Saving throws** (`strSav…chaSav`) rows, and `handleSave` captures both.
+- `UnitTemplateTooltip` now shows **Abilities** (`str…cha`, raw) and **Saves**
+  (`strSav…chaSav`, signed) separately.
+- No data backfill: pre-151 ability scores were never stored, so existing
+  templates keep their save values and default abilities until re-entered.
+
+## Ship roster grouping, tactical summary, auto-assign, tooltips (2026-11-14)
+**Files:** src/components/ShipRenderer/{CrewRoster,ShipLayout}.tsx, src/components/ScenarioMap/{ShipWindow,ScenarioMap}.tsx, src/components/shared/{BoundedTooltip,DraggablePanel}.tsx, src/packages/ships/{index.ts,lib/shipStations.ts}, docs/dev/{changelog,21-ship-runtime,outstanding}.md
+
+- Crew roster groups by name + level + stats + cost (HP ignored); unnamed/auto
+  crew display as **Crew**; dead groups show a skull and revive/discard together.
+  Roster columns are Name/Level/Status with no HP column.
+- Tactical summary: Mass + indented Current (`performanceMass`), Crew line with
+  indented Min/Full, and a new Best-in-ship-skill block (crew + Deck/Quarters
+  heroes) between summary and roster.
+- Auto/Clear: Auto arms eligible Helm/Bridge/Rudder/Sail/Weapon cards (skips
+  full cards; check/`-` badges), then fills reserve crew only. Priority is Helm
+  -> full Bridge -> Rudder -> Sail -> weapons; each weapon's first slot gets a
+  best gunner first; left-side weapons first so port guns bear when the target is
+  left and crew are short. Clear removes all generic crew; heroes stay.
+- Bridge status moved onto the Bridge card as an action-style button that lights\n  at full bridge complement (no action yet); the ship-window footer bar is gone.
+- Crew/hero/card tooltips bounded to the ship panel (flip left/above); card
+  right-click no longer opens the browser menu.
+- Deck zoom now uses CSS `zoom` on the natural-width layout (no spacer/transform),
+  with explicit pixel card widths, non-shrinking regions and a stable scrollbar
+  gutter. This removes the extremely wide Port card at zoom.
+- Roster status column removed (tiny skull slot only); Name gets the freed width
+  and Adjust is a narrow `+/-`. Crew tooltips use a fixed width so they no longer
+  jitter. Clear removes every generic crew member from every station on the ship
+  (heroes stay).
+- Removed the ShipLayout "preview" that assigned roster crew to cards top-down;
+  empty cards now show hollow slots until Auto assigns reserve crew.
+- Undo/redo already covers auto/clear via the logged `SHIP` changes.
+
+## Ship layout zoom/pan/ghost + crew roster UI (2026-11-09)
+**Files:** src/components/ShipRenderer/{ShipLayout,CrewRoster,CrewAdjustDialog}.tsx, src/components/shared/RepeatStepper.tsx, src/components/ScenarioMap/{ShipWindow,ScenarioMap}.tsx, src/components/ShipEditor/ShipEditor.tsx, docs/dev/{changelog,21-ship-runtime,outstanding}.md
+
+- Ship-layout zoom is now a pure visual scale: a fixed-width deck inside a
+  scaled spacer, so cards/text keep their proportions; the spacer makes
+  Port/Starboard reachable at high zoom. Middle-mouse drag pans, wheel zoom
+  anchors at the pointer.
+- Hero drag ghost is portaled to `document.body`, so it follows the pointer
+  correctly at any zoom; ghost/token sizes are scaled by the deck zoom.
+- Added the shared `CrewRoster` + `CrewAdjustDialog` + `RepeatStepper` UI to the
+  Ship Editor and scenario ship window: Name/Level/HP/Status roster columns,
+  named/unnamed/dead rows, `+/−` adjust, always-present Add row, 1–50 slider with
+  hold-repeat, derived ship-handling checks, revive (full/partial) and discard.
+- Runtime roster edits are DM-only and instance-only; adding/removing updates
+  the snapshot, crew state, station crew lists, and recomputes stats.
+- Verification: full `npm run check` (build included); 1281 tests.
+
+## Ship layout pan/zoom fixes (2026-11-09)
+**Files:** src/components/ShipRenderer/ShipLayout.tsx, docs/dev/changelog.md
+
+- Ship-layout zoom now uses CSS `zoom` instead of `transform: scale()`, so the
+  Port/Starboard regions remain reachable through the scrollable viewport.
+- Middle-mouse drag pans the deck (same gesture as the scenario map); the wheel
+  still zooms (0.6–1.6) without scrolling the page.
+- Hero tokens measure the card at unzoomed size (`rect / deckZoom`) and scale the
+  drag hitbox by the zoom, so hero/card proportions stay constant at every zoom.
+- Verification: full `npm run check` (build included).
+
+## No-box Hull exception (2026-11-09)
+**Files:** src/packages/ships/lib/{templateBuild,deckLayout,shipRuntime}.ts, src/components/ShipRenderer/ShipLayout.tsx, src/packages/ships/tests/templateBuild.test.ts, docs/dev/{changelog,21-ship-runtime}.md
+
+- Hull cards are now always present, even when the ship has 0 hull boxes. This
+  is the exception to the “hide zero-mass/non-hittable cards” rule.
+- Hull remains the repair station; Deck is never the repair station and stays
+  reserved for hero personal weapons/spells.
+- No-box Hull is not a damage target; a Hull with boxes that are all destroyed is
+  still red/destroyed.
+- Runtime snapshot normalization adds a missing Hull slot for legacy ships.
+- Verification: `tsc --noEmit`; ships tests (101) pass.
+
+## Spelljammer crew defaults, station actions, ram, deck zoom (2026-11-09, migration 165)
+**Files:** supabase/migrations/165_crew_defaults_station_state.sql, src/packages/ships/lib/{shipStats,shipRuntime,shipMappers}.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, src/hooks/useGameEngine.ts, docs/dev/{changelog,21-ship-runtime,outstanding}.md
+
+- Cleared `ship_crews` and set new default crew stats: Str 12, Dex 14, Con
+  14, Int 10, Wis 12, Cha 8. New crew default name is “Crew Level N”. HP is
+  still `3 + 7 × level`.
+- Generic crew implicitly have the Spelljammer CrewSkill feat (+2); heroes do
+  not. Added `crewCheckBonus`/`heroCheckBonus` helpers. Weapon attacks now add
+  CrewSkill when the best attacker is generic crew.
+- Added station state: `mc_reduction`, `sail_max_step`, `sail_trim_step`,
+  `ram_used_turn`.
+- Station footer actions:
+  - Sail: Speed +/− (Con, DC speed+10), once per step; repeat success pops a
+    no-effect toast.
+  - Rudder: Trim MC (Int, DC 26−MC), once per step; temporary `mcReduction`.
+  - Hull: Repair (`4d8 + Str + PB + CrewSkill`), cap 80% HP, no kit yet.
+  - Helm: Ram (Wis contest vs defender Wis+PB+8), one per turn; damage
+    `min(floor(currentMass/10),16)d(speed)` with ram=full target/half self and
+    no ram=half both, per-card box damage, movement forfeited, shifts.
+- Ship-layout wheel zoom (0.6–1.6) independent of scenario-map zoom.
+- Verification: `tsc --noEmit`; 1280 tests.
+
 ## Fix: siege preset false stale-template warning (2026-11-12)
 **Files:** src/components/ScenarioMap/{HalloweenSiegePresetBar,HalloweenSiegeWindow}.tsx, docs/dev/changelog.md
 

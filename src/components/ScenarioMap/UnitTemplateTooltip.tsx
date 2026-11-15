@@ -20,13 +20,22 @@ const SIZE_LABELS: Record<number, string> = {
   400: 'Gargantuan',
 };
 
-const SAVE_STATS: { key: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'; label: string }[] = [
+const ABILITY_STATS: { key: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha'; label: string }[] = [
   { key: 'str', label: 'Str' },
   { key: 'dex', label: 'Dex' },
   { key: 'con', label: 'Con' },
   { key: 'int', label: 'Int' },
   { key: 'wis', label: 'Wis' },
   { key: 'cha', label: 'Cha' },
+];
+
+const SAVE_STATS: { key: 'strSav' | 'dexSav' | 'conSav' | 'intSav' | 'wisSav' | 'chaSav'; label: string }[] = [
+  { key: 'strSav', label: 'Str' },
+  { key: 'dexSav', label: 'Dex' },
+  { key: 'conSav', label: 'Con' },
+  { key: 'intSav', label: 'Int' },
+  { key: 'wisSav', label: 'Wis' },
+  { key: 'chaSav', label: 'Cha' },
 ];
 
 function signed(n: number): string {
@@ -92,6 +101,14 @@ export function UnitTemplateTooltip({ template, x, y }: UnitTemplateTooltipProps
       <div className="border-t border-gray-600 my-1.5" />
 
       <div className="flex items-center gap-1.5">
+        <span className="text-gray-400">Abilities:</span>
+        {ABILITY_STATS.map(s => (
+          <span key={s.key} className={template[s.key] !== 10 ? 'text-gray-300' : 'text-gray-500'}>
+            {s.label} {template[s.key] ?? 10}
+          </span>
+        ))}
+      </div>
+      <div className="mt-0.5 flex items-center gap-1.5">
         <span className="text-gray-400">Saves:</span>
         {SAVE_STATS.map(s => (
           <span key={s.key} className={template[s.key] !== 0 ? 'text-gray-300' : 'text-gray-500'}>

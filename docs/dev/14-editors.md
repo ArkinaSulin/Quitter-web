@@ -79,8 +79,9 @@ Notable data rules the editor encodes:
 
 Double-clicking a unit opens `UnitEditorModal` (compact): identity/team/image,
 HP row with live derived `{Max HP}/{Troops}`, effective AC, MP left/Max,
-actions, morale (full-effective), formation + mount + can-charge, saves,
-rank/token, weapons via the shared modal. The Armor row shows **Effective AC**,
+actions, morale (full-effective), formation + mount + can-charge, **ability
+scores** (`str…cha`) and **saving throws** (`strSav…chaSav`), rank/token,
+weapons via the shared modal. The Armor row shows **Effective AC**,
 **Baseline AC** (`baselineAc` = base + armour) and — behind the **Shield** toggle
 — **Natural AC** (`baseAc`, the unarmoured base; the value a war machine rolls
 against, see `08`). Its **Elevation (ft)** field steps in **10 ft** increments. Every

@@ -254,15 +254,20 @@ export function hasCard(layout: ShipDeckLayout, cardKey: string): boolean {
   return DECK_REGIONS.some(region => layout[region].some(s => s.cardKey === cardKey));
 }
 
-/** Ensure the mandatory Deck card is present (Body, first free slot). */
-export function ensureDeckSlot(layout: ShipDeckLayout, deckKey: string): ShipDeckLayout {
-  if (hasCard(layout, deckKey)) return layout;
+/** Ensure a card is present (Body, first free slot). */
+export function ensureCardSlot(layout: ShipDeckLayout, cardKey: string): ShipDeckLayout {
+  if (hasCard(layout, cardKey)) return layout;
   const next = cloneDeckLayout(layout);
   let index = next.body.findIndex(s => !s.cardKey);
   if (index < 0) {
     next.body.push(slot(), slot());
     index = next.body.length - 2;
   }
-  next.body[index].cardKey = deckKey;
+  next.body[index].cardKey = cardKey;
   return next;
+}
+
+/** Ensure the mandatory Deck card is present. */
+export function ensureDeckSlot(layout: ShipDeckLayout, deckKey: string): ShipDeckLayout {
+  return ensureCardSlot(layout, deckKey);
 }

@@ -6,7 +6,22 @@
 import { Hex } from '@/types/gameProtocol';
 import { ShipBuild, ShipDerivedStats, computeShipBuild } from './shipStats';
 import { ShipComponent, ShipTemplate } from '@/types/ship';
-import { deckOrderedCardKeys, ensureDeckSlot } from './deckLayout';
+import { deckOrderedCardKeys, ensureCardSlot } from './deckLayout';
+
+const DEFAULT_HULL_COMPONENT: ShipComponent = {
+  id: 'Hull',
+  name: 'Hull',
+  mass: 0,
+  crew: 0,
+  cost: 0,
+  hittable: true,
+  effect: null,
+  builtIn: true,
+  canCombine: true,
+  dt: 15,
+  ac: 10,
+  imageUrl: '',
+};
 
 const DEFAULT_DECK_COMPONENT: ShipComponent = {
   id: 'Deck',
@@ -80,6 +95,14 @@ export interface ShipRuntime {
   crewState: Record<string, ShipCrewState>;
   /** Team/alliance colour for the whole crew roster (null = unset). */
   crewTeam: string | null;
+  /** Temporary MC reduction for the current step (rudder trim). */
+  mcReduction: number;
+  /** Step number a sail speed adjustment succeeded (0 = none). */
+  sailMaxStep: number;
+  /** Step number a rudder MC trim succeeded (0 = none). */
+  sailTrimStep: number;
+  /** Turn number a ram was used (0 = none). */
+  ramUsedTurn: number;
   reload: Record<string, ShipReloadState>;
   weaponState: Record<string, unknown>;
   imageUrl: string;
@@ -125,11 +148,23 @@ function normalizeSnapshot(snapshot: ShipSnapshot): ShipSnapshot {
     deck = { ...DEFAULT_DECK_COMPONENT };
     components.push(deck);
   }
+  let hull = components.find(c => c.name === 'Hull');
+  if (!hull) {
+    hull = { ...DEFAULT_HULL_COMPONENT };
+    components.push(hull);
+  }
   build.components = components;
   const deckKey = `component:${deck.id || 'Deck'}`;
-  if (build.deckLayout) build.deckLayout = ensureDeckSlot(build.deckLayout, deckKey);
+  const hullKey = `component:${hull.id || 'Hull'}`;
+  if (build.deckLayout) {
+    build.deckLayout = ensureCardSlot(build.deckLayout, deckKey);
+    build.deckLayout = ensureCardSlot(build.deckLayout, hullKey);
+  }
   const template: ShipTemplate = { ...snapshot.template };
-  if (template.deckLayout) template.deckLayout = ensureDeckSlot(template.deckLayout, deckKey);
+  if (template.deckLayout) {
+    template.deckLayout = ensureCardSlot(template.deckLayout, deckKey);
+    template.deckLayout = ensureCardSlot(template.deckLayout, hullKey);
+  }
   return {
     template,
     build,
@@ -181,6 +216,10 @@ export function mapShipRuntimeRow(row: any): ShipRuntime {
     stations: obj(row.stations),
     crewState: obj(row.crew_state),
     crewTeam: row.crew_team || null,
+    mcReduction: num(row.mc_reduction),
+    sailMaxStep: num(row.sail_max_step),
+    sailTrimStep: num(row.sail_trim_step),
+    ramUsedTurn: num(row.ram_used_turn),
     reload: obj(row.reload),
     weaponState: obj(row.weapon_state),
     imageUrl: row.image_url || '',
@@ -228,6 +267,10 @@ export function shipRowFromParts(args: {
     stations: {},
     crewState: {},
     crewTeam: null,
+    mcReduction: 0,
+    sailMaxStep: 0,
+    sailTrimStep: 0,
+    ramUsedTurn: 0,
     reload: {},
     weaponState: {},
     imageUrl: template.imageUrl,

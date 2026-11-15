@@ -51,12 +51,18 @@ const FIELDS: FieldDef[] = [
   { key: 'aggressiveness', label: 'Aggressiveness', type: 'number' },
   { key: 'baseMorale', label: 'Base Morale', type: 'number' },
   { key: 'moraleBoost', label: 'Morale boost', type: 'number', min: 0 },
-  { key: 'str', label: 'Str save', type: 'number' },
-  { key: 'dex', label: 'Dex save', type: 'number' },
-  { key: 'con', label: 'Con save', type: 'number' },
-  { key: 'int', label: 'Int save', type: 'number' },
-  { key: 'wis', label: 'Wis save', type: 'number' },
-  { key: 'cha', label: 'Cha save', type: 'number' },
+  { key: 'str', label: 'Str', type: 'number' },
+  { key: 'dex', label: 'Dex', type: 'number' },
+  { key: 'con', label: 'Con', type: 'number' },
+  { key: 'int', label: 'Int', type: 'number' },
+  { key: 'wis', label: 'Wis', type: 'number' },
+  { key: 'cha', label: 'Cha', type: 'number' },
+  { key: 'strSav', label: 'Str save', type: 'number' },
+  { key: 'dexSav', label: 'Dex save', type: 'number' },
+  { key: 'conSav', label: 'Con save', type: 'number' },
+  { key: 'intSav', label: 'Int save', type: 'number' },
+  { key: 'wisSav', label: 'Wis save', type: 'number' },
+  { key: 'chaSav', label: 'Cha save', type: 'number' },
   { key: 'movementPointsAvailable', label: 'MP left this turn', type: 'number', min: 0 },
   { key: 'actionsAvailable', label: 'Actions left', type: 'number', min: 0 },
   { key: 'archerReactionUsed', label: 'Reaction used', type: 'boolean' },
@@ -459,13 +465,21 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
             })}
           </div>
 
-          {/* R9 Saving throws */}
+          {/* R9 Ability scores + saving throws */}
           <div className="rounded border border-gray-700 p-2 space-y-1">
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">Saving throws</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Ability scores</p>
             <div className="flex items-end gap-1.5">
               {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(s => (
                 <Cell key={s} label={s.toUpperCase()} widthClass="w-14">
                   <NumInput value={draft[s]} onChange={v => set(s, v)} />
+                </Cell>
+              ))}
+            </div>
+            <p className="border-t border-gray-700 pt-1 text-[10px] uppercase tracking-wide text-gray-500">Saving throws</p>
+            <div className="flex items-end gap-1.5">
+              {([['str', 'strSav'], ['dex', 'dexSav'], ['con', 'conSav'], ['int', 'intSav'], ['wis', 'wisSav'], ['cha', 'chaSav']] as const).map(([label, field]) => (
+                <Cell key={field} label={label.toUpperCase()} widthClass="w-14">
+                  <NumInput value={draft[field]} onChange={v => set(field, v)} />
                 </Cell>
               ))}
             </div>

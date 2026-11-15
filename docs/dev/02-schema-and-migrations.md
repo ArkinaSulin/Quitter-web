@@ -87,7 +87,8 @@ Full column list is in `src/types/gameProtocol.ts` (`Unit`) and the
 row↔unit mappers (`useSupabaseSync`). The columns that drive the rule system:
 
 - Stats: `level`, `troop_hp`, `max_unit_hp`/`current_unit_hp`,
-  `max_troop_count`/`current_troop_count`, `number_of_attacks`, `str..cha`
+  `max_troop_count`/`current_troop_count`, `number_of_attacks`, ability scores
+  `str..cha` and save bonuses `str_sav..cha_sav`
 - Defense: `baseline_ac`, `current_ac`, `is_shielded`, `armor_name`
 - Movement: `movement_points` (max), `movement_points_available` (**NUMERIC**
   since 060 — heroes carry 1-decimal fractions), `actions_available`,
@@ -104,6 +105,12 @@ row↔unit mappers (`useSupabaseSync`). The columns that drive the rule system:
 `unit_field_to_column()` (defined in `051`, extended in `060`+ later) is the
 camelCase→snake_case **allowlist** that `apply_substeps` uses. Any sub-step
 field not on the list makes the server `RAISE` — never silently skip.
+
+**Ability scores vs saving throws (151).** `str..cha` are ability scores
+(default 10); `str_sav..cha_sav` are the save bonuses (default 0). They are
+separate fields. Example: a hero with Str 14 has a +2 Strength modifier, but its
+Strength save bonus is still whatever is stored in `str_sav` (e.g. +5); reading
+`str` as a save is a bug. The same split exists on `unit_templates` and `units`.
 
 ## Migration inventory & status
 
@@ -193,26 +200,54 @@ as applied in the notes — check the live DB before relying on it).
 | 131 | AI role markers (advanced AI, later removed) | ⏳ run in Supabase |
 | 132 | drop the AI role marker column | ⏳ run in Supabase |
 | 133 | Halloween Siege: `scenarios.halloween_siege` jsonb (wave config + arming/marker) | ⏳ run in Supabase |
-| 134 | Ship mass-first overhaul: drop `ship_frames`, reshape `ship_armors` (`mass_pct`/`hp_mult`), reseed `ship_components`, add `total_mass`/`helm`/`command_bridge`/`reinforcement` to `ship_templates` | ✅ applied |
-| 135 | Authored ship crew quarters + passengers (`ship_templates.crew_quarters`, `passengers`) | ⏳ run in Supabase |
-| 136 | Ship Editor v2: template image/weapon capacity/atmospheric speed/damage threshold; catalog `image_url` + `ac`; `hull` component; `ship_images` bucket | ⏳ run in Supabase |
-| 137 | Ship catalog UUID id + unique `name` for armors/components/accessories/weapons; migrate template/join FKs | ⏳ run in Supabase |
-| 138 | Component Workshop fields: `ship_components.effect`; `ship_weapons` mass/min_range/range/max_range/fire_cycle_step (mount dropped); component-editor access + catalog RLS | ⏳ run in Supabase |
-| 139 | Merge accessories into components: `ship_components.built_in`, move `ship_accessories` rows, rename join table → `ship_template_components`, drop `ship_accessories` | ⏳ run in Supabase |
-| 140 | Component/weapon catalog deletes cascade to template selections; usage RPCs for the delete confirmation | ⏳ run in Supabase |
-| 141 | Normalize `ship_components.name` / `ship_weapons.name`: underscores → spaces, first word capitalized, unique names enforced | ⏳ run in Supabase |
-| 142 | Ship card stats: `ship_components.dt` / `ship_weapons.dt` (default 15); `ship_templates.card_placements` + `reinforcements` jsonb | ✅ applied |
-| 143 | Region-container deck: `ship_templates.deck_layout` jsonb; drop `card_placements`; stable `ship_template_weapons.id` UUID PK; drop `mount_slot` | ✅ applied |
-| 144 | Ship master templates: remove old templates/joins; drop derived `crew_count`/`passengers`; Sail crew 0; seed 24 templates (no component/weapon rows) | ✅ applied |
-| 145 | Ship crew: `ship_crews.hp` (authored, default 10); weekly `cost` required; new stat defaults 12-14-14-10-14-10 | ✅ applied |
-| 146 | Ship component cards: `ship_components.can_combine` (default true; Helm/Command bridge false); weapons always per-unit | ⏳ run in Supabase |
-| 147 | Ship weapon row order: `ship_template_weapons.sort_order` | ⏳ run in Supabase |
-| 148 | Ship image frame: `ship_templates.keel_length` (default 100 ft) + `image_offset_y` (default 0 ft) | ⏳ run in Supabase |
-| 149 | Mass-scaled ship weapon damage: `ship_weapons.damage_formula` (e.g. `{mass/10}d10`) | ⏳ run in Supabase |
-| 150 | Ship weapon firing arcs: `ship_templates.weapon_arcs` jsonb (per-card added/removed arcs) | ⏳ run in Supabase |
-| 165 | Halloween Siege saved sequences: `halloween_siege_presets` (name + plan jsonb; global DM library RLS via `create_scenario`) | ⏳ run in Supabase |
+| 134 | Ship mass-first overhaul: drop `ship_frames`, reshape `ship_armors` (`mass_pct`/`hp_mult`), reseed `ship_components`, add `total_mass`/`helm`/`command_bridge`/`reinforcement` to `ship_templates` | applied |
+| 135 | Authored ship crew quarters + passengers (`ship_templates.crew_quarters`, `passengers`) | applied (schema verified 2026-11-14) |
+| 136 | Ship Editor v2: template image/weapon capacity/atmospheric speed/damage threshold; catalog `image_url` + `ac`; `hull` component; `ship_images` bucket | applied (schema verified 2026-11-14) |
+| 137 | Ship catalog UUID id + unique `name` for armors/components/accessories/weapons; migrate template/join FKs | applied (schema verified 2026-11-14) |
+| 138 | Component Workshop fields: `ship_components.effect`; `ship_weapons` mass/min_range/range/max_range/fire_cycle_step (mount dropped); component-editor access + catalog RLS | applied (schema verified 2026-11-14) |
+| 139 | Merge accessories into components: `ship_components.built_in`, move `ship_accessories` rows, rename join table to `ship_template_components`, drop `ship_accessories` | applied (schema verified 2026-11-14) |
+| 140 | Component/weapon catalog deletes cascade to template selections; usage RPCs for the delete confirmation | applied (logic; not anon-verifiable) |
+| 141 | Normalize `ship_components.name` / `ship_weapons.name`: underscores to spaces, first word capitalized, unique names enforced | applied (data; not anon-verifiable) |
+| 142 | Ship card stats: `ship_components.dt` / `ship_weapons.dt` (default 15); `ship_templates.card_placements` + `reinforcements` jsonb | applied (schema verified 2026-11-14) |
+| 143 | Region-container deck: `ship_templates.deck_layout` jsonb; drop `card_placements`; stable `ship_template_weapons.id` UUID PK; drop `mount_slot` | applied (schema verified 2026-11-14) |
+| 144 | Ship master templates: remove old templates/joins; drop derived `crew_count`/`passengers`; Sail crew 0; seed 24 templates (no component/weapon rows) | applied (schema verified 2026-11-14) |
+| 145 | Ship crew: `ship_crews.hp` (authored, default 10); weekly `cost` required; new stat defaults 12-14-14-10-14-10 | applied (schema verified 2026-11-14) |
+| 146 | Ship component cards: `ship_components.can_combine` (default true; Helm/Command bridge false); weapons always per-unit | applied (schema verified 2026-11-14) |
+| 147 | Ship weapon row order: `ship_template_weapons.sort_order` | applied (schema verified 2026-11-14) |
+| 148 | Ship image frame: `ship_templates.keel_length` (default 100 ft) + `image_offset_y` (default 0 ft) | applied (schema verified 2026-11-14) |
+| 149 | Mass-scaled ship weapon damage: `ship_weapons.damage_formula` (e.g. `{mass/10}d10`) | applied (schema verified 2026-11-14) |
+| 150 | Ship weapon firing arcs: `ship_templates.weapon_arcs` jsonb (per-card added/removed arcs) | applied (schema verified 2026-11-14) |
+| 151 | Ability scores split from saving throws: `str..cha` = abilities, `str_sav..cha_sav` = save bonuses (also on `unit_templates`; `unit_field_to_column` updated) | applied (schema verified 2026-11-14) |
+| 152 | Scenario Spelljammer mode: `ship_mode`, `ship_firing_arcs`, `ship_step` | applied (schema verified 2026-11-14) |
+| 153 | Ship weapon reload/area fields: `reload_steps`, `magic_dimension`, `shape`, `saving_throw`, `save_dc`, `on_save_half_or_neg` | applied (schema verified 2026-11-14) |
+| 154 | `ship_components.is_ram` + hull repair station | applied (schema verified 2026-11-14) |
+| 155 | `ship_spelljammer` runtime columns (`snapshot`, `stations`, `crew_state`, `reload`, `weapon_state`, movement fields) | applied (schema verified 2026-11-14) |
+| 156 | `ship_spelljammer` RLS (participant read, GM write) | applied (logic; not anon-verifiable) |
+| 157 | `SHIP` command sub-steps + `ship_step` scenario field | applied (logic; not anon-verifiable) |
+| 158 | `SHIP` placement insert fix (NOT NULL `name`) | applied (logic; not anon-verifiable) |
+| 159 | Ship realtime publication + atmosphere default + `declared_round` | applied (`declared_round` schema verified; publication not anon-verifiable) |
+| 160 | Unit ship boarding: `attached_to_ship_id`, `ship_station_key` | applied (schema verified 2026-11-14) |
+| 161 | `ship_spelljammer.crew_team` | applied (schema verified 2026-11-14) |
+| 162 | `ship_spelljammer` replica identity (realtime snapshot merge) | applied (logic; not anon-verifiable) |
+| 163 | Mandatory Deck card + hull/deck split + legacy snapshot rewrite | applied (data rewrite; not anon-verifiable) |
+| 164 | Per-card box state + hittable hull | applied (data rewrite; not anon-verifiable) |
+| 165 | New generic-crew defaults + station state (`mc_reduction`, `sail_max_step`, `sail_trim_step`, `ram_used_turn`) | applied (schema verified 2026-11-14) |
+| 165 | Halloween Siege saved sequences: `halloween_siege_presets` (name + plan jsonb; global DM library RLS via `create_scenario`) | applied (schema verified 2026-11-14) |
 
 ### Verify what's actually applied
+
+Authoritative check (service role / Supabase SQL editor). The anon REST key
+cannot read `supabase_migrations`, so use this to confirm the order:
+
+```sql
+SELECT version
+FROM supabase_migrations.schema_migrations
+WHERE version >= '134'
+ORDER BY version;
+```
+
+Structural spot-checks (work with the anon REST key too — a missing column
+returns 400/404, an existing one returns 200 even when RLS hides the rows):
 
 ```sql
 -- column present?
@@ -229,6 +264,10 @@ SELECT to_regclass('public.maps'), to_regclass('public.ship_templates');
 SELECT tablename FROM pg_publication_tables
 WHERE pubname='supabase_realtime' AND schemaname='public';
 ```
+
+Anon REST probe example: `GET /rest/v1/units?select=str_sav,str&limit=0`.
+`200` proves both columns exist; `400` means one is missing. RLS may return an
+empty array, so this verifies schema presence, not data presence.
 
 ## RPC inventory (SECURITY DEFINER, `SET search_path = public`)
 

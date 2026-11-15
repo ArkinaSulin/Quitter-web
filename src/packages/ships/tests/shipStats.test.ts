@@ -49,6 +49,8 @@ import {
   computeWeaponMass,
   computeWeeklyOperationCost,
   canPlaceWeapon,
+  crewCheckBonus,
+  heroCheckBonus,
   ShipBuild,
 } from '@/packages/ships/lib/shipStats';
 
@@ -273,9 +275,19 @@ describe('crew', () => {
   });
 
   it('defaults generic crew HP, weekly cost, and stat line', () => {
-    expect(DEFAULT_CREW_STATS).toEqual({ str: 12, dex: 14, con: 14, int: 10, wis: 14, cha: 10 });
+    expect(DEFAULT_CREW_STATS).toEqual({ str: 12, dex: 14, con: 14, int: 10, wis: 12, cha: 8 });
     expect(computeCrewHp(1)).toBe(10);
     expect(computeCrewHp(3)).toBe(24);
+  });
+
+  it('generic crew add the CrewSkill feat; heroes do not', () => {
+    const actor = { level: 1, str: 12, dex: 14, con: 14, int: 10, wis: 12, cha: 8 };
+    expect(crewCheckBonus(actor, 'dex')).toBe(6);
+    expect(crewCheckBonus(actor, 'wis')).toBe(5);
+    expect(crewCheckBonus(actor, 'int')).toBe(4);
+    expect(crewCheckBonus(actor, 'con')).toBe(6);
+    expect(crewCheckBonus(actor, 'str')).toBe(5);
+    expect(heroCheckBonus(actor, 'dex')).toBe(4);
     expect(computeCrewWeeklyCost(1)).toBe(4);
     expect(computeCrewWeeklyCost(3)).toBe(20);
   });

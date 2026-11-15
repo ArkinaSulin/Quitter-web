@@ -52,8 +52,21 @@ through the command log. See `21-ship-runtime.md`.
   `min(card width, card height)` with a 50% drag hitbox; scenario-map tokens are
   unchanged. The separate “Heroes aboard” list was removed (tokens move between
   cards and disembark).
+- Station actions shipped: sail speed ±1, rudder MC trim, hull repair, and ram.
+  Crew defaults/CrewSkill updated (migration 165). Ship-layout wheel zoom added.
+- Ship-layout pure zoom/pan, pointer-anchored wheel zoom, correct ghost placement,
+  and the shared crew roster/adjust/revive/discard UI are shipped.
+- Crew roster grouping (ignore HP), tactical summary Mass/Crew lines, Best-in-
+  ship-skill, bounded tooltips, bridge footer button, and Auto/Clear crew
+  assignment are shipped. Auto/Clear ride the `SHIP` command log, so undo/redo
+  already reverses them; playtest to confirm.
 - **Later:** downed (HP 0) heroes should move to Crew Quarters once ship damage
   to heroes is wired; currently only Deck/Crew Quarters destruction displaces.
+- **Later:** ram needs the explicit right-click "ram mode", reachable ram-hex
+  highlighting, and per-hero action locking; current footer Ram uses the two
+  forward hexes and applies directly.
+- **Later:** crew fill/remove card and ship-wide context menus; repair kits
+  remain deferred with the cargo manifest.
 - Ship combat detail: occupant/crew damage, derelict state, ram/collision
   actions, AoE vs units via spell shape, reinforcement stripping, per-card hit
   selection (currently box groups).

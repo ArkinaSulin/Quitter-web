@@ -190,18 +190,82 @@ to an adjacent map hex disembarks it (same elevation, unoccupied, target-hex
 terrain MP).
 
 **Deck & hull.** Every ship has a mandatory hittable **Deck** card carved out of
-the hull: `deck = max(1, round(hull × 0.2))`, `hull = allocated − deck`; at 0 hull
-the Hull card is omitted. Deck is movable in the Ship Editor but non-removable.
+the hull: `deck = max(1, round(hull x 0.2))`, `hull = allocated - deck`. The Hull
+card is always present as the **no-box Hull exception** even when `hull = 0`, and
+is the repair station; Deck is never the repair station. Deck is movable in the
+Ship Editor but non-removable.
 Hero capacity per card equals its crew requirement; Deck and Crew Quarters are
 unlimited. Boarded heroes default to the Deck. If the Deck is destroyed, heroes
 move to Crew Quarters (and vice versa) while the other card survives. Sail crew
 = `max(1, floor(sails/4))`, rudder crew = `max(1, ceil(rudders/2))`.
 
+**Crew checks.** Generic crew default to Str 12, Dex 14, Con 14, Int 10, Wis
+12, Cha 8 and implicitly have CrewSkill (+2 on ship checks). Heroes use their
+own stat + proficiency, never CrewSkill. Sail speed uses Con (DC current
+speed+10), rudder MC uses Int (DC 26−MC), helm/ram uses Wis, bridge uses Int (and only functions at its full crew complement), repair uses Str.
+Each of sail-speed and rudder-MC succeeds at most once per step; later successes
+show a no-effect toast. Repair is `4d8 + bonus`, capped at 80% HP.
+
+**Ram.** Helm footer action; one per turn; contest attacker Wis+PB(+CS) vs
+defender Wis+PB+8. Damage is `min(floor(currentMass/10),16)d(speed)`; with a ram
+the target takes full and the attacker half, without a ram both take half.
+Random per-card box damage; movement forfeited; both shift along the heading.
+
+**Deck pan/zoom.** The deck viewport is a fixed box (fills the ship-window
+border / the Ship Editor right column), with no horizontal or vertical
+scrollbars. The deck is drawn with `translate(offsetX, offsetY) scale(zoom)`:
+- Minimum zoom is the fit scale (`min(viewportW/contentW, viewportH/contentH, 1)`),
+  so all cards can always be brought on screen; maximum zoom is 1.6x.
+- Wheel zoom anchors at the mouse: `world = (mouse - offset) / zoom`, then
+  `offset = mouse - world * newZoom`. The point under the cursor stays put.
+- Middle-mouse drag moves the deck like the scenario map (window-level drag, no
+  scrollbars); vertical and horizontal panning both work.
+- Hero tokens are measured unzoomed and scale once; the drag ghost is portaled
+  to `document.body` so it follows the pointer. Card right-click is always
+  consumed (the editor opens its card menu; the runtime suppresses the browser
+  menu).
+
+**Crew roster UI.** Shared `CrewRoster`/`CrewAdjustDialog`/`RepeatStepper` in the
+Ship Editor and scenario ship window. Crew are grouped by **name + level + stats
++ cost, ignoring HP**; unnamed/auto-named crew display as **Crew**, and dead
+groups show a skull. Columns are Name/Level plus a tiny skull slot (the station/status
+column was removed); the `+/-` Adjust dialog acts on the whole group, and dead groups Revive (full/partial) or Discard
+together. Runtime edits update the snapshot, crew state, station lists, and
+recompute stats. Crew, hero and card hover tooltips are bounded to their panel:
+below-right first, then left/above when space is short.
+
+**Tactical summary.** Aside from AC/DT and HP, the left panel shows Mass with an
+indented **Current** (`performanceMass`; cargo is empty when no manifest exists),
+and **Crew: current / capacity** with indented **Min** and **Full**. Only current
+values update live. A **Best in ship skill** block below it lists the best living
+crew plus heroes stationed only in Crew Quarters/Deck for Helmsmanship, Bridge,
+Rudder, Sail speed, Weapon and Repair.
+
+**Bridge card status.** The Bridge card shows an action-style Bridge button in
+place of its note. It lights when the bridge has its full crew complement (the
+bridge only functions fully crewed) and is dim otherwise; it has no action yet.
+
+**Auto-assign crew.** The roster has **Auto** and **Clear**.
+- Auto arms on the first click: only eligible, not-yet-full Helm/Bridge/Rudder/
+  Sail/Weapon cards show a top-right check (`-` = skipped; click toggles). Deck,
+  Hull, Crew Quarters and Cargo are never eligible. A second click fills only
+  the enabled cards with **reserve crew only**; crew already on cards are never
+  moved (Clear first for a fresh start). All eligible cards default enabled.
+- Priority: Helm (best Wis) -> Bridge (best Int until full) -> Rudder (Int) ->
+  Sail (Con) -> weapons. Weapons get their **first slot** filled first, so each
+  manned weapon can use its best-crew check; then remaining weapon slots. Left
+  side first: if the target is off the port side and crew are short, manning the
+  port battery lets those guns bear while the starboard battery stays uncrewed.
+- Clear removes every generic crew member from every station on the ship and returns them to reserve (heroes stay). Cards no longer preview-assign roster crew from the top down; hollow slots mean empty until Auto assigns reserve crew. Both auto and clear
+  are logged as `SHIP` changes, so undo/redo already reverses them.
+
 **Deck sizing.** Default regions are Bow 3, Stern 3, Port/Starboard 4, Body 8.
-A single `--card-w` (CSS container query, min 64px) is shared by every card. Spacing is 4px between cards, between regions, and for vertical
-region/card gaps; region `px-1` + outer `px-1` keep the 8px frame-to-region gap. Runtime middle rows use 4/3/2 columns depending on which regions
-have cards; empty regions reserve no space. Bow/Stern frames shrink to their
-card count (editor uses slot count). All cards stay equal width.
+A single explicit pixel card width (min 64px) is shared by every card; it is computed from the measured deck width, so zoom never reflows or stretches a column. Spacing is 4px between cards, between regions, and for vertical
+region/card gaps; region `px-1` + outer `px-1` keep the 8px frame-to-region gap. Cards keep the Ship Editor grid: hidden cards/regions are invisible but their
+slot space is still reserved, so remaining cards never stretch and never move
+(for example, an empty Port column leaves a gap instead of widening Body or
+shifting Starboard). Region boxes reshape visually but the underlying slots stay
+put. All cards stay equal width.
 
 **Per-card boxes & status.** `boxState` stores destroyed tons per **deck card
 key**. Combat picks a hittable, non-zero card weighted by tons. Card tint:

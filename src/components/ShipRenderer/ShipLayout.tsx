@@ -5,6 +5,7 @@
 // and slots can be moved between regions from the context menu.
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AllianceGroup, Unit } from '@/types/gameProtocol';
 import { drawToken, loadImage } from '@/components/TokenRenderer/drawToken';
 import {
@@ -13,16 +14,19 @@ import {
   ShipDerivedStats,
   componentById,
   componentByName,
-  deckOrderedCardKeys,
+  createDefaultDeckLayout,
   effectiveWeaponArcs,
+  ensureCardSlot,
   ensureDeckSlot,
   findCardSlot,
+  heroCheckBonus,
   swapCards,
   weaponById,
   weaponTons,
 } from '@/packages/ships';
 import { ShipDeckLayout, ShipDeckRegion, ShipDeckSlot } from '@/types/ship';
 import { ShipComponentCard, ShipComponentCardData } from './ShipComponentCard';
+import { BoundedTooltip } from '@/components/shared/BoundedTooltip';
 
 function empty(name: string): ShipComponentCardData {
   return { id: `empty-${name}`, name, tons: 0, ac: 0, dt: 0, crewRequired: 0, empty: true };
@@ -101,15 +105,21 @@ function HeroTokenLayer({
   heroes,
   teamAlliances,
   hideHeroTokens,
+  deckZoom,
   onHeroDrop,
   onHeroDropToMap,
+  onHeroHover,
+  onHeroLeave,
 }: {
   cardKey: string;
   heroes: ShipHeroToken[];
   teamAlliances?: Record<string, AllianceGroup>;
   hideHeroTokens?: boolean;
+  deckZoom: number;
   onHeroDrop?: (heroId: string, fromCardKey: string, toCardKey: string, xPct: number, yPct: number) => void;
   onHeroDropToMap?: (heroId: string, clientX: number, clientY: number) => void;
+  onHeroHover?: (hero: ShipHeroToken, event: React.MouseEvent) => void;
+  onHeroLeave?: () => void;
 }) {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -120,13 +130,14 @@ function HeroTokenLayer({
     if (!el) return;
     const measure = () => {
       const rect = el.getBoundingClientRect();
-      setSize({ w: rect.width, h: rect.height });
+      const zoom = Math.max(0.01, deckZoom);
+      setSize({ w: rect.width / zoom, h: rect.height / zoom });
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [deckZoom]);
 
   const tokenW = Math.max(1, Math.min(size.w, size.h));
   const tokenH = tokenW * 0.75;
@@ -148,10 +159,11 @@ function HeroTokenLayer({
       const toCardKey = target?.dataset.cardKey;
       if (toCardKey) {
         const rect = target.getBoundingClientRect();
+        const zoom = Math.max(0.01, deckZoom);
         // Horizontal: hitbox half (transparent edges may extrude).
-        const halfW = Math.min(hitW / 2, rect.width / 2);
+        const halfW = Math.min((hitW / 2) * zoom, rect.width / 2);
         // Vertical: full token half (never spill onto cards above/below).
-        const halfH = Math.min(tokenH / 2, rect.height / 2);
+        const halfH = Math.min((tokenH / 2) * zoom, rect.height / 2);
         const px = Math.max(halfW, Math.min(rect.width - halfW, ev.clientX - rect.left));
         const py = Math.max(halfH, Math.min(rect.height - halfH, ev.clientY - rect.top));
         onHeroDrop(hero.id, cardKey, toCardKey, (px / rect.width) * 100, (py / rect.height) * 100);
@@ -177,6 +189,9 @@ function HeroTokenLayer({
           <div
             key={h.id}
             className={`absolute z-20 ${hideHeroTokens ? 'pointer-events-none opacity-0' : ''}`}
+            onMouseEnter={e => { e.stopPropagation(); onHeroHover?.(h, e); }}
+            onMouseMove={e => { e.stopPropagation(); onHeroHover?.(h, e); }}
+            onMouseLeave={e => { e.stopPropagation(); onHeroLeave?.(); }}
             style={{
               left: `${left}%`,
               top: `${top}%`,
@@ -196,17 +211,18 @@ function HeroTokenLayer({
           </div>
         );
       })}
-      {drag && (
+      {drag && createPortal(
         <div
           className="pointer-events-none fixed z-[200] rounded-full border border-amber-300 bg-amber-400/30"
           style={{
             left: drag.x,
             top: drag.y,
-            width: drag.w,
-            height: drag.h,
+            width: drag.w * deckZoom,
+            height: drag.h * deckZoom,
             transform: 'translate(-50%, -50%)',
           }}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
@@ -222,12 +238,16 @@ export function ShipLayout({
   presentCrewByCard,
   occupantsByCard,
   weaponInfoByCard,
+  cardActions,
   teamAlliances,
   hideHeroTokens = false,
   onHeroDrop,
   onHeroDropToMap,
   onDeckChange,
   onSlotContextMenu,
+  cardToggles,
+  onToggleCard,
+  cardChecks,
 }: {
   build: ShipBuild;
   stats: ShipDerivedStats;
@@ -244,6 +264,8 @@ export function ShipLayout({
   occupantsByCard?: Record<string, { id: string; name: string; isHero: boolean }[]>;
   /** Weapon damage/reload/fire state per weapon card key. */
   weaponInfoByCard?: Record<string, import('./ShipComponentCard').ShipCardWeaponInfo>;
+  /** Station action buttons per card key. */
+  cardActions?: Record<string, import('./ShipComponentCard').ShipCardAction[]>;
   teamAlliances?: Record<string, AllianceGroup>;
   /** Shift/1 held: hide hero tokens so the card info is visible. */
   hideHeroTokens?: boolean;
@@ -257,21 +279,56 @@ export function ShipLayout({
     index: number,
     card?: ShipComponentCardData,
   ) => void;
+  /** Auto-assign arm mode: card key -> enabled. */
+  cardToggles?: Record<string, boolean>;
+  onToggleCard?: (cardKey: string) => void;
+  /** Best current occupant check per card, for the hover tooltip. */
+  cardChecks?: Record<string, { label: string; bonus: number; name: string }>;
 }) {
   const c = build.components;
   const m = stats.massBreakdown;
   const deckComponent = componentByName(c, COMPONENT_NAMES.deck);
   const deckKey = `component:${deckComponent.id || 'deck'}`;
-  const layout = build.deckLayout ? ensureDeckSlot(build.deckLayout, deckKey) : build.deckLayout;
-  const dragRef = useRef<{ region: ShipDeckRegion; index: number } | null>(null);
-
-  if (!layout) {
-    return (
-      <div className="rounded-3xl border border-gray-700 bg-gray-900/40 p-4 text-[11px] text-gray-500">
-        Deck layout unavailable.
-      </div>
-    );
+  const hullComponentForSlot = build.components.find(c => c.name === 'Hull');
+  const hasLayout = !!build.deckLayout;
+  let layout = build.deckLayout ? ensureDeckSlot(build.deckLayout, deckKey) : createDefaultDeckLayout();
+  if (hullComponentForSlot) {
+    layout = ensureCardSlot(layout, `component:${hullComponentForSlot.id || 'hull'}`);
   }
+  const dragRef = useRef<{ region: ShipDeckRegion; index: number } | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
+  const [contentSize, setContentSize] = useState({ w: 0, h: 0 });
+  const [camera, setCamera] = useState({ zoom: 1, x: 0, y: 0 });
+  const minZoomRef = useRef(0.2);
+  const initializedRef = useRef(false);
+  const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const [panning, setPanning] = useState(false);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; node: React.ReactNode } | null>(null);
+  const deckWidth = Math.max(80, viewportSize.w - 8);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const measure = () => setViewportSize({ w: viewport.clientWidth, h: viewport.clientHeight - 8 });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const measure = () => setContentSize({ w: content.offsetWidth, h: content.offsetHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
 
   const cards: Record<string, ShipComponentCardData> = {};
   const cardAc = (componentAc: number | undefined) =>
@@ -376,7 +433,9 @@ export function ShipLayout({
     reinforced: reinforced(build, deckKey),
   };
 
-  if (m.hull > 0) {
+  // No-box Hull exception: Hull is always shown, even at 0 tons/boxes, because
+  // it remains the repair station.
+  {
     const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
     const hullKey = `component:${hullComponent.id || 'hull'}`;
     cards[hullKey] = {
@@ -477,22 +536,6 @@ export function ShipLayout({
     }
   }
 
-  // Non-functional preview: consume the roster in deck order.
-  const previewCrew = build.crews ?? [];
-  let crewIdx = 0;
-  for (const key of deckOrderedCardKeys(layout)) {
-    const card = cards[key];
-    if (!card) continue;
-    const count = Math.max(0, Math.round(card.crewRequired));
-    card.crewSlots = Array.from({ length: count }, () => {
-      const crew = previewCrew[crewIdx];
-      if (crew) crewIdx += 1;
-      return crew
-        ? { name: crew.name ?? undefined, level: crew.level, assigned: true }
-        : { assigned: false };
-    });
-  }
-
   // Runtime: show the actual occupants (heroes first, then crew), with hollow
   // slots for the remaining crew requirement on limited cards.
   if (occupantsByCard) {
@@ -509,7 +552,7 @@ export function ShipLayout({
   const isRenderableCard = (key: string | null | undefined): boolean => {
     if (!key) return false;
     const card = cards[key];
-    return !!card && !card.safe && card.tons > 0;
+    return !!card && !card.safe && (card.tons > 0 || card.name === 'Hull');
   };
 
   const cardStatus = (card: ShipComponentCardData): 'normal' | 'yellow' | 'red' => {
@@ -570,14 +613,63 @@ export function ShipLayout({
     region: ShipDeckRegion,
     index: number,
   ) => {
-    if (!onSlotContextMenu) return;
+    // Never let the browser menu replace the deck/card menu (or appear when the
+    // runtime window has no menu at all).
     event.preventDefault();
+    if (!onSlotContextMenu) return;
     const s = layout[region][index];
     onSlotContextMenu(event, region, index, s?.cardKey ? cards[s.cardKey] : undefined);
   };
 
+  const cardTooltip = (card: ShipComponentCardData) => {
+    const key = card.cardKey;
+    if (!key) return null;
+    const occupants = occupantsByCard?.[key] ?? [];
+    const present = presentCrewByCard?.[key] ?? occupants.length;
+    const check = cardChecks?.[key];
+    const info = weaponInfoByCard?.[key];
+    return (
+      <div className="space-y-0.5">
+        <div className="text-[11px] font-semibold text-amber-200">{card.name}</div>
+        <div className="text-gray-400">
+          {card.tons}t - AC {card.ac} - DT {card.dt}
+          {info ? ` - Damage ${info.damage}` : ''}
+        </div>
+        {card.kind === 'weapon' && info && <div className="text-gray-400">{info.reloadLabel}</div>}
+        <div className="text-gray-300">Crew {present}/{card.crewRequired}</div>
+        {occupants.length > 0 && (
+          <div className="text-gray-400">On card: {occupants.map(o => o.name).join(', ')}</div>
+        )}
+        {check && <div className="text-gray-300">{check.label}: +{check.bonus} ({check.name})</div>}
+        {card.note && <div className="text-gray-500">{card.note}</div>}
+      </div>
+    );
+  };
+
+  const heroTooltip = (hero: ShipHeroToken) => {
+    const unit = hero.unit;
+    return (
+      <div className="space-y-0.5">
+        <div className="text-[11px] font-semibold text-amber-200">{unit.unitName}</div>
+        <div className="text-gray-400">Level {unit.level} - HP {unit.currentUnitHp}/{unit.maxUnitHp}</div>
+        <div className="text-gray-300">STR {unit.str} DEX {unit.dex} CON {unit.con} INT {unit.int} WIS {unit.wis} CHA {unit.cha}</div>
+        <div className="grid grid-cols-2 gap-x-3 text-gray-300">
+          <span>Weapon: +{heroCheckBonus(unit, 'dex')}</span>
+          <span>Helm: +{heroCheckBonus(unit, 'wis')}</span>
+          <span>Sail speed: +{heroCheckBonus(unit, 'con')}</span>
+          <span>Sail trim: +{heroCheckBonus(unit, 'int')}</span>
+          <span>Repair: +{heroCheckBonus(unit, 'str')}</span>
+        </div>
+      </div>
+    );
+  };
+
   const renderSlot = (region: ShipDeckRegion, index: number) => {
     const s = layout[region][index];
+    const hidden = hideEmpty && (!s?.cardKey || !isRenderableCard(s.cardKey));
+    if (hidden) {
+      return <div key={`${region}-${index}`} className="invisible min-h-[110px] w-full" />;
+    }
     const card = slotCard(s);
     const status = cardStatus(card);
     return (
@@ -594,12 +686,32 @@ export function ShipLayout({
         onDragOver={(e) => { if (!readOnly) e.preventDefault(); }}
         onDrop={(e) => handleDrop(e, region, index)}
         onContextMenu={(e) => handleSlotMenu(e, region, index)}
+        onMouseEnter={e => {
+          if (!card.empty && card.cardKey) setTooltip({ x: e.clientX, y: e.clientY, node: cardTooltip(card) });
+        }}
+        onMouseLeave={() => setTooltip(null)}
         className="relative h-full min-w-0"
       >
         <ShipComponentCard
           data={card}
           weaponInfo={card.cardKey ? weaponInfoByCard?.[card.cardKey] : undefined}
+          actions={card.cardKey ? cardActions?.[card.cardKey] : undefined}
         />
+        {card.cardKey && cardToggles && card.cardKey in cardToggles && (
+          <button
+            type="button"
+            title={cardToggles[card.cardKey] ? 'Enabled for Auto' : 'Skipped by Auto'}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onToggleCard?.(card.cardKey!); }}
+            className={`absolute right-0.5 top-0.5 z-30 grid h-4 w-4 place-items-center rounded-full border text-[9px] font-bold ${
+              cardToggles[card.cardKey]
+                ? 'border-emerald-300 bg-emerald-700/80 text-emerald-100'
+                : 'border-gray-500 bg-gray-800/90 text-gray-300'
+            }`}
+          >
+            {cardToggles[card.cardKey] ? '\u2713' : '-'}
+          </button>
+        )}
         {status !== 'normal' && (
           <div
             className={`pointer-events-none absolute inset-0 rounded-2xl ${
@@ -613,8 +725,11 @@ export function ShipLayout({
             heroes={heroesByCard[card.cardKey]}
             teamAlliances={teamAlliances}
             hideHeroTokens={hideHeroTokens}
+            deckZoom={camera.zoom}
             onHeroDrop={onHeroDrop}
             onHeroDropToMap={onHeroDropToMap}
+            onHeroHover={(hero, event) => setTooltip({ x: event.clientX, y: event.clientY, node: heroTooltip(hero) })}
+            onHeroLeave={() => setTooltip(null)}
           />
         ) : null}
       </div>
@@ -630,7 +745,7 @@ export function ShipLayout({
         className="flex justify-center gap-1"
       >
         {row.map(index => (
-          <div key={`${region}-${index}`} style={{ width: 'var(--card-w)' }}>
+          <div key={`${region}-${index}`} style={{ width: cardWidthPx }}>
             {renderSlot(region, index)}
           </div>
         ))}
@@ -638,15 +753,6 @@ export function ShipLayout({
     ));
   };
 
-  const visibleIndices = (region: ShipDeckRegion): number[] => {
-    const all = layout[region].map((_, i) => i);
-    const renderable = all.filter(i => {
-      const key = layout[region][i]?.cardKey;
-      if (!key) return !hideEmpty;
-      return isRenderableCard(key);
-    });
-    return renderable;
-  };
   const cardCount = (region: ShipDeckRegion): number =>
     layout[region].filter(s => isRenderableCard(s.cardKey)).length;
 
@@ -657,13 +763,11 @@ export function ShipLayout({
     wrapperClass = '',
     wrapperStyle?: React.CSSProperties,
   ) => {
-    const indices = visibleIndices(region);
-    const count = cardCount(region);
-    const compact = hideEmpty && count > 0 && count <= 2;
-    const rowSize = compact ? count : 3;
+    const indices = layout[region].map((_, i) => i);
+    const hiddenRegion = hideEmpty && cardCount(region) === 0;
     return (
       <div
-        className={`rounded-2xl bg-gray-900/30 px-1 py-1 ring-2 ring-inset ring-gray-600/80 ${wrapperClass}`}
+        className={`shrink-0 rounded-2xl bg-gray-900/30 px-1 py-1 ring-2 ring-inset ring-gray-600/80 ${hiddenRegion ? 'invisible' : ''} ${wrapperClass}`}
         style={wrapperStyle}
       >
         <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
@@ -677,7 +781,7 @@ export function ShipLayout({
           }
         >
           {mode === 'bow' || mode === 'row' ? (
-            renderSlotRows(region, indices, rowSize)
+            renderSlotRows(region, indices, 3)
           ) : mode === 'body' ? (
             renderSlotRows(region, indices, 2)
           ) : (
@@ -688,35 +792,138 @@ export function ShipLayout({
     );
   };
 
-  const bowCount = cardCount('bow');
-  const sternCount = cardCount('stern');
-  const portCount = cardCount('port');
-  const starboardCount = cardCount('starboard');
-  const showBow = !hideEmpty || bowCount > 0;
-  const showStern = !hideEmpty || sternCount > 0;
-  const showPort = !hideEmpty || portCount > 0;
-  const showStarboard = !hideEmpty || starboardCount > 0;
-  const bowColumns = Math.max(1, Math.min(3, hideEmpty ? bowCount : layout.bow.length));
-  const sternColumns = Math.max(1, Math.min(3, hideEmpty ? sternCount : layout.stern.length));
+  // Hidden regions keep their grid columns/rows reserved (like the Ship
+  // Editor) so visible cards never stretch or change position. Only the boxes
+  // and cards themselves become invisible.
+  const showBow = layout.bow.length > 0;
+  const showStern = layout.stern.length > 0;
+  const showPort = layout.port.length > 0;
+  const showStarboard = layout.starboard.length > 0;
+  const bowColumns = Math.max(1, Math.min(3, layout.bow.length));
+  const sternColumns = Math.max(1, Math.min(3, layout.stern.length));
   const presentMiddle = (showPort ? 1 : 0) + 1 + (showStarboard ? 1 : 0);
   const middleCols = (showPort ? 1 : 0) + 2 + (showStarboard ? 1 : 0);
   const middleExtra = 12 * presentMiddle;
-  // One card width that fits every row (middle, bow, stern) equally; shorter
-  // rows centre. The lower bound keeps cards readable (and lets the deck scroll).
-  const widthCandidates = [`calc((100cqw - ${middleExtra}px) / ${middleCols})`];
-  if (showBow) widthCandidates.push(`calc((100cqw - ${4 * bowColumns + 4}px) / ${bowColumns})`);
-  if (showStern) widthCandidates.push(`calc((100cqw - ${4 * sternColumns + 4}px) / ${sternColumns})`);
-  const cardWidthCss = `max(64px, min(${widthCandidates.join(', ')}))`;
-  const deckStyle = {
-    containerType: 'inline-size' as const,
-    ['--card-w' as string]: cardWidthCss,
-  } as React.CSSProperties;
+  const widthCandidates = [(deckWidth - middleExtra) / middleCols];
+  if (showBow) widthCandidates.push((deckWidth - (4 * bowColumns + 4)) / bowColumns);
+  if (showStern) widthCandidates.push((deckWidth - (4 * sternColumns + 4)) / sternColumns);
+  const cardWidthPx = Math.max(64, Math.min(...widthCandidates));
+  const contentWidth = Math.max(
+    deckWidth,
+    middleCols * cardWidthPx + middleExtra,
+    showBow ? bowColumns * cardWidthPx + (bowColumns - 1) * 4 + 8 : 0,
+    showStern ? sternColumns * cardWidthPx + (sternColumns - 1) * 4 + 8 : 0,
+  );
   const regionWidth = (columns: number): React.CSSProperties => ({
-    width: `calc(${columns} * var(--card-w) + ${(columns - 1) * 4 + 8}px)`,
+    width: columns * cardWidthPx + (columns - 1) * 4 + 8,
   });
 
+  const contentHeight = Math.max(1, contentSize.h);
+  const fitScale = Math.min(
+    1,
+    viewportSize.w > 0 ? viewportSize.w / contentWidth : 1,
+    viewportSize.h > 0 ? viewportSize.h / contentHeight : 1,
+  );
+
+  useEffect(() => {
+    if (!viewportSize.w || !viewportSize.h || contentSize.h <= 0) return;
+    minZoomRef.current = Math.max(0.1, fitScale);
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setCamera({
+        zoom: fitScale,
+        x: (viewportSize.w - contentWidth * fitScale) / 2,
+        y: (viewportSize.h - contentHeight * fitScale) / 2,
+      });
+      return;
+    }
+    setCamera(current => {
+      if (current.zoom >= fitScale) return current;
+      return {
+        zoom: fitScale,
+        x: (viewportSize.w - contentWidth * fitScale) / 2,
+        y: (viewportSize.h - contentHeight * fitScale) / 2,
+      };
+    });
+  }, [viewportSize.w, viewportSize.h, contentWidth, contentHeight, fitScale, contentSize.h]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = viewport.getBoundingClientRect();
+      const mx = event.clientX - rect.left;
+      const my = event.clientY - rect.top;
+      setCamera(current => {
+        const nextZoom = Math.max(
+          minZoomRef.current,
+          Math.min(1.6, current.zoom * (event.deltaY > 0 ? 0.9 : 1.1)),
+        );
+        if (nextZoom === current.zoom) return current;
+        const worldX = (mx - current.x) / current.zoom;
+        const worldY = (my - current.y) / current.zoom;
+        return {
+          zoom: nextZoom,
+          x: mx - worldX * nextZoom,
+          y: my - worldY * nextZoom,
+        };
+      });
+    };
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const onPanDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    panRef.current = { x: e.clientX, y: e.clientY, ox: camera.x, oy: camera.y };
+    setPanning(true);
+    const move = (ev: MouseEvent) => {
+      const pan = panRef.current;
+      if (!pan) return;
+      setCamera(current => ({
+        ...current,
+        x: pan.ox + (ev.clientX - pan.x),
+        y: pan.oy + (ev.clientY - pan.y),
+      }));
+    };
+    const up = () => {
+      panRef.current = null;
+      setPanning(false);
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  const deckStyle = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: contentWidth,
+    transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`,
+    transformOrigin: 'top left',
+  } as React.CSSProperties;
+
+  if (!hasLayout) {
+    return (
+      <div className="rounded-3xl border border-gray-700 bg-gray-900/40 p-4 text-[11px] text-gray-500">
+        Deck layout unavailable.
+      </div>
+    );
+  }
+
   return (
-    <div className="relative overflow-x-auto rounded-3xl border border-gray-700 bg-gray-900/40 px-1 py-1">
+    <div ref={rootRef} className="relative h-full min-h-0">
+    <div
+      ref={viewportRef}
+      className={`relative h-full w-full overflow-hidden rounded-3xl border border-gray-700 bg-gray-900/40 px-1 py-1 ${panning ? 'cursor-grabbing' : ''}`}
+      onMouseDown={onPanDown}
+      onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
+    >
       <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[8px] uppercase tracking-widest text-gray-600">
         Port
       </span>
@@ -724,27 +931,33 @@ export function ShipLayout({
         Starboard
       </span>
 
-      <div className="mx-auto space-y-1" style={deckStyle}>
+      <div ref={contentRef} className="space-y-1" style={deckStyle}>
         {showBow && (
-          <div className="mx-auto" style={regionWidth(bowColumns)}>
+          <div className="mx-auto shrink-0" style={regionWidth(bowColumns)}>
             {renderRegion('bow', 'Bow', 'bow')}
           </div>
         )}
 
         <div className="text-center text-[8px] uppercase tracking-widest text-gray-600">360°</div>
 
-        <div className="flex justify-center gap-1">
-          {showPort && <div style={regionWidth(1)}>{renderRegion('port', 'Port', 'column')}</div>}
-          <div style={regionWidth(2)}>{renderRegion('body', 'Body', 'body')}</div>
-          {showStarboard && <div style={regionWidth(1)}>{renderRegion('starboard', 'Starboard', 'column')}</div>}
+        <div className="flex min-w-max justify-center gap-1">
+          {showPort && <div className="shrink-0" style={regionWidth(1)}>{renderRegion('port', 'Port', 'column')}</div>}
+          <div className="shrink-0" style={regionWidth(2)}>{renderRegion('body', 'Body', 'body')}</div>
+          {showStarboard && <div className="shrink-0" style={regionWidth(1)}>{renderRegion('starboard', 'Starboard', 'column')}</div>}
         </div>
 
         {showStern && (
-          <div className="mx-auto" style={regionWidth(sternColumns)}>
+          <div className="mx-auto shrink-0" style={regionWidth(sternColumns)}>
             {renderRegion('stern', 'Stern', 'row')}
           </div>
         )}
       </div>
+    </div>
+    {tooltip && (
+      <BoundedTooltip boundsRef={rootRef} x={tooltip.x} y={tooltip.y}>
+        {tooltip.node}
+      </BoundedTooltip>
+    )}
     </div>
   );
 }

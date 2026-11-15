@@ -86,8 +86,8 @@ export function mapShipCrewRow(row: any): ShipCrew {
     dex: Number(row.dex) || 14,
     con: Number(row.con) || 14,
     int: Number(row.int) || 10,
-    wis: Number(row.wis) || 14,
-    cha: Number(row.cha) || 10,
+    wis: Number(row.wis) || 12,
+    cha: Number(row.cha) || 8,
     cost: row.cost != null ? Number(row.cost) : computeCrewWeeklyCost(level),
   };
 }

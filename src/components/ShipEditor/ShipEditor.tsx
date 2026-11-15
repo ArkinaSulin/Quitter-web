@@ -48,6 +48,7 @@ import {
   mapShipWeaponRow,
   mapWeaponRows,
 } from '@/packages/ships';
+import { CrewRoster } from '@/components/ShipRenderer/CrewRoster';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
 import { ShipImagePreview } from '@/components/ShipRenderer/ShipImagePreview';
@@ -411,7 +412,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     const n = editingCrewIndex !== null ? 1 : Math.max(1, Math.floor(count) || 1);
     const rows: ShipCrew[] = Array.from({ length: n }, () => ({
       id: crypto.randomUUID(),
-      name: name.trim() ? name.trim() : null,
+      name: name.trim() ? name.trim() : `Crew Level ${level}`,
       level, hp, str, dex, con, int, wis, cha, cost,
     }));
     if (editingCrewIndex !== null) {
@@ -428,6 +429,30 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const removeCrew = (index: number) => {
     if (!formData) return;
     updateFormData('crews', formData.crews.filter((_, i) => i !== index));
+  };
+
+  const applyCrewAdjust = (args: { ids: string[]; draft: CrewDraft; count: number }) => {
+    if (!formData) return;
+    const group = new Set(args.ids);
+    const kept = formData.crews.filter(c => group.has(c.id));
+    const others = formData.crews.filter(c => !group.has(c.id));
+    const target = Math.max(0, Math.min(50, Math.floor(args.count)));
+    const make = (base?: ShipCrew): ShipCrew => ({
+      id: base?.id ?? crypto.randomUUID(),
+      name: args.draft.name.trim() || base?.name || `Crew Level ${args.draft.level}`,
+      level: args.draft.level,
+      hp: args.draft.hp,
+      str: args.draft.str,
+      dex: args.draft.dex,
+      con: args.draft.con,
+      int: args.draft.int,
+      wis: args.draft.wis,
+      cha: args.draft.cha,
+      cost: args.draft.cost,
+    });
+    const updated = kept.slice(0, target).map(make);
+    const added = Array.from({ length: Math.max(0, target - kept.length) }, () => make());
+    updateFormData('crews', [...others, ...updated, ...added]);
   };
 
   useEffect(() => {
@@ -1453,10 +1478,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         </div>
 
         {/* Right — ship image, layout, weapons, roster */}
-        <div className="flex-[0_0_34%] min-w-[320px] max-w-[44%] p-4 border-l border-gray-700 bg-[#0d0d1a] overflow-y-auto">
+        <div className="flex-[0_0_34%] min-w-[320px] max-w-[44%] p-4 border-l border-gray-700 bg-[#0d0d1a] overflow-hidden">
           {formData && build && stats ? (
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
+            <div className="flex h-full min-h-0 flex-col gap-4">
+              <div className="flex shrink-0 items-start gap-3">
                 <div className="min-w-0 flex-1 space-y-2">
                   {!readOnly ? (
                     <button
@@ -1497,18 +1522,20 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] text-gray-400 mb-1">Ship layout</label>
-                <ShipLayout
-                  build={build}
-                  stats={stats}
-                  readOnly={readOnly}
-                  onDeckChange={(layout) => updateFormData('deckLayout', layout)}
-                  onSlotContextMenu={readOnly ? undefined : handleSlotContextMenu}
-                />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <label className="mb-1 block shrink-0 text-[10px] text-gray-400">Ship layout</label>
+                <div className="min-h-0 flex-1">
+                  <ShipLayout
+                    build={build}
+                    stats={stats}
+                    readOnly={readOnly}
+                    onDeckChange={(layout) => updateFormData('deckLayout', layout)}
+                    onSlotContextMenu={readOnly ? undefined : handleSlotContextMenu}
+                  />
+                </div>
               </div>
 
-              <div className="p-2.5 bg-gray-800 rounded border border-gray-700">
+              <div className="max-h-[38%] shrink-0 overflow-y-auto rounded border border-gray-700 bg-gray-800 p-2.5">
                 <div className="flex items-center justify-between mb-2">
                   <label className={`block text-[10px] ${crewOverCapacity ? 'text-red-400' : 'text-gray-400'}`}>
                     Ship roster ({formData.crews.length}) · Min {stats.minCrew} / Full {stats.fullCrew} · Quarters {stats.crewCapacity}
@@ -1537,64 +1564,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   )}
                 </div>
 
-                {formData.crews.length === 0 ? (
-                  <div className="text-[11px] text-gray-400 bg-gray-800/50 border border-gray-700 rounded p-2 text-center">
-                    No crew assigned. Add named or unnamed crew.
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {(() => {
-                      const { named, unnamed, unnamedCost, first, uniform } = groupCrew(formData.crews);
-                      return (
-                        <>
-                          {named.map(({ crew, index }) => (
-                            <div key={crew.id} className="flex items-center justify-between gap-2 bg-gray-800 rounded px-2 py-1">
-                              <div className="min-w-0 text-[11px] text-gray-200">
-                                {crew.name}
-                                <span className="text-gray-500">
-                                  {' '}— {crewStatLine(crew)},{' '}
-                                </span>
-                                <span className="text-green-400">{crew.cost} Gp</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditCrew(index)}
-                                  className="text-[10px] bg-blue-700 hover:bg-blue-600 px-1.5 py-0.5 rounded text-white"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => removeCrew(index)}
-                                  className="text-[10px] bg-red-700 hover:bg-red-600 px-1.5 py-0.5 rounded text-white"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          {unnamed.length > 0 && first && (
-                            <div className="flex items-center justify-between gap-2 bg-gray-800/60 border border-dashed border-gray-600 rounded px-2 py-1">
-                              <div className="min-w-0 text-[11px] text-gray-300">
-                                Unnamed crew × {unnamed.length}
-                                {uniform ? (
-                                  <span className="text-gray-500"> — {crewStatLine(first)}, </span>
-                                ) : (
-                                  <span className="text-gray-500"> — mixed stats, </span>
-                                )}
-                                <span className="text-green-400">{uniform ? `${first.cost} Gp each` : `${unnamedCost} Gp total`}</span>
-                              </div>
-                              {uniform && (
-                                <span className="text-[10px] text-gray-400 whitespace-nowrap">{unnamedCost} Gp</span>
-                              )}
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
+                <CrewRoster
+                  crews={formData.crews}
+                  canEdit={!readOnly}
+                  readOnly={readOnly}
+                  onAdjust={applyCrewAdjust}
+                />
               </div>
             </div>
           ) : (

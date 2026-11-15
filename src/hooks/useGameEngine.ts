@@ -1140,15 +1140,21 @@ export function useGameEngine({
         describeEffectDamage(ev.unitName, ev.source, ev.detail, true),
       );
 
-      // Ships reset their per-step movement spend on every step/turn boundary.
+      // Ships reset their per-step movement spend and rudder MC trim on every
+      // step/turn boundary.
       for (const ship of args.ships ?? []) {
-        if (ship.isDeleted || !ship.speedSpent) continue;
-        subSteps.push({
-          type: 'SHIP',
-          description: `${ship.name} movement resets`,
-          unitId: ship.id,
-          changes: [{ field: 'speedSpent', from: ship.speedSpent, to: 0 }],
-        });
+        if (ship.isDeleted) continue;
+        const changes: { field: string; from: unknown; to: unknown }[] = [];
+        if (ship.speedSpent) changes.push({ field: 'speedSpent', from: ship.speedSpent, to: 0 });
+        if (ship.mcReduction) changes.push({ field: 'mcReduction', from: ship.mcReduction, to: 0 });
+        if (changes.length > 0) {
+          subSteps.push({
+            type: 'SHIP',
+            description: `${ship.name} movement resets`,
+            unitId: ship.id,
+            changes,
+          });
+        }
       }
 
       // Ship weapons load one step at the start of their alliance's step when

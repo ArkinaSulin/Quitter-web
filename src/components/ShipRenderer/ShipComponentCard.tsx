@@ -39,9 +39,16 @@ export interface ShipCardWeaponInfo {
   onFire?: () => void;
 }
 
+export interface ShipCardAction {
+  label: string;
+  enabled: boolean;
+  title?: string;
+  onClick: () => void;
+}
+
 const MAX_BOXES = 120;
 
-export function ShipComponentCard({ data, weaponInfo }: { data: ShipComponentCardData; weaponInfo?: ShipCardWeaponInfo }) {
+export function ShipComponentCard({ data, weaponInfo, actions }: { data: ShipComponentCardData; weaponInfo?: ShipCardWeaponInfo; actions?: ShipCardAction[] }) {
   if (data.empty) {
     return (
       <button
@@ -134,6 +141,22 @@ export function ShipComponentCard({ data, weaponInfo }: { data: ShipComponentCar
           >
             Fire
           </button>
+        </div>
+      ) : actions && actions.length > 0 ? (
+        <div className="mt-auto flex flex-wrap gap-1 pt-0.5">
+          {actions.map(action => (
+            <button
+              key={action.label}
+              type="button"
+              disabled={!action.enabled}
+              title={action.title}
+              onClick={e => { e.stopPropagation(); action.onClick(); }}
+              onMouseDown={e => e.stopPropagation()}
+              className="rounded border border-amber-600 px-1 py-0.5 text-[8px] text-amber-200 hover:bg-amber-700/30 disabled:opacity-30"
+            >
+              {action.label}
+            </button>
+          ))}
         </div>
       ) : data.note ? (
         <div className="mt-auto pt-0.5 text-[7px] text-gray-500 truncate" title={data.note}>
