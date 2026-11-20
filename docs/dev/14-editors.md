@@ -86,8 +86,11 @@ weapons via the shared modal. The Armor row shows **Effective AC**,
 — **Natural AC** (`baseAc`, the unarmoured base; the value a war machine rolls
 against, see `08`). Its **Elevation (ft)** field steps in **10 ft** increments. Every
 edit is an **EDIT_UNIT**
-command through the log (undoable) and broadcasts a **red** message to the
-room. `updateUnit` maps every editable field to its snake_case column
+command through the log (undoable). A **player** editing their own unit
+broadcasts a **red** message to the whole room; a **DM** editing or **placing**
+a unit (including heroes and war machines, which are ordinary unit rows) gets
+that message on the DM's own screen only (`isGM`), so setup changes are not
+announced to players. `updateUnit` maps every editable field to its snake_case column
 (history: several fields silently never persisted because a mapping was
 missing — Max MP was the canonical bug; `baseAc → base_ac` was added in migration
 **129**). The **`UnitTooltip`** weapon line reads

@@ -14,6 +14,12 @@ export interface PlacedShip {
   hex: Hex;
   /** Derived from the helm occupant (render-only); null = unmanned/no alliance. */
   alliance?: 'friendly' | 'enemy' | 'neutral' | null;
+  /** Crew roster alliance (render-only); contrasts with the helmsman glow. */
+  crewAlliance?: 'friendly' | 'enemy' | 'neutral' | null;
+  /** DM-hidden (players do not see or interact with it). */
+  hidden?: boolean;
+  /** Ship facing (0 = nose north; +1 = 60° clockwise). */
+  facing?: number;
 }
 
 function numberOr(value: unknown, fallback: number): number {
@@ -43,6 +49,8 @@ export function parsePlacedShips(raw: unknown): PlacedShip[] {
       keelLength: numberOr(row.keelLength, 100),
       imageOffsetY: numberOr(row.imageOffsetY, 0),
       hex: { q, r, s: -q - r },
+      hidden: !!row.hidden,
+      facing: numberOr(row.facing, 0),
     });
   }
   return ships;

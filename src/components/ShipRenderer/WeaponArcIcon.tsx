@@ -59,30 +59,20 @@ export function WeaponArcDial({ arcs }: { arcs?: WeaponArc[] }) {
 
 interface WeaponArcCompassProps {
   active: WeaponArc[];
-  /** Active arcs that cannot be switched off (a frame's protected default). */
-  locked?: WeaponArc[];
   onToggle: (arc: WeaponArc) => void;
 }
 
 /**
  * Circular firing-arc picker. Click a sector to toggle that arc on or off.
  */
-export function WeaponArcCompass({ active, locked = [], onToggle }: WeaponArcCompassProps) {
+export function WeaponArcCompass({ active, onToggle }: WeaponArcCompassProps) {
   const activeSet = new Set(active);
-  const lockedSet = new Set(locked);
 
-  const fillClass = (arc: WeaponArc) => {
-    const isActive = activeSet.has(arc);
-    if (isActive && lockedSet.has(arc)) return 'fill-gray-200 opacity-50 cursor-not-allowed';
-    return isActive
-      ? 'fill-gray-200 hover:fill-red-200 cursor-pointer'
-      : 'fill-gray-700 hover:fill-gray-600 cursor-pointer';
-  };
+  const fillClass = (arc: WeaponArc) => (activeSet.has(arc)
+    ? 'fill-gray-200 hover:fill-red-200 cursor-pointer'
+    : 'fill-gray-700 hover:fill-gray-600 cursor-pointer');
 
-  const textClass = (arc: WeaponArc) => {
-    if (activeSet.has(arc)) return lockedSet.has(arc) ? 'fill-gray-700' : 'fill-gray-900';
-    return 'fill-gray-200';
-  };
+  const textClass = (arc: WeaponArc) => (activeSet.has(arc) ? 'fill-gray-900' : 'fill-gray-200');
 
   const separatorPath = [-45, 45, 135, 225]
     .map(deg => {
@@ -98,22 +88,18 @@ export function WeaponArcCompass({ active, locked = [], onToggle }: WeaponArcCom
         {ARC_ORDER.map(arc => {
           const [start, end] = ARC_SPANS[arc];
           const isActive = activeSet.has(arc);
-          const isLocked = isActive && lockedSet.has(arc);
-          const label = `${WEAPON_ARC_LABELS[arc]}${isActive ? ' (on)' : ' (off)'}${isLocked ? ' — locked default' : ''}`;
+          const label = `${WEAPON_ARC_LABELS[arc]}${isActive ? ' (on)' : ' (off)'}`;
           return (
             <path
               key={arc}
               d={sectorPath(50, 50, 46, start, end)}
               role="button"
-              tabIndex={isLocked ? -1 : 0}
+              tabIndex={0}
               aria-label={label}
               aria-pressed={isActive}
-              aria-disabled={isLocked}
-              onClick={() => {
-                if (!isLocked) onToggle(arc);
-              }}
+              onClick={() => onToggle(arc)}
               onKeyDown={event => {
-                if (!isLocked && (event.key === 'Enter' || event.key === ' ')) {
+                if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();
                   onToggle(arc);
                 }

@@ -20,6 +20,8 @@ import {
   ensureDeckSlot,
   findCardSlot,
   heroCheckBonus,
+  regionSlotAt,
+  regionSlotCount,
   swapCards,
   weaponById,
   weaponTons,
@@ -238,13 +240,16 @@ export function ShipLayout({
   presentCrewByCard,
   occupantsByCard,
   weaponInfoByCard,
-  cardActions,
+  cardFunctions,
   teamAlliances,
   hideHeroTokens = false,
   onHeroDrop,
   onHeroDropToMap,
   onDeckChange,
   onSlotContextMenu,
+  onEmptySlotClick,
+  revealAllCards = true,
+  visibleCardKeys,
   cardToggles,
   onToggleCard,
   cardChecks,
@@ -265,7 +270,7 @@ export function ShipLayout({
   /** Weapon damage/reload/fire state per weapon card key. */
   weaponInfoByCard?: Record<string, import('./ShipComponentCard').ShipCardWeaponInfo>;
   /** Station action buttons per card key. */
-  cardActions?: Record<string, import('./ShipComponentCard').ShipCardAction[]>;
+  cardFunctions?: Record<string, import('./ShipComponentCard').ShipCardFunction[]>;
   teamAlliances?: Record<string, AllianceGroup>;
   /** Shift/1 held: hide hero tokens so the card info is visible. */
   hideHeroTokens?: boolean;
@@ -282,6 +287,11 @@ export function ShipLayout({
   /** Auto-assign arm mode: card key -> enabled. */
   cardToggles?: Record<string, boolean>;
   onToggleCard?: (cardKey: string) => void;
+  /** Left-click an empty Body slot to remove that exact slot (editor). */
+  onEmptySlotClick?: (region: ShipDeckRegion, index: number) => void;
+  /** When false, cards not in `visibleCardKeys` render name + boundary only. */
+  revealAllCards?: boolean;
+  visibleCardKeys?: string[];
   /** Best current occupant check per card, for the hover tooltip. */
   cardChecks?: Record<string, { label: string; bonus: number; name: string }>;
 }) {
@@ -291,6 +301,7 @@ export function ShipLayout({
   const deckKey = `component:${deckComponent.id || 'deck'}`;
   const hullComponentForSlot = build.components.find(c => c.name === 'Hull');
   const hasLayout = !!build.deckLayout;
+  const visibleCardSet = new Set(visibleCardKeys ?? []);
   let layout = build.deckLayout ? ensureDeckSlot(build.deckLayout, deckKey) : createDefaultDeckLayout();
   if (hullComponentForSlot) {
     layout = ensureCardSlot(layout, `component:${hullComponentForSlot.id || 'hull'}`);
@@ -438,6 +449,8 @@ export function ShipLayout({
   {
     const hullComponent = componentByName(c, COMPONENT_NAMES.hull);
     const hullKey = `component:${hullComponent.id || 'hull'}`;
+    const hullDestroyed = m.hull > 0
+      && Math.max(0, Number(boxState?.[hullKey] ?? 0)) >= m.hull;
     cards[hullKey] = {
       id: hullKey,
       cardKey: hullKey,
@@ -445,7 +458,9 @@ export function ShipLayout({
       tons: m.hull,
       ac: cardAc(hullComponent.ac),
       dt: cardDt(hullComponent.dt),
-      crewRequired: 0,
+      crewRequired: hullDestroyed ? 0 : 3,
+      // Hull circles only appear while occupied (heroes/crew placed by hand).
+      crewSlots: [],
       safe: !hullComponent.hittable,
       note: hullComponent.effect || 'structural',
       kind: 'component',
@@ -476,18 +491,6 @@ export function ShipLayout({
   if (m.cargo > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.cargo);
     addComponentCard(`component:${comp.id || 'cargo'}`, 'Cargo', m.cargo, 0, comp);
-  }
-
-  if (m.crewQuarters > 0) {
-    const comp = componentByName(c, COMPONENT_NAMES.crewQuarters);
-    addComponentCard(
-      `component:${comp.id || 'crew_quarters'}`,
-      'Crew quarters',
-      m.crewQuarters,
-      0,
-      comp,
-      { note: `${stats.crewCapacity} capacity` },
-    );
   }
 
   for (const row of build.templateWeapons) {
@@ -579,6 +582,8 @@ export function ShipLayout({
       if (present <= 0) return 'red';
       return present >= required ? 'normal' : 'yellow';
     }
+    // The hull is a repair station, not a crewed operating station.
+    if (card.name === 'Hull') return 'normal';
     if (card.crewRequired > 0) {
       const required = Math.max(1, Math.ceil(card.crewRequired * (remaining / card.tons)));
       if (present <= 0) return 'red';
@@ -587,9 +592,15 @@ export function ShipLayout({
     return 'normal';
   };
 
-  const slotCard = (s: ShipDeckSlot): ShipComponentCardData => {
+  const slotCard = (s: ShipDeckSlot, region: ShipDeckRegion, index: number): ShipComponentCardData => {
     if (s.cardKey && cards[s.cardKey]) return cards[s.cardKey];
-    return empty('Empty');
+    const removable = !!onEmptySlotClick && region === 'body';
+    const card = empty(removable ? 'Remove' : 'Empty');
+    if (removable) {
+      card.emptyGlyph = '\u00d7';
+      card.onAdd = () => onEmptySlotClick!(region, index);
+    }
+    return card;
   };
 
   const handleDrop = (
@@ -602,8 +613,8 @@ export function ShipLayout({
     const from = dragRef.current;
     dragRef.current = null;
     if (!from || (from.region === region && from.index === index)) return;
-    const source = layout[from.region][from.index];
-    const target = layout[region][index];
+    const source = regionSlotAt(layout, from.region, from.index);
+    const target = regionSlotAt(layout, region, index);
     if (!source || !target) return;
     onDeckChange(swapCards(layout, from, { region, index }));
   };
@@ -617,7 +628,7 @@ export function ShipLayout({
     // runtime window has no menu at all).
     event.preventDefault();
     if (!onSlotContextMenu) return;
-    const s = layout[region][index];
+    const s = regionSlotAt(layout, region, index);
     onSlotContextMenu(event, region, index, s?.cardKey ? cards[s.cardKey] : undefined);
   };
 
@@ -634,6 +645,9 @@ export function ShipLayout({
         <div className="text-gray-400">
           {card.tons}t - AC {card.ac} - DT {card.dt}
           {info ? ` - Damage ${info.damage}` : ''}
+        </div>
+        <div className="text-gray-400">
+          {card.tons - Math.max(0, Math.min(card.tons, Number(boxState?.[key] ?? 0)))}/{card.tons} boxes intact
         </div>
         {card.kind === 'weapon' && info && <div className="text-gray-400">{info.reloadLabel}</div>}
         <div className="text-gray-300">Crew {present}/{card.crewRequired}</div>
@@ -665,13 +679,17 @@ export function ShipLayout({
   };
 
   const renderSlot = (region: ShipDeckRegion, index: number) => {
-    const s = layout[region][index];
+    const s = regionSlotAt(layout, region, index) ?? { cardKey: null };
     const hidden = hideEmpty && (!s?.cardKey || !isRenderableCard(s.cardKey));
     if (hidden) {
       return <div key={`${region}-${index}`} className="invisible min-h-[110px] w-full" />;
     }
-    const card = slotCard(s);
-    const status = cardStatus(card);
+    const card = slotCard(s, region, index);
+    const minimal = !revealAllCards && !!card.cardKey && !visibleCardSet.has(card.cardKey);
+    const status = minimal ? 'normal' : cardStatus(card);
+    const destroyedBoxes = !minimal && card.cardKey
+      ? Math.max(0, Math.min(Math.round(card.tons), Number(boxState?.[card.cardKey] ?? 0)))
+      : 0;
     return (
       <div
         key={`${region}-${index}`}
@@ -687,17 +705,17 @@ export function ShipLayout({
         onDrop={(e) => handleDrop(e, region, index)}
         onContextMenu={(e) => handleSlotMenu(e, region, index)}
         onMouseEnter={e => {
-          if (!card.empty && card.cardKey) setTooltip({ x: e.clientX, y: e.clientY, node: cardTooltip(card) });
+          if (!minimal && !card.empty && card.cardKey) setTooltip({ x: e.clientX, y: e.clientY, node: cardTooltip(card) });
         }}
         onMouseLeave={() => setTooltip(null)}
         className="relative h-full min-w-0"
       >
         <ShipComponentCard
-          data={card}
-          weaponInfo={card.cardKey ? weaponInfoByCard?.[card.cardKey] : undefined}
-          actions={card.cardKey ? cardActions?.[card.cardKey] : undefined}
+          data={{ ...card, minimal, destroyedBoxes }}
+          weaponInfo={!minimal && card.cardKey ? weaponInfoByCard?.[card.cardKey] : undefined}
+          functions={!minimal && card.cardKey ? cardFunctions?.[card.cardKey] : undefined}
         />
-        {card.cardKey && cardToggles && card.cardKey in cardToggles && (
+        {!minimal && card.cardKey && cardToggles && card.cardKey in cardToggles && (
           <button
             type="button"
             title={cardToggles[card.cardKey] ? 'Enabled for Auto' : 'Skipped by Auto'}
@@ -719,7 +737,7 @@ export function ShipLayout({
             }`}
           />
         )}
-        {card.cardKey && heroesByCard?.[card.cardKey]?.length ? (
+        {!minimal && card.cardKey && heroesByCard?.[card.cardKey]?.length ? (
           <HeroTokenLayer
             cardKey={card.cardKey}
             heroes={heroesByCard[card.cardKey]}
@@ -736,10 +754,8 @@ export function ShipLayout({
     );
   };
 
-  const renderSlotRows = (region: ShipDeckRegion, indices: number[], rowSize = 3) => {
-    const rows: number[][] = [];
-    for (let i = 0; i < indices.length; i += rowSize) rows.push(indices.slice(i, i + rowSize));
-    return rows.map((row, rowIndex) => (
+  const renderRowGroups = (region: ShipDeckRegion, rows: number[][]) =>
+    rows.map((row, rowIndex) => (
       <div
         key={`${region}-row-${rowIndex}`}
         className="flex justify-center gap-1"
@@ -751,10 +767,32 @@ export function ShipLayout({
         ))}
       </div>
     ));
+
+  const renderSlotRows = (region: ShipDeckRegion, indices: number[], rowSize = 3) => {
+    const rows: number[][] = [];
+    for (let i = 0; i < indices.length; i += rowSize) rows.push(indices.slice(i, i + rowSize));
+    return renderRowGroups(region, rows);
   };
 
-  const cardCount = (region: ShipDeckRegion): number =>
-    layout[region].filter(s => isRenderableCard(s.cardKey)).length;
+  // Body rows are explicit (1–2 slots); a lone slot centres via justify-center.
+  const renderBodyRows = (region: ShipDeckRegion) => {
+    const rows: number[][] = [];
+    let running = 0;
+    for (const row of layout.body) {
+      rows.push(Array.from({ length: row.length }, (_, col) => running + col));
+      running += row.length;
+    }
+    return renderRowGroups(region, rows);
+  };
+
+  const cardCount = (region: ShipDeckRegion): number => {
+    let count = 0;
+    const total = regionSlotCount(layout, region);
+    for (let i = 0; i < total; i += 1) {
+      if (isRenderableCard(regionSlotAt(layout, region, i)?.cardKey ?? null)) count += 1;
+    }
+    return count;
+  };
 
   const renderRegion = (
     region: ShipDeckRegion,
@@ -763,7 +801,7 @@ export function ShipLayout({
     wrapperClass = '',
     wrapperStyle?: React.CSSProperties,
   ) => {
-    const indices = layout[region].map((_, i) => i);
+    const indices = Array.from({ length: regionSlotCount(layout, region) }, (_, i) => i);
     const hiddenRegion = hideEmpty && cardCount(region) === 0;
     return (
       <div
@@ -783,7 +821,7 @@ export function ShipLayout({
           {mode === 'bow' || mode === 'row' ? (
             renderSlotRows(region, indices, 3)
           ) : mode === 'body' ? (
-            renderSlotRows(region, indices, 2)
+            renderBodyRows(region)
           ) : (
             indices.map(i => renderSlot(region, i))
           )}
@@ -859,7 +897,7 @@ export function ShipLayout({
       setCamera(current => {
         const nextZoom = Math.max(
           minZoomRef.current,
-          Math.min(1.6, current.zoom * (event.deltaY > 0 ? 0.9 : 1.1)),
+          Math.min(2, current.zoom * (event.deltaY > 0 ? 0.9 : 1.1)),
         );
         if (nextZoom === current.zoom) return current;
         const worldX = (mx - current.x) / current.zoom;

@@ -136,7 +136,8 @@ export interface ShipDeckLayout {
   bow: ShipDeckSlot[];
   stern: ShipDeckSlot[];
   port: ShipDeckSlot[];
-  body: ShipDeckSlot[];
+  /** Body rows (1–2 slots each) so a row can hold one centered slot. */
+  body: ShipDeckSlot[][];
   starboard: ShipDeckSlot[];
 }
 
@@ -156,6 +157,21 @@ export interface ShipCrew {
   cost: number;
 }
 
+export type CargoCategory =
+  | 'ship_repair_kit'
+  | 'ammunition'
+  | 'food_water'
+  | 'mission_cargo'
+  | 'general_cargo';
+
+/** One cargo manifest line (no ownership/team; quantity uses the category unit). */
+export interface CargoManifestItem {
+  name: string;
+  category: CargoCategory;
+  /** In the category unit: person-days (food), kits (repair kit), or tons. */
+  quantity: number;
+}
+
 /** A built ship template (`ship_templates` + its two join tables). */
 export interface ShipTemplate {
   id: string;
@@ -171,8 +187,6 @@ export interface ShipTemplate {
   rudders: number;
   /** Hull reinforcement units (+10 temp HP each, assigned to a component). */
   reinforcement: number;
-  /** Authored crew-quarters mass (1 ton = 5 capacity). */
-  crewQuarters: number;
   /** Authored weapon capacity mass; placed weapons must fit inside it. */
   weaponCapacity: number;
   /** Region-container deck layout. Empty until the editor syncs purchases. */
@@ -196,6 +210,8 @@ export interface ShipTemplate {
   optionalComponents: ShipTemplateComponent[];
   weapons: ShipTemplateWeapon[];
   crews: ShipCrew[];
+  /** Cargo manifest (tons; total should stay within cargo capacity). */
+  manifest: CargoManifestItem[];
   createdAt: string;
   updatedAt: string;
 }

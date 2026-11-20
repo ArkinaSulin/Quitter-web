@@ -33,6 +33,7 @@ export async function fetchShipLibrary(): Promise<ShipLibraryEntry[]> {
     weaponsRes,
     templateComponentsRes,
     templateWeaponsRes,
+    crewsRes,
   ] = await Promise.all([
     supabase.from('ship_templates').select('*').order('name'),
     supabase.from('ship_armors').select('*').order('id'),
@@ -40,6 +41,7 @@ export async function fetchShipLibrary(): Promise<ShipLibraryEntry[]> {
     supabase.from('ship_weapons').select('*').order('id'),
     supabase.from('ship_template_components').select('*'),
     supabase.from('ship_template_weapons').select('*'),
+    supabase.from('ship_crews').select('*'),
   ]);
   if (templatesRes.error) throw templatesRes.error;
   if (armorsRes.error) throw armorsRes.error;
@@ -47,6 +49,7 @@ export async function fetchShipLibrary(): Promise<ShipLibraryEntry[]> {
   if (weaponsRes.error) throw weaponsRes.error;
   if (templateComponentsRes.error) throw templateComponentsRes.error;
   if (templateWeaponsRes.error) throw templateWeaponsRes.error;
+  if (crewsRes.error) throw crewsRes.error;
 
   const componentsByTemplate = new Map<string, any[]>();
   for (const row of templateComponentsRes.data || []) {
@@ -60,6 +63,12 @@ export async function fetchShipLibrary(): Promise<ShipLibraryEntry[]> {
     list.push(row);
     weaponsByTemplate.set(row.template_id, list);
   }
+  const crewsByTemplate = new Map<string, any[]>();
+  for (const row of crewsRes.data || []) {
+    const list = crewsByTemplate.get(row.template_id) || [];
+    list.push(row);
+    crewsByTemplate.set(row.template_id, list);
+  }
 
   const armors: ShipArmor[] = (armorsRes.data || []).map(mapShipArmorRow);
   const components: ShipComponent[] = (componentsRes.data || []).map(mapShipComponentRow);
@@ -68,6 +77,7 @@ export async function fetchShipLibrary(): Promise<ShipLibraryEntry[]> {
     ...row,
     ship_template_components: componentsByTemplate.get(row.id) || [],
     ship_template_weapons: weaponsByTemplate.get(row.id) || [],
+    ship_crews: crewsByTemplate.get(row.id) || [],
   }));
 
   return templates

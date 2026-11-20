@@ -1,5 +1,549 @@
 # QuiTTER Changelog
 
+## Ship box/UI polish: hollow damage, double-click window, target cursor (2026-11-19)
+**Files:** src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, src/components/ScenarioMap/ScenarioMap.tsx, app/globals.css, docs/dev/{21-ship-runtime,changelog}.md
+
+- Destroyed component boxes now render as **hollow red** outlines instead of
+  filled dark red, so intact vs destroyed is legible without hiding the box.
+- The ship window opens on **double-click**; a single click now only selects the
+  ship (targeting clicks still fire/ram). Double-click is ignored while
+  Fire/Ram targeting is active.
+- **Ram enters target mode**: click a ship in the two forward hexes to resolve it.
+  Escape or right-click cancels. Fire and Ram share the same **amber
+  concentric-ring cursor** as the reaction-target marker (`#f59e0b`).
+- **Justification:** Ram previously auto-picked the first forward ship, which is
+  ambiguous when two ships are ahead; explicit targeting plus the cursor makes
+  the selected target and mode obvious. Hollow boxes keep damage readable while
+  preserving the card’s visual weight.
+- **Example:** two ships sit in the forward arcs — click Ram, the cursor becomes
+  the amber target rings, then click the intended ship. A later penetrating hit
+  shows that component with one hollow red box and `7/8`.
+
+## Destroyed ship component boxes now visible on cards (2026-11-19)
+**Files:** src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Deck cards now render one box per ton with destroyed boxes in **dark red** and a
+  `remaining/total` counter (also in the card tooltip). Previously every box
+  stayed yellow, so a single penetrating hit on a multi-box component produced no
+  visible change until the whole card turned red.
+- **Justification:** gun damage is recorded per box in `boxState`; the deck is the
+  only place a player sees which component lost structure, so the state must be
+  legible per box, not only as a whole-card tint.
+- **Example:** a ballista destroys one box on an 8-ton sail; the card now shows
+  seven yellow boxes, one dark-red box, and `7/8`.
+
+## Ship hits name the struck component + card AC/DT (2026-11-19)
+**Files:** src/packages/ships/lib/shipCombat.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Ship weapon hits now name the struck card: `Shrike hit Turtle with Ballista
+  light for 23 (Hull)`. A hit below the effective Damage Threshold reads
+  `… for 5 (Hull) deflected, no damage` and changes **nothing** (previously ship
+  HP was still subtracted below DT).
+- The struck card is selected **before** the attack roll so its catalog AC/DT can
+  apply: to-hit is vs `max(ship AC, card AC)` and penetration vs
+  `max(ship DT, card DT)`. `ShipHitCard` now carries `ac`/`dt` from the component
+  or weapon catalog.
+- **Justification:** card AC/DT are the higher of the ship value and the catalog
+  value. A component can be tougher than the hull — a **wooden ship with a
+  metal-cased helm** should use the helm’s AC/DT when that card is struck — so
+  the card must be picked even when the aggregate hit will be deflected.
+- **Example:** a ballista hits a wooden ship’s metal-cased helm for 5. The helm is
+  named, `max(ship DT, helm DT)` deflects the shot, and no HP or box is lost. A
+  hit for 23 penetrates, names the helm, and destroys one helm box.
+
+## Ship window MC format + firing arcs at range (2026-11-19)
+**Files:** src/components/ScenarioMap/ShipWindow.tsx, src/packages/ships/{lib/shipCombat.ts,tests/shipCombat.test.ts}, docs/dev/{21-ship-runtime,changelog}.md
+
+- Ship-window maneuver class (MC) now reads `0-2: (1) / 3-7: (2) / 8+: (3)`.
+  The ceiling value is parenthesised, and the open-ended last band uses `8+`.
+- `shipTargetArc` previously matched only the six **adjacent** hex deltas; any
+  target two or more hexes away resolved to `null`, so every weapon reported
+  “Target is outside this weapon’s firing arc.” It now resolves the full
+  displacement to its nearest hex direction using exact integer cube-dot
+  products, then applies the unchanged facing-sector map (bow/stern two
+  directions each, port/starboard one each). Adjacent behaviour is identical.
+- **Justification:** the four-arc rule is already “which side is the target on”;
+  it must not depend on the target being adjacent. Integer cube math avoids the
+  floating-point boundary flips that an angle-based helper produces at exact 60°
+  steps.
+- **Example:** a Turtle (size M) sitting in a Shrike (size L) ship’s starboard
+  arc at range now resolves to `starboard`; the three starboard-arc weapons fire
+  normally instead of all reporting outside-arc.
+
+## Ship MC display + split ship/weapon control (2026-11-19)
+**Files:** src/packages/ships/{lib/shipAccess.ts,lib/shipRuntime.ts,tests/shipAccess.test.ts}, src/packages/world/lib/placedShips.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow,ShipTemplateTooltip,useCanvasDraw}.tsx/ts, src/hooks/useGameEngine.ts, docs/dev/{21-ship-runtime,changelog}.md
+
+- In-play MC display (ship window speed bands + ship tooltip raw MC) now shows
+  the **integer ceiling**, matching the turn gate's `ceil(effectiveMC)`. The Ship
+  Editor and dry dock keep the decimal so builders can tune the fraction.
+- **Ship control and weapon control are separate.** The helmsman (hero, or NPC
+  crew) owns and moves the hull; a captain may control only through a
+  same-alliance NPC helmsman. Each weapon card is led by its highest-level hero,
+  else its NPC crew (`shipCardLeaderTeam`).
+- **Crew auto-load is per card** and clocked on the **card leader's alliance
+  turn**, not the helmsman's. A hero on the card still suppresses auto-load
+  because manual loading spends the hero's action. Previously the gate read the
+  never-written `ship_spelljammer.team`, so no ship ever auto-loaded.
+- **NPC crew default to `blue`** so every crewed card has a side. The ship window
+  no longer offers a "no team" swatch.
+- **Two-tone glow:** outer (larger) = helmsman alliance; inner (smaller) = crew
+  alliance. Contrasting rings flag split control.
+- **Manual Load/Fire** is gated to the acting hero/captain's alliance turn
+  (DM/free-play bypass). **Firing hostility** follows the firing actor's side vs
+  the target ship's helmsman alliance; the DM bypasses.
+- **Justification:** weapons can load/fire whether or not the hull moves, and a
+  foreign hero can order a card on their own turn. Tying reload to the card
+  leader keeps the time economy with whoever spends the actions.
+- **Example:** a friendly hero holds the helm of a ship whose original enemy crew
+  still mans a weapon card. The hull moves on the friendly turn (outer friendly
+  glow) while that card auto-loads on the enemy turn (inner enemy glow). A
+  friendly-occupied card acts on the friendly turn and suppresses its auto-load.
+  Previously every helm-owned ship shot was treated as allied (both `team` null
+  → `friendly`) and blocked with "Cannot fire on an allied ship."
+
+## Rotate ship image + hit box with facing (2026-11-16)
+**Files:** src/packages/ships/{lib/shipMoveCost.ts,tests/shipMoveCost.test.ts}, src/packages/world/lib/placedShips.ts, src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ScenarioMap,useCanvasDraw}.tsx/ts, docs/dev/{21-ship-runtime,changelog}.md
+
+- Ship images now rotate with `facing` (0 = nose north; +1 = 60° clockwise) in
+  both the live draw and screenshot paths.
+- `imageOffsetY` is applied in ship-local space, so it rotates with the image.
+- Ship click/drag hit-testing rotates the cursor into ship-local coordinates so
+  the hit box follows the visible image.
+- Added `shipFacingRadians` (0/1/3/6/-1 cases tested).
+
+## Fix ship front movement + movement-left preview labels (2026-11-16)
+**Files:** src/packages/ships/{lib/shipMoveCost.ts,tests/shipMoveCost.test.ts}, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- `computeShipReachable` now uses the canonical `HEX_DIRS` order. The previous
+  local neighbour array had indices 4/5 as south/south-west, so the ship
+  movement preview and legal reach appeared behind the bow.
+- Ship preview labels now show **movement left** (`pool − cost`), not movement
+  spent. Potential-only hexes use `~movement-left`.
+- Added a regression test that facing 0 reaches the two north neighbours and
+  not the south ones.
+
+## Player-ship claim confirmation + menu placement (2026-11-16, migration 173)
+**Files:** supabase/migrations/173_player_ship_claim_name.sql, src/components/ScenarioMap/{ScenarioMap,ShipContextMenu}.tsx, docs/dev/{02,21,changelog}.md
+
+- **Make Player Ship** and **Dry Dock** moved to the bottom of the ship context
+  menu behind a separator.
+- Claiming now requires confirmation and a ship-name input. The entered name is
+  used for the persistent `player_ships` record, the v1 version and the current
+  scenario instance.
+- `convert_ship_to_player(p_ship_id, p_name)` accepts the name (fallback to the
+  current ship name when blank). Everything else (v1 snapshot, serial, link,
+  deployment) is unchanged.
+- **Justification:** claiming is persistent and easy to trigger accidentally;
+  confirmation plus a name makes the identity explicit.
+
+## Claim an ordinary ship as a player ship (2026-11-16, migration 172)
+**Files:** supabase/migrations/172_player_ship_claim.sql, src/components/ScenarioMap/{ScenarioMap,ShipContextMenu,ShipSelector,LeftPanel}.tsx, docs/dev/{02,21,changelog}.md
+
+- The first persistent player ship now starts as an ordinary ship. The DM
+  right-clicks a normal placed ship and chooses **Make Player Ship**.
+  `convert_ship_to_player` snapshots the current runtime into `player_ships`,
+  creates the initial **v1** version, links `ship_spelljammer.player_ship_id`,
+  and allocates the shared serial when missing.
+- Player ships are un-teamed like ordinary ships: anyone may board/pilot under
+  the normal helm/captain rules; ownership is not a player-account lock.
+- Removed the template-row **Player** creation shortcut, so the canonical path
+  is ordinary ship → claim → dry dock/save.
+- **Justification:** a player ship cannot exist before the game starts with an
+  ordinary ship. Claiming is the bootstrap; versions are created at the claim
+  point and on every dry-dock Save.
+- Migration 172 adds the conversion RPC.
+
+## Persistent player ships, versioned saves + dry dock (2026-11-16, migration 171)
+**Files:** supabase/migrations/171_player_ships.sql, src/packages/ships/{lib/playerShips.ts,lib/shipRuntime.ts,index.ts}, src/hooks/{usePlayerShips.ts,useSupabaseSync.ts}, src/components/ScenarioMap/{ScenarioMap,ShipSelector,LeftPanel,ShipWindow,ShipContextMenu,DryDockWindow}.tsx, docs/dev/{02,21,changelog}.md
+
+- Added persistent `player_ships` + immutable `player_ship_versions`; a player
+  ship links to a normal ship template for its design and carries name, shared
+  serial, HP, damage, crew HP/dead and cargo. Heroes are never stored.
+- **Justification:** players keep using the same ship across scenarios; design
+  changes belong in the Shipyard, while HP/damage/crew/cargo are runtime state.
+  Versions are safety snapshots, created on every save.
+- Player Ships appear in the Ship Selector; the DM can create one from a
+  template and drag it onto the map. A linked scenario instance records
+  `player_ship_id`; different player ships can deploy together, each once.
+- **Dry Dock** opens from the ship right-click menu. It shows a shared window
+  with one active editor lease (name buttons; 30 s heartbeat; DM force-release),
+  blocks ship movement/turning, restores full HP on Save, shows 100 gp × missing
+  HP repair cost (display only), updates the scenario ship and appends a new
+  immutable version.
+- Player ships release automatically when the scenario DM heartbeat is stale;
+  release never syncs unsaved changes. Ships and versions remain visible.
+- Unit placement now allocates from a shared scenario serial counter
+  (`next_scenario_serial`); NPC ships allocate from the same counter. Player
+  ships use their persistent serial.
+- **Migration 171** adds the player-ship tables, serial columns, ship links,
+  dry-dock flag and lease/release RPCs. Apply it in Supabase.
+
+## Ship right-click menu, hide/delete/rotate + free weapon arcs (2026-11-16, migration 170)
+**Files:** src/packages/ships/{lib/shipRuntime.ts,lib/weaponArcs.ts,tests/weaponArcs.test.ts}, src/packages/world/lib/placedShips.ts, src/components/ScenarioMap/{ScenarioMap,ShipContextMenu,useCanvasDraw}.tsx/ts, src/components/ScenarioMap/useHexGrid.ts, src/hooks/useGameEngine.ts, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/WeaponArcIcon.tsx, supabase/migrations/170_ship_hidden.sql, docs/dev/{02,16,21,changelog}.md
+
+- Right-clicking a ship opens a context menu: **Rotate Left/Right** (60°, 1 MP,
+  MC-gated; free in free play), **Hide/Unhide** (DM), and **Delete Ship** (DM).
+- Hidden ships are invisible/non-interactive for players (no draw, click, drag,
+  or ship window; an open window closes). The DM sees them at 0.3 alpha and can
+  unhide/rotate/delete them. Heroes may stay aboard.
+- Deleting is blocked while any hero is attached; the error names them. Ships
+  are soft-deleted (`is_deleted`) through the command log, and undo/redo now
+  re-reads ships after `SHIP` steps.
+- Ship Editor firing arcs: the region still supplies defaults, but all sectors
+  are freely toggleable; no protected arc.
+- **Migration 170** adds `ship_spelljammer.hidden` and the `hidden` field mapping.
+  Apply it in Supabase.
+
+## Ship piloting, speed declaration, movement preview + End Step gate (2026-11-16)
+**Files:** src/components/ScenarioMap/{ScenarioMap,SpeedDeclarationPanel}.tsx, src/packages/ships/{lib/shipMoveCost.ts,lib/shipAccess.ts,tests/shipMoveCost.test.ts,tests/shipAccess.test.ts}, src/hooks/useGameEngine.ts, docs/dev/{21-ship-runtime,changelog}.md
+
+- Ship drag/movement is now restricted to the **control team** (Helm hero’s
+  team, else the captain’s team when the helm crew is same-alliance) or the DM,
+  only during that ship’s alliance turn. Free play keeps the same piloting rule
+  but has no turn/movement limits.
+- Wildspace speed declaration (step 1) is **mandatory before moving**. The panel
+  previews base MC and rudder trim; spell-slot cost remains informational.
+  Closing it keeps the previous speed and still counts as a declaration.
+- Base MC uses the declared speed (even speed 0) and subtracts the rudder trim
+  through `effectiveTurnDistance`. `turnsSinceFacing` resets at the start of a
+  full turn, not each step.
+- Movement preview: atmosphere shows the full remaining pool as legal; wildspace
+  shows the current step as **legal** and the rest of the turn as **potential**
+  (blue `~cost` hexes). Dropping on potential-only hexes is blocked with an error.
+- **End Step gate:** in wildspace, a current-alliance ship that is piloted,
+  non-destroyed, and has speed > 0 must declare and spend all current-step MP.
+  No stranded exemption (ram/dodge are future resolutions).
+- Example: a speed-8 ship at step 1 has 2 MP legal; steps 2–5 add a blue potential
+  preview. Moving 3 hexes is rejected this step, even though the turn preview
+  shows it reachable later.
+
+## Terminology + universal card-step ledger (2026-11-16, migration 169)
+**Files:** src/packages/ships/{lib/cardSteps.ts,lib/shipCombat.ts,lib/shipRuntime.ts,lib/shipAccess.ts,tests/cardSteps.test.ts,tests/shipCombat.test.ts,tests/shipAccess.test.ts,index.ts}, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, supabase/migrations/169_ship_card_state.sql, docs/dev/{README,02-schema-and-migrations,21-ship-runtime,changelog}.md, docs/players/player-manual.md
+
+- Standardized the vocabulary: **turn** = full alliance cycle; **step** = 1/5
+  turn in wildspace; **action** = a hero/unit resource; **card function** = a
+  button operation on a ship card; **card step** = one of a card's 5 function
+  uses per turn. Fill/Empty station is free.
+- Added a universal `card_state` ledger (per card: turn, step, steps used). Every
+  card function except Fill/Empty station spends a card step. Wildspace: at most
+  one card step per global step; atmosphere: all five during the turn. Approved
+  negative-action uses still perform the function but do not add a card step; the
+  negative hero action is a separate `OTHER_ACTION` command.
+- Weapon reload now stores only `progress`/`armed`; card steps are tracked in
+  `card_state`. Auto-load and load/fire use the shared ledger.
+- Renamed `weapon_state` → `card_state` (migration 169), keeping `weaponState` as
+  a legacy command-log alias so historical undo/replay rows still apply.
+- Code renames: `ShipCardAction` → `ShipCardFunction`, `cardActions` →
+  `cardFunctions`, `actions` prop → `functions`, `ShipCardWeaponInfo.canAct/onAct`
+  → `canUse/onUse`, `actionsUsed` → card-step state.
+- Removed the obsolete **Fill Helm** button above the crew roster.
+- **Justification/example:** the old “action” word covered hero resources, card
+  buttons, and the 5-use budget. Example: a reload-1 ballista uses card steps:
+  step 1 crew auto-load (1), step 2 hero fires (2), step 3 crew auto-load (3),
+  step 4 hero fires (4), step 5 hero loads (5); next turn resets. If the card is
+  already at 5/5, an approved negative action still fires but adds no card step.
+
+## Weapon card auto-load / manual load / fire actions (2026-11-16)
+**Files:** src/packages/ships/{lib/shipCombat.ts,lib/shipAccess.ts,lib/shipRuntime.ts,tests/shipCombat.test.ts}, src/hooks/useGameEngine.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/ShipRenderer/ShipComponentCard.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Each weapon card now has **5 card actions per turn** (a turn = one full alliance
+  cycle). Auto-load, manual load, and fire all spend one; firing also resets the
+  reload to 0.
+- **No hero on the card:** crew auto-load. Wildspace = 1 load per ship step;
+  atmosphere = up to `min(5, reload_steps)` at the start of the ship's turn, and
+  the weapon button triggers the batch again when unloaded.
+- **Hero on the card:** auto-load is suppressed; the card button becomes Load
+  while unloaded and Fire when armed. Loading needs full crew and spends 1 action
+  from every hero on the card. Firing only needs the armed weapon + a firing hero
+  (hero on the card, else captain/helmsman; DM always), and spends 1 action from
+  every card hero or the commander. Zero-action payers prompt for approval.
+- Fixed the old reload loop ignoring `heroIds` and counting dead crew.
+- **Justification / example:** crew actions are not individually tracked, so a
+  no-hero crew loads automatically; a hero on the card must consciously spend an
+  action to work the weapon, replacing that step's auto-load. With a reload-1
+  ballista: step 1 crew auto-load; step 2 hero arrives and fires; step 3 hero
+  leaves, crew auto-load; step 4 hero returns and fires; step 5 hero stays and
+  spends an action to load; next turn step 1 the hero fires again.
+- No migration (`reload` jsonb is extended with optional `turn`/`actionsUsed`).
+
+## Sail maxing / rudder trimming action cost (2026-11-16)
+**Files:** src/packages/ships/{lib/shipAccess.ts,lib/shipMoveCost.ts,tests/shipAccess.test.ts,tests/shipMoveCost.test.ts}, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Sail maxing and sail trimming are now one-check actions with the same
+  permission gate as hull repair. Each attempt costs **1 action from every
+  living hero on the card**; with no hero on the card, the captain (or helmsman
+  when no captain exists) pays. No payer ⇒ the attempt is blocked.
+- **Justification:** every crew member in a card slot spends an action to do
+  work even though only heroes have a tracked action pool; extra heroes acting as
+  crew are the same. One click = one check = one action from each payer.
+- Each action allows one try. The action is spent **regardless of the result**,
+  and every attempt (success or failure) emits a logged command + message so
+  players can see it committed and undo/replay works. A success locks that action
+  (Speed +/− or Trim MC) for the rest of the turn; failed attempts can be retried
+  with remaining actions (or with approved negative actions).
+- Example: three heroes on the Sail card, all at 0 actions, attempt a check →
+  the confirmation modal asks to go negative; approving deducts 1 from each and
+  rolls once. One success per turn, so a successful Speed + disables both Speed
+  buttons until the ship's next turn.
+- Sail speed adjusts the current step budget by ±1 with a **soft lower clamp at
+  0** and no upper clamp (a success may exceed 12; above 13 shows a warning).
+  Rudder trim stores `mcReduction = 1` for the turn; movement/turning application
+  is deferred to the movement pass.
+- `END_TURN` already resets the trim and the success locks are step-compared, so
+  both reopen on the ship's next turn. No migration.
+
+## Hull repair station + hull-destruction rule (2026-11-16)
+**Files:** src/packages/ships/{index.ts,lib/shipRuntime.ts,lib/shipRepair.ts,tests/shipRepair.test.ts}, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- The Hull card is now a hard **3-slot repair station** on every ship: slots
+  appear only while occupied, do not count toward min/full crew, and are never
+  auto-filled. Heroes can be dropped on the card; reserve crew can be added via
+  the card context menu by a hero-occupant, captain, helmsman (no captain), or DM.
+- **Repair** is gated to a same-team player with a hero on the Hull card, the
+  captain, a helmsman (when no captain exists), or the DM. It needs 3 living
+  heroes/crew on the card + 1 Ship repair kit, heals `4d8 + best repair bonus`
+  (cap 80%) **and** restores one ton of a chosen damaged card (reviving a
+  destroyed card to 1 box). One kit covers both; inapplicable halves are ignored.
+  The target chooser lists every damaged card (Hull included); any authorized
+  viewer may pick, first click wins.
+- Each hero on the Hull card spends **1 action** per repair; if no hero is on
+  the card, the captain (or helmsman when no captain exists) pays the action. If
+  a paying hero is at 0 actions the modal asks for approval and then allows the
+  action to go negative. Crew never pay actions.
+- **Hull binds the ship together:** when every hull box is destroyed the ship
+  falls apart and its HP is forced to 0 regardless of remaining HP (applied on
+  ram/weapon damage and on load). A destroyed hull has no repair station.
+- `shipCardDestroyed` now reads card-keyed `boxState` (was stale group-keyed).
+  No migration.
+
+## Named multi-line cargo manifest (2026-11-14)
+**Files:** src/packages/ships/lib/cargoManifest.ts, src/packages/ships/tests/cargoManifest.test.ts, src/components/ShipRenderer/{CargoManifest,CargoManifestDialog}.tsx, docs/dev/{16-ship-builder,21-ship-runtime,changelog}.md
+
+- Every manifest line has its own editable **name** and **category**, so multiple
+  lines can share a category (e.g. **Ore** and **Furniture** as two General cargo
+  lines). Quantities still use the category unit (person-days/kits/tons).
+- Empty lines/categories are not shown; **+ Add cargo** opens a
+  category/name/quantity dialog. Rows are edited/removed individually.
+- `normalizeCargoManifest` preserves separate named lines (no more merging fixed
+  categories); legacy `{mass}` lines still convert to quantities.
+- No migration: 168 already converts stored manifests and preserves names.
+
+## Cargo manifest category units + repair-kit consumption (2026-11-14, migration 168)
+**Files:** src/types/ship.ts, src/packages/ships/{lib/cargoManifest.ts,lib/shipRuntime.ts,lib/shipMappers.ts,tests/cargoManifest.test.ts}, src/components/ShipRenderer/{CargoManifest,CargoManifestDialog}.tsx, src/components/{ShipEditor/ShipEditor,ScenarioMap/ShipWindow,ScenarioMap/ScenarioMap}.tsx, supabase/migrations/168_cargo_manifest_units.sql, docs/dev/{02,16,21,changelog}
+
+- Manifest lines are now `{ name, category, quantity }` with per-category units:
+  **Food & water = person-days** at **200 person-days/ton**, **Ship repair kit =
+  kits** (0.1 ton each), **Ammunition / General cargo / Mission cargo = tons**.
+  Every line keeps its own name and category; multiple lines may share a
+  category. Mass is derived from quantity (`food = quantity/200`, kits = `quantity×0.1`,
+  tons = quantity).
+- **Hull repair** now requires and consumes **1 Ship repair kit** (0.1 t) in the
+  same `SHIP` command as the HP change; the manifest/performance/stats update.
+- **Food & water has no daily tick** — it is reduced when a cargo hit destroys
+  supplies (combat scope). The endurance readout is `floor(person-days / people)`.
+- Migration 168 converts existing `{name,category,mass}` manifests on
+  `ship_templates` and placed-ship snapshots to quantities (food ×200, kits ×10,
+  others = mass); runtime normalization also self-heals old snapshots.
+- Justification/example: 1 ton = 200 person-days (10 crew = 20 days); 10 repair
+  kits = 1 ton; a 2-ton hold can hold 400 person-days or 20 kits.
+- **Apply 168 in Supabase.**
+
+## Remove crew quarters; Food & water endurance (2026-11-14, migration 167)
+**Files:** src/types/ship.ts, src/packages/ships/{lib/shipStats.ts,lib/templateBuild.ts,lib/shipMappers.ts,lib/shipCombat.ts,lib/shipStations.ts,lib/cargoManifest.ts,tests/*}, src/components/{ShipEditor/ShipEditor,ShipRenderer/ShipLayout,ShipRenderer/CargoManifest,ScenarioMap/ShipWindow,ScenarioMap/ShipTemplateTooltip,ScenarioMap/ScenarioMap}.tsx, supabase/migrations/167_remove_crew_quarters.sql, docs/dev/{02,16,21,changelog}
+
+- **Crew quarters removed**: no quarter tons, `crewCapacity`, crew-capacity
+  warnings, quarters card, catalog row, mass group, box group, or Deck↔Quarters
+  displacement. Freed tonnage automatically raises `cargoCapacity`
+  (`cargoArea + remainingMass`).
+- **Deck and Cargo are unlimited hero holders**; Deck is the primary/default
+  gathering spot (Cargo is the fallback).
+- **Food & water endurance:** 200 person-days per ton (1 ton = 5 crew × 40
+  days). `Food & water: N days` replaces every crew-capacity readout (editor
+  summary/roster header, ship window summary, template tooltip, manifest header).
+  Editor counts the roster; the ship window counts living crew + living boarded
+  heroes; the template tooltip uses full crew. Amber ≤7 days, red at 0.
+- Consumption tracking stays elsewhere; a cargo hit destroying food supplies is a
+  combat-time concern.
+- Migration 167 seeds each template with `ceil(full crew / 10)` tons of Food &
+  water (≈20 days at full crew), then drops `ship_templates.crew_quarters` and the
+  built-in `Crew quarters` catalog row. Old placed snapshots keep the JSON field;
+  the code ignores it.
+- **Apply 166 + 167 in Supabase.**
+
+## Cargo manifest (2026-11-14, migration 166)
+**Files:** src/types/ship.ts, src/packages/ships/{index.ts,lib/shipStats.ts,lib/cargoManifest.ts,lib/templateBuild.ts,lib/shipMappers.ts,lib/shipRuntime.ts,tests/{cargoManifest,shipStats,shipMappers,templateBuild}.test.ts}, src/components/ShipRenderer/{CargoManifest,CargoManifestDialog}.tsx, src/components/{ShipEditor/ShipEditor,ScenarioMap/ShipWindow,ScenarioMap/ScenarioMap}.tsx, supabase/migrations/166_ship_manifest.sql, docs/dev/{02-schema-and-migrations,16-ship-builder,21-ship-runtime,changelog}.md
+
+- Added a compact **Cargo manifest** under the crew reserve list in the Ship
+  Editor and scenario ShipWindow. Lines are `{ name, category, mass }` (tons, one
+  decimal); identical lines group into one row with a count, and add/edit uses a
+  shared dialog (name, category, mass, quantity). No ownership/team, no Auto or
+  Clear.
+- Categories: **Ship repair kit**, **Ammunition**, **Food & water**, **Mission
+  cargo**, **General cargo**.
+- Capacity = `computeCargoCapacity(build) = max(cargoArea, floor(remainingMass +
+  cargoArea))`. The manifest is the **real** cargo load and drives performance
+  mass/Accel/MC (`buildShipFromTemplate` and runtime edits set
+  `build.performanceMass`).
+- Soft capacity gate: the cargo card turns yellow when exactly full and red when
+  over, showing a large `total / capacity t` fraction (e.g. `5 / 2t`) plus a
+  warning-triangle badge; saves are not blocked. Justification/example: a 2-ton
+  hold deliberately loaded with 5 tons is a valid scenario state, so it is shown
+  loudly rather than forbidden.
+- Persistence: `ship_templates.manifest` jsonb (migration 166), frozen into a
+  placed ship's snapshot. Runtime edits (DM/captain, or helmsman when no captain)
+  rewrite the snapshot, `loadedCargo`, and derived stats via one `SHIP` command.
+  The editor's cargo simulation slider stays preview-only.
+- Helpers: `cargoManifestMass`, `groupCargoManifest`, `normalizeCargoManifest`,
+  `roundCargoMass`, `computeCargoCapacity`, with tests.
+- **Apply 166 in Supabase.**
+
+## Ship station roles, per-card Fill/Empty, and card visibility (2026-11-14)
+**Files:** src/packages/ships/{index.ts,lib/shipAccess.ts,tests/shipAccess.test.ts}, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- New `shipViewerAccess` (team-based hero ownership): **captain** = my hero on a
+  full Bridge (every bridge card at `crew + heroes >= required`); **helmsman** =
+  my hero on a Helm.
+- **Card visibility:** DM, captain, and helmsman see every card in full. Any
+  other stationed hero sees only their own card(s); other cards render **name +
+  boundary only** (`ShipComponentCard.minimal`: no boxes/AC/DT/crew/weapons/
+  actions/hero tokens/tooltip). No hero aboard = every card minimal.
+- **Crew management roles:** DM and captain manage any card; a helmsman manages
+  any card only while **no captain exists** (otherwise helm only); any other
+  hero manages only their own card(s). This now gates Auto/Clear/Fill Helm/crew
+  team as well.
+- **Card context menu:** right-click a card with crew slots → **Fill station**
+  (best reserve crew for the card's check stat, partial fill) and **Empty
+  station** (crew return to reserve, heroes stay). Rendered through the shared
+  `Floating` portal above the floating ship window; only opens on manageable
+  cards. Optional component cards with crew slots are eligible.
+- Best in ship skill stays visible to all.
+- Justification: crew management should follow the characters actually manning
+  the ship. Example: a weapon-station hero sees only the weapon card and can
+  fill/empty it; a full-bridge captain sees and manages the whole deck; a
+  helmsman sees all but is a management backup only when no captain is present.
+- No migration (role checks are client-side, like the existing ship commands).
+
+## Ship window text and labels (2026-11-14)
+**Files:** src/components/ShipRenderer/CrewRoster.tsx, src/components/ScenarioMap/ShipWindow.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Crew roster header **Roster → Crew reserve**; empty state **No living crew →
+  No crew in reserve**.
+- Best in ship skill labels: **Helmsmanship (Helm)**, **Captaincy (Bridge)**,
+  **Sail Trimming (Rudder)**, **Sail maxing (Sail)**, **Weapon handling**,
+  **Repair (Hull)**.
+- Bridge card action button text **Bridge → Command bonus**.
+
+## Crew count is unbounded (no 50 cap) (2026-11-14)
+**Files:** src/components/{shared/RepeatStepper,ShipRenderer/CrewAdjustDialog,ShipEditor/ShipEditor,ScenarioMap/ScenarioMap}.tsx, docs/dev/{16-ship-builder,changelog}.md
+
+- The Adjust Crew dialog no longer disables `+` at 50. `RepeatStepper` now takes
+  an optional `max`; without one the `−`/`+` buttons clamp only to the minimum,
+  and the range slider starts at 0–50 and **grows its right edge with the value**
+  past 50.
+- Removed the hard `Math.min(50, …)` clamps in both `applyCrewAdjust`
+  implementations (Ship Editor and the scenario ship window soft-gate wrapper),
+  and the Add Crew count input's `max` attribute. This applies to every crew
+  increment path.
+- No migration.
+
+## Ship Selector loads template crew (2026-11-14)
+**Files:** src/hooks/useShipTemplates.ts, docs/dev/{21-ship-runtime,changelog}.md
+
+- **Bug:** crew added in the Ship Editor never appeared on ships placed from the
+  scenario map; the roster was empty and weekly operation ignored crew cost.
+- **Cause:** `fetchShipLibrary` (Ship Selector) queried `ship_templates`,
+  components, and weapons but not `ship_crews`, so every library template had
+  `crews: []`. Placement then froze that empty roster into the snapshot.
+- **Fix:** the library now loads `ship_crews` and injects them into
+  `mapShipTemplateRow`, mirroring the Ship Editor loader. New placements snapshot
+  the template roster and list the crew as available in the ship window.
+- Existing placed ships stay frozen by design (snapshot-at-placement); add crew
+  in the ship window or delete/re-place to pick up template changes.
+- No migration.
+
+## New minimum/full crew formulas (2026-11-14)
+**Files:** src/packages/ships/{lib/shipStats.ts,tests/shipStats.test.ts}, docs/dev/{16-ship-builder,changelog}.md
+
+- **Minimum crew** = one helm + the sail and rudder slots:
+  `helmCrew + max(1, floor(sails / 4)) + max(1, ceil(rudders / 2))`. Command
+  bridge, optional components and weapon handling crew are excluded. Example:
+  Star Moth drops from 16 (helm + bridge + sail + rudder) to 11 (bridge excluded).
+- **Full crew** = `max(minCrew × 2, every crew slot on the ship)`, where every
+  slot is all component crew (helm × count, bridge, sail, rudder, optional) plus
+  weapon handling crew. Example: Shuttle min 3 with 3 slots → full 6; Star Moth
+  min 11, 24 slots → full 24.
+- Reference templates: Racer full 8, Shuttle full 6, Wasp full 10, Damselfly full
+  10, Star Moth min 11 / full 24. No migration.
+
+## Ship Editor summary row layout (2026-11-14)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, docs/dev/{16-ship-builder,changelog}.md
+
+- Summary row 2 is now Cargo / Crew (min/full) / **Quarters capacity** / Ship
+  cost (Quarters capacity inserted between crew and ship cost).
+- Summary row 3 is now Atmospheric speed / Space Acceleration / Maneuver class
+  (MC) / **Weekly operation** (moved from row 2, placed right of MC).
+- All other summary cells are unchanged.
+
+## Crew capacity is no longer a hard save restriction (2026-11-14)
+**Files:** src/components/ShipEditor/ShipEditor.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{16-ship-builder,changelog}.md
+
+- Removed the Ship Editor hard block that refused to save when the crew roster
+  exceeded the `crew_quarters × 5` capacity. **Create/Save** is no longer
+  disabled; an over-capacity roster shows an amber informational note
+  (`allowed`) instead of a red error.
+- Scenario ship window: adjusting a crew group so the resulting roster exceeds
+  capacity now opens a **soft-gate confirmation** ("Adjust anyway") and proceeds
+  if confirmed; the extra crew is kept beyond capacity.
+- **Justification:** crew quarters model the comfortable complement, not a hard
+  ceiling, and a DM may deliberately overload a ship for a scenario.
+  **Example:** capacity 5 with 7 crew → the editor saves with an amber "exceeds
+  capacity (allowed)" note; adjusting the roster to 7 in play asks "Adjust
+  anyway?" first.
+- No migration.
+
+## Ship roster shows available crew + Body slot removal (2026-11-14)
+**Files:** src/components/{ShipRenderer/CrewRoster,ShipRenderer/ShipLayout,ShipRenderer/ShipComponentCard,ShipEditor/ShipEditor,ScenarioMap/ShipWindow}.tsx, src/packages/ships/{lib/deckLayout.ts,tests/deckLayout.test.ts}, docs/dev/{16-ship-builder,21-ship-runtime,changelog}.md
+
+- **Roster (Ship Editor + scenario ship window).** The roster now lists only
+  crew **not assigned to a station**; assigned crew already appear on their
+  station card, so repeating them hid the reserve pool. Example: 5 identical
+  Crew, 2 on a weapon → roster shows `3 Crew`, the weapon card shows the 2.
+  The editor has no station assignment, so all its crew remain listed.
+- A narrow leading **count column** (2 digits) shows the available crew in each
+  grouped line; the inline `xN` name suffix was removed.
+- **Body deck slots (row-aware).** Body is now stored as an explicit array of
+  rows (`ShipDeckLayout.body: ShipDeckSlot[][]`, 1–2 slots per row; legacy flat
+  layouts convert on read via `normalizeDeckLayout`), so row boundaries survive a
+  save/reload. Left-clicking an empty Body slot removes that exact slot
+  (`removeEmptySlotAt`); **Remove slot** on an occupied slot still trims the
+  bottom-most empty. Removing one slot from a 2-slot row leaves a centred
+  1-slot row and later rows keep their shape; removing a lone row's slot deletes
+  the row and shifts later rows up. Body can shrink to one slot, and Add slot
+  fills a half-row before appending a new bottom row. **Fixes a bug** where the
+  old flat-array splice pulled every later slot up one index, reflowing rows
+  below the removed slot. No migration (jsonb shape, backward-compatible).
+- No migration.
+
+## DM unit/ship place + edit messages are DM-screen-only (2026-11-14)
+**Files:** src/hooks/{useMessageSync,useGameEngine}.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{14-editors,21-ship-runtime,changelog}.md
+
+- **Justification:** setting up a scenario (placing or editing units) is a
+  DM-side operation; broadcasting each change as a room message leaked setup
+  detail to players and added noise. A player editing their own unit is still a
+  notable event and stays a **red** message to everyone (unchanged).
+- `useGameEngine.execute` now routes the message: when `isGM` and the action is
+  `EDIT_UNIT` or `PLACE`, the message is added locally only (`addLocalError` /
+  `addLocalMessage`) instead of broadcast. An explicit `localOnly` option covers
+  DM ship commands that are not `PLACE`.
+- Heroes and war machines are ordinary `units` rows, so the `EDIT_UNIT` / `PLACE`
+  rule covers them automatically. Ship placement already uses `PLACE`; the
+  DM-only crew roster commands (roster adjusted / revive / discard) and turn-0
+  ship placement pass `{ localOnly: true }` / `{ localOnly: isGM }`.
+- Only the notification message changes — unit/ship state still syncs through
+  realtime and the command log (undo/replay unaffected).
+- `useMessageSync` now also returns the local-only `addLocalMessage` /
+  `addLocalError` senders alongside the broadcast `addMessage` / `addError`.
+
 ## Fix stale ability/save field names in scenario unit editor/tooltip (2026-11-14)
 **Files:** src/components/ScenarioMap/{UnitEditorModal,UnitTemplateTooltip}.tsx, docs/dev/changelog.md
 

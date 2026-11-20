@@ -41,7 +41,7 @@ export function shipStationCheckLabel(kind: ShipStationKind): string {
 
 /**
  * Every card that can hold crew for a ship action, in deck render order.
- * Hull/Deck/Crew quarters/Cargo are deliberately excluded.
+ * Hull/Deck/Cargo are deliberately excluded.
  */
 export function shipStationCards(build: ShipBuild): ShipStationCard[] {
   const byKey = new Map<string, ShipStationCard>();

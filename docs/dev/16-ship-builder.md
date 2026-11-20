@@ -73,8 +73,9 @@ its cost and the Total row sums them. All user-facing “tonnage” wording is
 **mass**; the unit remains **ton**.
 
 The summary frame is arranged in three rows: Ship Mass / Armor / HP / Damage
-threshold; Cargo / Crew (min/full) / Ship cost / Weekly operation; Atmospheric
-speed / Space Acceleration / Maneuver class. A cargo simulation slider runs from
+threshold; Cargo / Crew (min/full) / Food & water / Ship cost; Atmospheric
+speed / Space Acceleration / Maneuver class / Weekly operation. **Food & water**
+shows the endurance in days. A cargo simulation slider runs from
 0 to max cargo and only changes the cargo load used for acceleration/MC; it never
 changes cargo allocation, cost, or the saved cargo value. **Weekly operation
 cost = round(0.4% × ship cost + roster weekly cost)**. The existing MC-by-speed
@@ -95,14 +96,29 @@ layout, and crew roster (no second weapon list).
 
 The deck uses five **region containers**: Bow, Port, Body, Starboard, and Stern.
 The initial deck is Bow 4 (reverse T: top center + 3 below), Port 4 (1 column),
-Body 8 (2 columns × 4 rows), Starboard 4 (1 column), and Stern 3 (one row).
+Body 8 (four rows of 2), Starboard 4 (1 column), and Stern 3 (one row).
+**Body is stored as an explicit array of rows** (`ShipDeckLayout.body:
+ShipDeckSlot[][]`, 1–2 slots per row); the other regions stay flat and are
+rendered in fixed-width rows. Addressable slot indices are row-major, so
+drag/drop and the context menu keep one linear coordinate.
 Slots are generic; drag a card onto an
 empty slot to move it, or onto an occupied slot to swap. When every slot is full,
 a new middle row is added above Stern: Port +1, Body +2 (preserving its two
 columns), Starboard +1. Right-click a slot/card to open the deck context menu:
-**Add slot** appends one empty slot to the current region; **Remove slot**
-deletes its bottom-most empty slot down to the one-row minimum: Bow 1 (center),
-Port 1, Starboard 1, Body 2, Stern 1. Occupied slots are never removed. Default
+**Add slot** appends one empty slot to the bottom of the current region (a Body
+half-row is filled back to two columns first); **Remove slot** deletes its
+bottom-most empty slot down to the minimum: Bow 1 (center), Port 1, Starboard 1,
+**Body 1 slot**, Stern 1. Occupied slots are never removed. In Body,
+left-clicking an empty slot (or **Remove slot** on one) removes that exact slot;
+right-clicking an occupied slot still trims the bottom-most empty. Row structure
+is preserved: removing one slot from a 2-slot row leaves a centred 1-slot row
+and later rows keep their shape; removing a lone row's slot deletes that row and
+shifts later rows up. Justification: Body rows are two columns, so trimming the
+slot under the cursor lets the DM shrink a specific row instead of always taking
+the bottom one, and the stored row lengths keep a half-row from reflowing the
+rows below it. Example: last Body row = two empty slots → remove the left (the
+right centres) → remove the right (the row is gone, Body shrinks by one row).
+Add slot always appends to the bottom. Default
 placement puts weapons in Bow/Stern and other components in
 Body/Port/Starboard. All regions share one card width track:
 Port/Body/Starboard occupy 4 card columns in the middle, while Bow/Stern use 3
@@ -139,22 +155,59 @@ ships draw beneath unit tokens and in screenshots. This pass is placement only:
 moving/removing ships, selection, combat, and the ship engine are not included.
 
 Weapon cards carry a small display-only firing-arc dial in the top-right: four
-90° fan sectors, filled white for the arcs the weapon can target. Non-Body frames
-protect their default arc (Bow→Bow, Port→Port, Starboard→Starboard, Stern→Stern);
-Body starts at 360° (all four) and any arc can be removed. Right-click a weapon
-card to open a large circular four-sector compass (↑ Bow, ← Port, Starboard →,
-↓ Stern). Clicking a sector toggles its arc on or off; active arcs are highlighted
-and a frame's protected default arc is locked (dimmed, not removable).
+90° fan sectors, filled white for the arcs the weapon can target. The deck region
+supplies the starting default (Bow→Bow, Port→Port, Starboard→Starboard,
+Stern→Stern; Body starts at 360° with all four), but the maker has **total
+freedom**: right-click a weapon card to open the large circular four-sector
+compass (↑ Bow, ← Port, Starboard →, ↓ Stern) and toggle any sector on or off.
+Defaults are not protected; any combination, including zero arcs, is allowed.
 
 `ship_crews`: named/unnamed crew with level, authored HP, 6 stats, and required
 weekly cost. New crew defaults are **HP = 10 + 7 × (level − 1)**, **weekly cost =
 level² × 2 + 2**, and **Str-Dex-Con-Int-Wis-Cha = 12-14-14-10-14-10**. HP and cost
 auto-follow their level defaults until the user edits them, then the authored
-values are kept. Roster rows display
-`Name — Level N, HP N, S-D-C-I-W-C, N Gp`. The roster is the actual crew count;
-it has no hard cap, but saving is blocked while it exceeds
-`crew_quarters × 5` capacity (red error). There is no `crew_count` or
-`passengers` column: min/full crew are derived. Access caps (059):
+values are kept. Roster rows display a narrow leading **available-count**
+column (2 digits) then `Name — Level N`. The count is the number of crew in that
+grouped row (name + level + stats + cost); the editor has no station assignment,
+so every editor crew is available. Hover shows HP, stats, and weekly cost.
+The roster is the actual crew count;
+it has no hard cap (the count and roster are unbounded — the Adjust Crew dialog's
+slider grows past 50 and the `−`/`+` buttons never cap the high side). There is no
+crew-capacity limit and no quarters capacity: crew sleep wherever there is space.
+Food & water supply is the endurance limiter — see **Food & water** below. There is
+no `crew_count` or `passengers` column: min/full crew are derived. Access caps (059):
+`can_view_ship_editor` / `can_use_ship_editor` — both admin-only; Lobby's
+Archfar's Shipyard button routes to `/ship-editor`.
+
+**Food & water.** The Food & water quantity in the cargo manifest determines how
+long the ship sustains its living crew: **200 person-days per ton** (1 ton = 5
+crew × 40 days; dried food/water). The editor and ship window show
+`Food & water: N days` in place of the old crew-capacity readout (amber at ≤7,
+red at 0). The template tooltip uses the design full crew; the editor uses the
+roster; the scenario uses living crew + boarded heroes. There is no daily
+consumption tick: food/water is reduced when a cargo hit destroys supplies (combat
+time). Migration 167 seeds `ceil(full crew / 10)` tons of Food & water per
+template (≈20 days at full crew).
+
+**Cargo manifest.** A compact list below the crew reserve roster holds
+`{ name, category, quantity }` lines. Quantities use the category unit:
+**Food & water** = person-days, **Ship repair kit** = kits (0.1 ton each),
+**Ammunition** / **General cargo** / **Mission cargo** = tons. Every line has its
+own name and category, so multiple lines can share a category (e.g. **Ore** and
+**Furniture** as two General cargo lines). Empty categories are absent; **+ Add
+cargo** opens a category/name/quantity dialog. Goods have no owner/team. Total
+cargo must stay within
+`computeCargoCapacity(build) = max(cargoArea, floor(remainingMass + cargoArea))`;
+the manifest is the **real** load used for performance mass/Accel/MC.
+Over-capacity is a **soft** gate: the cargo card turns yellow at exactly full and
+red above it, shows the fraction (e.g. `5 / 2t`) with a warning-triangle icon, but
+saving is not blocked. Justification/example: a 2-ton hold carrying 5 tons is a
+legitimate overloaded ship for a scenario, so the card screams red instead of
+blocking the DM. The editor's cargo simulation slider remains a preview-only
+what-if and no longer represents the saved cargo; placed ships use the manifest.
+Hull repair requires and consumes **1 Ship repair kit**. Food & water mass feeds
+the endurance readout (200 person-days/ton) and is displayed in the manifest
+header and the summary. Access caps (059):
 `can_view_ship_editor` / `can_use_ship_editor` — both admin-only; Lobby's
 Archfar's Shipyard button routes to `/ship-editor`.
 
@@ -171,7 +224,7 @@ The player designates a **total ship mass**. Hull and armor are paid out of it:
 
 - `hullMass = totalMass × (10% + totalMass / 500)`
 - `armorMass = totalMass × armor.massPct`
-- the rest is furnished with components, weapons, cargo and crew quarters.
+- the rest is furnished with components, weapons and cargo.
 
 **Tonnage is allocated in whole tons.** Every group rounds to the nearest ton
 (`hull 2.8→3`, `rudder 4.5→5`, `hull 13.2→13`), which is what makes the
@@ -199,7 +252,7 @@ values are still shown in the editor's formula panel.
 | Weapon | authored | per weapon | each weapon uses its catalog mass; handling crew is **not** min crew |
 | Reinforcement | 1t | 0 | protects one card; first hit destroys the reinforcement, next hit damages the component |
 | Cargo | 1t | 0 | carries 1t cargo |
-| Crew quarters | 1t | 5 | **authored** tons; capacity = `tons × 5` |
+| Crew quarters | — | — | **removed in migration 167** — crew sleep in Deck/Cargo; Food & water limits endurance |
 
 **Weapon capacity** is a separate authored mass budget on the template. It
 counts toward ship mass even when fewer weapons are placed. Crafted weapon
@@ -215,12 +268,15 @@ Ram restriction. The weapon child list uses deck terminology for direction:
 Bow, Body, Port, Starboard, Stern; there is no `mount_slot` column. Direction
 badges are shown only on weapon cards, never on component cards.
 
-**Minimum crew ceils each component group separately, then sums.** Sails require
-0 crew; weapon handling crew is excluded (it is not needed for spelljamming).
-Full crew is `max(minCrew × 2, minCrew + weaponCrew)` to cover two shifts and
-weapon handlers. Examples: Shuttle min `1 + ceil(0.5) = 2` (full 4); Wasp min
-`1 + ceil(3) = 4` (full 8); Damselfly min 3 with weapon crew 6 → full 9; Star
-Moth min `1 + 5 + ceil(9) = 15` (full 30).
+**Minimum crew = one helm + the sail and rudder slots.** Command bridge,
+optional components and weapon handling crew are excluded (weapons are not
+needed for spelljamming). Sail slots = `max(1, floor(sails / 4))`; rudder slots
+= `max(1, ceil(rudders / 2))`; the helm slot = the helm's catalog crew.
+**Full crew = max(minCrew × 2, every crew slot)** where every crew slot is all
+component crew (helm × count, bridge, sail, rudder, optional) plus weapon
+handling crew. Examples: Shuttle min 3, all slots 3 → full 6; Wasp min 5, all
+slots 7 → full 10; Damselfly min 4, all slots 10 → full 10; Star Moth min 11
+(bridge excluded), all slots 24 → full 24.
 
 ### Performance
 
@@ -246,7 +302,7 @@ Moth min `1 + 5 + ceil(9) = 15` (full 30).
 
 - **Hull:** `totalMass × 1000gp`; the first helm is included in this price.
 - Every composition row shows its own cost; the Total row sums them.
-- Components use their catalog cost × count; cargo/quarters use cost × tons;
+- Components use their catalog cost × count; cargo uses cost × tons;
   optional components use cost × count; armor has no cost field.
 - Helm cost is `max(0, helm − 1) × helm component cost` (extra/backup helms only).
 - **Weapon capacity row:** capacity × the weapon-capacity component cost.
@@ -255,6 +311,10 @@ Moth min `1 + 5 + ceil(9) = 15` (full 30).
 - **Weekly operation cost:** `round(0.4% × ship cost + Σ crew weekly cost)`.
 
 ### Reference templates (regression oracle)
+
+> Crew quarters was removed in migration 167. The historical `Quarters`/`Capacity`
+> columns below are retained only for the old regression oracle; current rules use
+> Deck/Cargo sleeping and Food & water endurance.
 
 | Ship | Mass | Accel | MC | HP | AC | Min crew | Full crew | Quarters | Capacity |
 |---|---|---|---|---|---|---|---|---|---|
@@ -268,6 +328,9 @@ The template tonnage rows are asserted in `shipStats.test.ts`; they are the
 quickest way to catch rounding regressions.
 
 ### Master template list (migration 144)
+
+> The `Quarters` column is historical; migration 167 removes crew quarters and
+> seeds Food & water instead.
 
 The 24 templates replace the old rows. They store structural values only; no
 component/weapon rows are seeded. Weapon tonnage is the authored capacity. Any

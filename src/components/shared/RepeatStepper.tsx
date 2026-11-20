@@ -11,13 +11,16 @@ export interface RepeatStepperProps {
 }
 
 /** Slider + −/+ buttons with hold-to-repeat (copied from MagicCastModal). */
-export function RepeatStepper({ value, onChange, min = 0, max = 50, disabled = false }: RepeatStepperProps) {
+export function RepeatStepper({ value, onChange, min = 0, max, disabled = false }: RepeatStepperProps) {
   const repeatRef = useRef<{ delay: ReturnType<typeof setTimeout> | null; interval: ReturnType<typeof setInterval> | null }>({
     delay: null,
     interval: null,
   });
   const valueRef = useRef(value);
   valueRef.current = value;
+  // A finite `max` bounds the control. Without one the slider starts at 0–50 and
+  // its right edge grows with the value, so the value itself is unbounded.
+  const sliderMax = max ?? Math.max(50, value);
 
   const stopRepeat = useCallback(() => {
     if (repeatRef.current.delay !== null) { clearTimeout(repeatRef.current.delay); repeatRef.current.delay = null; }
@@ -27,7 +30,8 @@ export function RepeatStepper({ value, onChange, min = 0, max = 50, disabled = f
   useEffect(() => () => stopRepeat(), [stopRepeat]);
 
   const step = useCallback((delta: number) => {
-    const next = Math.min(max, Math.max(min, valueRef.current + delta));
+    let next = Math.max(min, valueRef.current + delta);
+    if (max !== undefined) next = Math.min(max, next);
     if (next !== valueRef.current) onChange(next);
   }, [min, max, onChange]);
 
@@ -55,16 +59,16 @@ export function RepeatStepper({ value, onChange, min = 0, max = 50, disabled = f
       <input
         type="range"
         min={min}
-        max={max}
+        max={sliderMax}
         step={1}
         value={value}
         disabled={disabled}
-        onChange={e => onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
+        onChange={e => onChange(Math.max(min, Math.min(sliderMax, Number(e.target.value) || 0)))}
         className="min-w-24 flex-1 accent-yellow-400 disabled:opacity-40"
       />
       <button
         type="button"
-        disabled={disabled || value >= max}
+        disabled={disabled || (max !== undefined && value >= max)}
         onPointerDown={e => startRepeat(e, 1)}
         onPointerUp={stopRepeat}
         onPointerLeave={stopRepeat}

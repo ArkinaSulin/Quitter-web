@@ -1,6 +1,7 @@
 // src/packages/ships/lib/weaponArcs.ts
-// Per-card firing arcs. A non-Body frame gives one protected default arc; Body
-// starts with all four arcs (360°) and any arc can be removed.
+// Per-card firing arcs. The deck region supplies a starting default (Bow/Port/
+// Starboard/Stern one arc, Body all four), but the maker may remove or add any
+// arc freely; the defaults are no longer protected.
 
 import { ShipDeckRegion, WeaponArc, WeaponArcOverrides } from '@/types/ship';
 
@@ -20,18 +21,8 @@ const REGION_DEFAULT_ARC: Record<Exclude<ShipDeckRegion, 'body'>, WeaponArc> = {
   stern: 'stern',
 };
 
-type FrameRegion = Exclude<ShipDeckRegion, 'body'>;
-
 export function defaultWeaponArcs(region: ShipDeckRegion): WeaponArc[] {
   return region === 'body' ? [...WEAPON_ARCS] : [REGION_DEFAULT_ARC[region]];
-}
-
-export function isProtectedDefaultArc(region: ShipDeckRegion, arc: WeaponArc): boolean {
-  return region !== 'body' && REGION_DEFAULT_ARC[region as FrameRegion] === arc;
-}
-
-export function canRemoveWeaponArc(region: ShipDeckRegion, arc: WeaponArc): boolean {
-  return !isProtectedDefaultArc(region, arc);
 }
 
 function clean(overrides: WeaponArcOverrides): WeaponArcOverrides | null {
@@ -50,9 +41,7 @@ export function effectiveWeaponArcs(
 ): WeaponArc[] {
   const active = new Set(defaultWeaponArcs(region));
   for (const arc of overrides?.added ?? []) active.add(arc);
-  for (const arc of overrides?.removed ?? []) {
-    if (!isProtectedDefaultArc(region, arc)) active.delete(arc);
-  }
+  for (const arc of overrides?.removed ?? []) active.delete(arc);
   return WEAPON_ARCS.filter(arc => active.has(arc));
 }
 
@@ -80,7 +69,6 @@ export function removeWeaponArc(
   arc: WeaponArc,
 ): WeaponArcOverrides {
   if (!effectiveWeaponArcs(region, overrides).includes(arc)) return overrides ?? {};
-  if (isProtectedDefaultArc(region, arc)) return overrides ?? {};
   const next: WeaponArcOverrides = {
     added: [...(overrides?.added ?? [])],
     removed: [...(overrides?.removed ?? [])],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ShipArmor, ShipComponent, ShipTemplate, ShipWeapon } from '@/types/ship';
-import { buildShipFromTemplate, createDefaultDeckLayout, findCardKeyForComponent } from '@/packages/ships';
+import { bodySlots, buildShipFromTemplate, createDefaultDeckLayout, findCardKeyForComponent } from '@/packages/ships';
 
 const ARMORS: ShipArmor[] = [
   { id: 'wood', name: 'wood', massPct: 0, ac: 15, hpMult: 1 },
@@ -30,7 +30,6 @@ const TEMPLATE: ShipTemplate = {
   sails: 2,
   rudders: 1,
   reinforcement: 1,
-  crewQuarters: 1,
   weaponCapacity: 2,
   deckLayout: createDefaultDeckLayout(),
   reinforcements: ['weapon:w1:0', 'component:stale'],
@@ -44,6 +43,7 @@ const TEMPLATE: ShipTemplate = {
   optionalComponents: [{ componentId: 'cargo', count: 1 }],
   weapons: [{ id: 'w1', weaponId: 'ballista', count: 1 }],
   crews: [],
+  manifest: [],
   createdAt: '',
   updatedAt: '',
 };
@@ -57,20 +57,19 @@ describe('buildShipFromTemplate', () => {
     expect(build!.templateWeapons).toEqual(TEMPLATE.weapons);
     expect(build!.reinforcements).toEqual(['weapon:w1:0']);
     expect(build!.deckLayout!.bow.some(slot => slot.cardKey?.startsWith('weapon:'))).toBe(true);
-    expect(build!.deckLayout!.body.some(slot => slot.cardKey?.startsWith('component:'))).toBe(true);
+    expect(bodySlots(build!.deckLayout!).some(slot => slot.cardKey?.startsWith('component:'))).toBe(true);
   });
 
   it('resolves per-unit and aggregate card keys by component name', () => {
     const build = buildShipFromTemplate(TEMPLATE, ARMORS, COMPONENTS, WEAPONS)!;
     expect(findCardKeyForComponent(build, 'Helm')).toBe('component:helm:0');
-    expect(findCardKeyForComponent(build, 'Crew quarters')).toBe('component:quarters');
     expect(findCardKeyForComponent(build, 'Hull')).toBe('component:hull');
     expect(findCardKeyForComponent(build, 'Missing')).toBeNull();
   });
 
   it('keeps a no-box Hull card for tiny ships', () => {
     const build = buildShipFromTemplate({ ...TEMPLATE, totalMass: 1 }, ARMORS, COMPONENTS, WEAPONS)!;
-    expect(build.deckLayout!.body.some(s => s.cardKey === 'component:hull')).toBe(true);
+    expect(bodySlots(build.deckLayout!).some(s => s.cardKey === 'component:hull')).toBe(true);
   });
 
   it('returns null when no armor is available', () => {

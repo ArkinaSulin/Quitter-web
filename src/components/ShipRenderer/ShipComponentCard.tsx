@@ -17,6 +17,8 @@ export interface ShipComponentCardData {
   cardKey?: string;
   name: string;
   tons: number;
+  /** Boxes already destroyed (runtime only); each ton is one box. */
+  destroyedBoxes?: number;
   ac: number;
   dt: number;
   crewRequired: number;
@@ -27,6 +29,9 @@ export interface ShipComponentCardData {
   kind?: 'component' | 'weapon';
   arcs?: WeaponArc[];
   empty?: boolean;
+  emptyGlyph?: string;
+  /** Name + boundary only (viewer cannot see this card's details). */
+  minimal?: boolean;
   onAdd?: () => void;
   onContextMenu?: (event: React.MouseEvent, data: ShipComponentCardData) => void;
 }
@@ -35,11 +40,14 @@ export interface ShipCardWeaponInfo {
   damage: string;
   reloadLabel: string;
   armed: boolean;
-  canFire: boolean;
-  onFire?: () => void;
+  /** Primary weapon button: Fire, Load, or Auto. */
+  label: string;
+  canUse: boolean;
+  title?: string;
+  onUse?: () => void;
 }
 
-export interface ShipCardAction {
+export interface ShipCardFunction {
   label: string;
   enabled: boolean;
   title?: string;
@@ -48,7 +56,7 @@ export interface ShipCardAction {
 
 const MAX_BOXES = 120;
 
-export function ShipComponentCard({ data, weaponInfo, actions }: { data: ShipComponentCardData; weaponInfo?: ShipCardWeaponInfo; actions?: ShipCardAction[] }) {
+export function ShipComponentCard({ data, weaponInfo, functions }: { data: ShipComponentCardData; weaponInfo?: ShipCardWeaponInfo; functions?: ShipCardFunction[] }) {
   if (data.empty) {
     return (
       <button
@@ -60,14 +68,26 @@ export function ShipComponentCard({ data, weaponInfo, actions }: { data: ShipCom
             : 'border-gray-700 text-gray-700 cursor-default'
         }`}
       >
-        <span className="text-xl leading-none">+</span>
+        <span className="text-xl leading-none">{data.emptyGlyph ?? '+'}</span>
         <span className="text-[8px] uppercase tracking-wide mt-1">{data.name}</span>
       </button>
     );
   }
 
+  if (data.minimal) {
+    return (
+      <div className="h-full min-h-[110px] w-full min-w-0 rounded-2xl border border-gray-600 bg-gray-800/70 p-1.5">
+        <div className="text-[9px] font-semibold text-gray-200 break-words" title={data.name}>
+          {data.name}
+        </div>
+      </div>
+    );
+  }
+
   const boxes = Math.max(0, Math.round(data.tons));
   const shownBoxes = Math.min(boxes, MAX_BOXES);
+  const destroyed = Math.max(0, Math.min(boxes, Math.round(data.destroyedBoxes ?? 0)));
+  const shownDestroyed = Math.min(destroyed, shownBoxes);
   const crew = Math.max(0, Math.round(data.crewRequired));
   const slots: ShipComponentCrewSlot[] = data.crewSlots
     ?? Array.from({ length: crew }, () => ({ assigned: false }));
@@ -89,15 +109,19 @@ export function ShipComponentCard({ data, weaponInfo, actions }: { data: ShipCom
         {data.kind === 'weapon' && data.arcs && <WeaponArcDial arcs={data.arcs} />}
       </div>
 
-      <div className="flex flex-wrap gap-[2px] mt-0.5" title={`${boxes} boxes`}>
-        {Array.from({ length: shownBoxes }).map((_, i) => (
-          <span
-            key={i}
-            className={`w-1 h-1 rounded-[1px] ${
-              data.safe ? 'bg-gray-600 border border-gray-500' : 'bg-yellow-600'
-            }`}
-          />
-        ))}
+      <div className="flex flex-wrap items-center gap-[2px] mt-0.5" title={`${boxes - destroyed}/${boxes} boxes intact`}>
+        {Array.from({ length: shownBoxes }).map((_, i) => {
+          const isDestroyed = i >= shownBoxes - shownDestroyed;
+          const boxClass = data.safe
+            ? 'bg-gray-600 border border-gray-500'
+            : isDestroyed
+              ? 'bg-transparent border border-red-400/80'
+              : 'bg-yellow-600';
+          return <span key={i} className={`w-1 h-1 rounded-[1px] ${boxClass}`} />;
+        })}
+        {destroyed > 0 && (
+          <span className="ml-0.5 text-[7px] text-red-300">{boxes - destroyed}/{boxes}</span>
+        )}
         {boxes > MAX_BOXES && <span className="text-[7px] text-gray-500">+{boxes - MAX_BOXES}</span>}
       </div>
 
@@ -134,27 +158,28 @@ export function ShipComponentCard({ data, weaponInfo, actions }: { data: ShipCom
           </span>
           <button
             type="button"
-            disabled={!weaponInfo?.canFire}
-            onClick={e => { e.stopPropagation(); weaponInfo?.onFire?.(); }}
+            disabled={!weaponInfo?.canUse}
+            title={weaponInfo?.title}
+            onClick={e => { e.stopPropagation(); weaponInfo?.onUse?.(); }}
             onMouseDown={e => e.stopPropagation()}
             className="rounded border border-amber-600 px-1 py-0.5 text-[8px] text-amber-200 hover:bg-amber-700/30 disabled:opacity-30"
           >
-            Fire
+            {weaponInfo?.label ?? 'Fire'}
           </button>
         </div>
-      ) : actions && actions.length > 0 ? (
+      ) : functions && functions.length > 0 ? (
         <div className="mt-auto flex flex-wrap gap-1 pt-0.5">
-          {actions.map(action => (
+          {functions.map(fn => (
             <button
-              key={action.label}
+              key={fn.label}
               type="button"
-              disabled={!action.enabled}
-              title={action.title}
-              onClick={e => { e.stopPropagation(); action.onClick(); }}
+              disabled={!fn.enabled}
+              title={fn.title}
+              onClick={e => { e.stopPropagation(); fn.onClick(); }}
               onMouseDown={e => e.stopPropagation()}
               className="rounded border border-amber-600 px-1 py-0.5 text-[8px] text-amber-200 hover:bg-amber-700/30 disabled:opacity-30"
             >
-              {action.label}
+              {fn.label}
             </button>
           ))}
         </div>

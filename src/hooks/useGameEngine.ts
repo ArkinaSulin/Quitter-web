@@ -9,12 +9,22 @@ import { nextLowerFormation } from '@/packages/movement';
 import { flyingFormationCap, movePoolMode, flyMax, moveBudgetUnit, passengerDrain, usesFlyPool } from '@/packages/movement';
 import { applyMoveCost, applyMpSpend, applyHeroMoveCost, heroMovePerAction } from '@/packages/movement';
 import { getSetting } from '@/packages/infra';
+import { allianceOf } from '@/packages/primitives';
 import { parseWeapons, warMachineTurnActionCost } from '@/packages/units';
 import { isUnitRouted } from '@/packages/morale';
 import { useMessageSync } from '@/hooks/useMessageSync';
 import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/packages/infra';
 import { getActiveGroups, advanceTurn, advanceShipStep } from '@/packages/world';
-import { advanceShipReload, shipWeaponCards, type ShipRuntime } from '@/packages/ships';
+import {
+  cardStepsRemaining,
+  planShipWeaponAutoLoad,
+  shipCardCrewCount,
+  shipCardLeaderTeam,
+  shipHeroesOnCard,
+  shipWeaponCards,
+  spendCardSteps,
+  type ShipRuntime,
+} from '@/packages/ships';
 import { UnitEffect, GroundEffect } from '@/types/gameProtocol';
 import { Walls } from '@/packages/movement';
 import { applyEffectChanges, removeEffectChanges, editEffectChanges, computeEndTurnEffects, computeZoneReconcile, newEffectKey, EffectSpec, resolveEffectDamage, describeEffectDamage, EffectDamageEvent } from '@/packages/effects';
@@ -61,6 +71,7 @@ export function useGameEngine({
   scenarioId,
   playerId,
   playerName,
+  isGM,
   freeMove,
   applyLocalUnit,
   refreshUnitsByIds,
@@ -74,7 +85,7 @@ export function useGameEngine({
   refreshShips,
   requestEntryTroops,
 }: UseGameEngineProps) {
-  const { addMessage, addError } = useMessageSync(scenarioId);
+  const { addMessage, addError, addLocalMessage, addLocalError } = useMessageSync(scenarioId);
 
   // Server-derived undo/redo state (what the RPCs consider undoable right now).
   // Rebuilt on mount, on every scenario_command_log change, and after each action.
@@ -201,7 +212,7 @@ export function useGameEngine({
       actionType: ActionType,
       subSteps: SubStep[],
       description: string,
-      options?: { chained?: boolean; message?: string; verboseMessage?: string },
+      options?: { chained?: boolean; message?: string; verboseMessage?: string; localOnly?: boolean },
     ): Promise<CommandLogRow | null> => {
       const isChained = options?.chained ?? false;
 
@@ -268,14 +279,26 @@ export function useGameEngine({
       }
 
       // Unit edits (incl. by players editing their own unit) are flagged to everyone.
+      // DM-owned unit placement/editing stays on the DM's own screen (isGM); an
+      // explicit `localOnly` covers DM ship placement/roster commands.
       // The verbose variant is always recorded alongside the plain text; the
       // "verbose combat" setting only decides which one is DISPLAYED.
-      if (actionType === 'EDIT_UNIT') addError(description);
-      else addMessage(options?.message ?? description, options?.verboseMessage ?? options?.message);
+      const unitChange = actionType === 'EDIT_UNIT' || actionType === 'PLACE';
+      const local = options?.localOnly || (unitChange && isGM);
+      const msg = options?.message ?? description;
+      const verbose = options?.verboseMessage ?? options?.message;
+      if (actionType === 'EDIT_UNIT') {
+        if (local) addLocalError(description);
+        else addError(description);
+      } else if (local) {
+        addLocalMessage(msg, verbose);
+      } else {
+        addMessage(msg, verbose);
+      }
       refreshUndoState();
       return row;
     },
-    [scenarioId, playerId, playerName, applyDeltas, refreshUnitsByIds, refreshMapData, refreshShips, touchedUnitIds, addMessage, addError, refreshUndoState],
+    [scenarioId, playerId, playerName, isGM, applyDeltas, refreshUnitsByIds, refreshMapData, refreshShips, touchedUnitIds, addMessage, addError, addLocalMessage, addLocalError, refreshUndoState],
   );
 
   const subscribeToCommandLog = useCallback((): (() => void) => {
@@ -333,11 +356,14 @@ export function useGameEngine({
     if (refreshUnitsByIds) {
       await refreshUnitsByIds(touchedUnitIds(rows));
     }
+    if (refreshShips && rows.some(row => parseSubSteps(row.sub_steps).some(step => step.type === 'SHIP'))) {
+      await refreshShips();
+    }
 
     addMessage(rows.length > 1 ? `Undid: ${rows[0].description} — ${rows.length} items` : `Undid: ${rows[0].description}`);
     refreshUndoState();
     return rows;
-  }, [scenarioId, addMessage, refreshUndoState, applyDeltas, touchedUnitIds, refreshUnitsByIds]);
+  }, [scenarioId, addMessage, refreshUndoState, applyDeltas, touchedUnitIds, refreshUnitsByIds, refreshShips]);
 
   const redo = useCallback(async (): Promise<CommandLogRow[] | null> => {
     const fresh = await refreshUndoState();
@@ -368,11 +394,14 @@ export function useGameEngine({
     if (refreshUnitsByIds) {
       await refreshUnitsByIds(touchedUnitIds(rows));
     }
+    if (refreshShips && rows.some(row => parseSubSteps(row.sub_steps).some(step => step.type === 'SHIP'))) {
+      await refreshShips();
+    }
 
     addMessage(rows.length > 1 ? `Redid: ${rows[0].description} — ${rows.length} items` : `Redid: ${rows[0].description}`);
     refreshUndoState();
     return rows;
-  }, [scenarioId, addMessage, refreshUndoState, applyDeltas, touchedUnitIds, refreshUnitsByIds]);
+  }, [scenarioId, addMessage, refreshUndoState, applyDeltas, touchedUnitIds, refreshUnitsByIds, refreshShips]);
 
   const canUndo = useCallback((): boolean => {
     return !!undoStateRef.current?.undo?.canUndo;
@@ -1147,6 +1176,15 @@ export function useGameEngine({
         const changes: { field: string; from: unknown; to: unknown }[] = [];
         if (ship.speedSpent) changes.push({ field: 'speedSpent', from: ship.speedSpent, to: 0 });
         if (ship.mcReduction) changes.push({ field: 'mcReduction', from: ship.mcReduction, to: 0 });
+        // Facing distance belongs to the full turn, not the wildspace step.
+        if (newTurnNumber !== args.turnNumber && ship.turnsSinceFacing) {
+          changes.push({ field: 'turnsSinceFacing', from: ship.turnsSinceFacing, to: 0 });
+        }
+        // Sail maxing / trimming are one success per turn; END_TURN reopens them
+        // in every mode (atmosphere keeps ship_step at 1, so step comparison
+        // alone would leave them locked forever).
+        if (ship.sailMaxStep) changes.push({ field: 'sailMaxStep', from: ship.sailMaxStep, to: 0 });
+        if (ship.sailTrimStep) changes.push({ field: 'sailTrimStep', from: ship.sailTrimStep, to: 0 });
         if (changes.length > 0) {
           subSteps.push({
             type: 'SHIP',
@@ -1157,33 +1195,62 @@ export function useGameEngine({
         }
       }
 
-      // Ship weapons load one step at the start of their alliance's step when
-      // the card is fully crewed (PC + crew). An armed weapon stays armed.
+      // Ship weapons auto-load for a full crew with no hero on the card. In
+      // wildspace that is one step per ship step; in atmosphere the crew batch
+      // up to five loads at the start of the ship's turn. An armed weapon stays
+      // armed. A hero on the card suppresses auto-load (the hero must order
+      // loads/fires and spend actions).
       for (const ship of args.ships ?? []) {
         if (ship.isDeleted || !ship.snapshot?.build) continue;
-        const group = ship.team ? args.alliances[ship.team] : null;
-        if (group !== next) continue;
         const cards = shipWeaponCards(ship.snapshot.build);
         if (cards.length === 0) continue;
         const nextReload = { ...(ship.reload ?? {}) };
-        let changed = false;
+        let nextCardState = { ...(ship.cardState ?? {}) };
+        const mode = wildspace ? 'wildspace' as const : 'atmosphere' as const;
+        let reloadChanged = false;
+        let cardStateChanged = false;
         for (const card of cards) {
-          const station = ship.stations?.[card.key];
-          const crewCount = (station?.crewIds?.length ?? 0) + (station?.heroId ? 1 : 0);
-          if (crewCount < Math.ceil(card.crew)) continue;
+          // Weapon control is per card: its leader's side clocks the crew
+          // auto-load, independently of the helmsman. Hero on the card still
+          // suppresses auto-load (manual load spends a hero action).
+          const leaderTeam = shipCardLeaderTeam(ship, args.units, card.key);
+          const leaderGroup = leaderTeam ? allianceOf(leaderTeam, args.alliances) : null;
+          if (leaderGroup !== next) continue;
+          const heroes = shipHeroesOnCard(ship, args.units, card.key);
+          const fullCrew = shipCardCrewCount(ship, args.units, card.key) >= Math.ceil(card.crew);
           const prev = nextReload[card.key] ?? { progress: 0, armed: false };
-          const advanced = advanceShipReload(prev, card.weapon.reloadSteps);
-          if (advanced.progress !== prev.progress || advanced.armed !== prev.armed) {
-            nextReload[card.key] = advanced;
-            changed = true;
+          const plan = planShipWeaponAutoLoad(prev, {
+            reloadSteps: card.weapon.reloadSteps,
+            mode,
+            hasHero: heroes.length > 0,
+            fullCrew,
+            cardStepsRemaining: cardStepsRemaining(nextCardState, card.key, newTurnNumber),
+          });
+          if (plan.state.progress !== (prev.progress ?? 0) || plan.state.armed !== !!prev.armed) {
+            nextReload[card.key] = plan.state;
+            reloadChanged = true;
+          }
+          if (plan.loads > 0) {
+            nextCardState = spendCardSteps(
+              nextCardState,
+              card.key,
+              newTurnNumber,
+              newStep,
+              mode,
+              plan.loads,
+            );
+            cardStateChanged = true;
           }
         }
-        if (changed) {
+        if (reloadChanged || cardStateChanged) {
+          const changes: { field: string; from: unknown; to: unknown }[] = [];
+          if (reloadChanged) changes.push({ field: 'reload', from: ship.reload ?? {}, to: nextReload });
+          if (cardStateChanged) changes.push({ field: 'cardState', from: ship.cardState ?? {}, to: nextCardState });
           subSteps.push({
             type: 'SHIP',
             description: `${ship.name} reloads`,
             unitId: ship.id,
-            changes: [{ field: 'reload', from: ship.reload ?? {}, to: nextReload }],
+            changes,
           });
         }
       }

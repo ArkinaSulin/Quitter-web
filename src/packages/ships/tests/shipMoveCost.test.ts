@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  adjustStepBudget,
   computeShipReachable,
   declareSpeed,
   effectiveMCForSpeed,
+  effectiveTurnDistance,
   facingChangeDistance,
+  shipFacingRadians,
   spellSlotCostForHexes,
   splitSpeedAcrossSteps,
 } from '@/packages/ships';
@@ -53,6 +56,12 @@ describe('MC facing gate', () => {
   it('MC 0 turns freely', () => {
     expect(effectiveMCForSpeed({ mcBands: [{ ...bands[0], mc: 0 }] }, 0)).toBe(0);
   });
+
+  it('rudder trim reduces the turn distance and never goes below 0', () => {
+    expect(effectiveTurnDistance({ mcBands: bands }, 9, 1)).toBe(2);
+    expect(effectiveTurnDistance({ mcBands: bands }, 9, 5)).toBe(0);
+    expect(effectiveTurnDistance({ mcBands: bands }, 9, 0)).toBe(3);
+  });
 });
 
 describe('computeShipReachable', () => {
@@ -63,6 +72,14 @@ describe('computeShipReachable', () => {
     // Two forward hexes are reachable (front arcs = dirs 4 and 5 of facing 0).
     expect(reach.size).toBeGreaterThanOrEqual(3);
     expect(Array.from(reach.values()).some(e => e.cost === 2)).toBe(true);
+  });
+
+  it('uses the canonical HEX_DIRS front: facing 0 is north, not south', () => {
+    const reach = computeShipReachable(start, 1, 0);
+    expect(reach.has('0,-1')).toBe(true);
+    expect(reach.has('1,-1')).toBe(true);
+    expect(reach.has('0,1')).toBe(false);
+    expect(reach.has('-1,1')).toBe(false);
   });
 
   it('requires the MC distance before a turn', () => {
@@ -81,5 +98,33 @@ describe('computeShipReachable', () => {
     const reach = computeShipReachable(start, 2, 0, { occupied: new Set(['1,0']) });
     const entry = reach.get('1,0');
     if (entry) expect(entry.endable).toBe(false);
+  });
+});
+
+describe('adjustStepBudget', () => {
+  it('adds the delta to the requested step', () => {
+    expect(adjustStepBudget([2, 1, 2, 1, 2], 3, 1)).toEqual([2, 1, 3, 1, 2]);
+    expect(adjustStepBudget([2, 1, 2, 1, 2], 1, -1)).toEqual([1, 1, 2, 1, 2]);
+  });
+
+  it('never drops below 0 but has no upper clamp', () => {
+    expect(adjustStepBudget([0, 1, 0, 0, 0], 2, -1)).toEqual([0, 0, 0, 0, 0]);
+    expect(adjustStepBudget([0, 0, 0, 0, 0], 1, -1)).toEqual([0, 0, 0, 0, 0]);
+    expect(adjustStepBudget([12, 0, 0, 0, 0], 1, 1)).toEqual([13, 0, 0, 0, 0]);
+    expect(adjustStepBudget([13, 0, 0, 0, 0], 1, 1)).toEqual([14, 0, 0, 0, 0]);
+  });
+
+  it('pads a missing budget to five steps', () => {
+    expect(adjustStepBudget(undefined, 1, 1)).toEqual([1, 0, 0, 0, 0]);
+  });
+});
+
+describe('shipFacingRadians', () => {
+  it('maps facing steps to canvas radians (clockwise)', () => {
+    expect(shipFacingRadians(0)).toBe(0);
+    expect(shipFacingRadians(1)).toBeCloseTo(Math.PI / 3);
+    expect(shipFacingRadians(3)).toBeCloseTo(Math.PI);
+    expect(shipFacingRadians(6)).toBe(0);
+    expect(shipFacingRadians(-1)).toBeCloseTo((5 * Math.PI) / 3);
   });
 });

@@ -12,6 +12,23 @@ that back it, and the invariants/tests that keep it honest.
 > migration seeds (`supabase/migrations/041…060`). Formation-row numbers that
 > live only in the live DB are flagged "verify against `unit_formations` table".
 
+## Vocabulary (use these terms)
+
+- **Turn** — one complete cycle of all alliances. Per-turn resources reset
+  (`turn_number`).
+- **Step** — wildspace only: 1/5 of a turn. Each alliance takes a step before the
+  step advances. Heroes refresh **1 action per step**; a ship moves its step
+  slice of the declared turn speed (`ship_step`).
+- **Action** — a resource spent by a hero or unit. Use “action” only for this.
+- **Card function** — an operation offered by a ship card (Fire, Load, Repair,
+  Speed +/−, Trim MC, Ram). Pressing the button **uses a card function**.
+- **Card step** — one of a card’s up to **5 function uses per turn**. Wildspace:
+  at most one card step per global step. Atmosphere: all 5 are available during
+  the turn. Fill/Empty station is free and does not spend a card step.
+- **Alliance boundary** — the engine command `END_TURN`. The UI labels it **End
+  Step** in wildspace and **End Turn** in atmosphere; it always advances the
+  acting alliance.
+
 ---
 
 ## System map (start here)
@@ -46,7 +63,7 @@ that back it, and the invariants/tests that keep it honest.
 
 Two big ideas make the whole system coherent:
 
-1. **One action = one `scenario_command_log` row** carrying sub-step field deltas.
+1. **One command = one `scenario_command_log` row** carrying sub-step field deltas.
    Every mutation (move, attack, formation, effect tick, end turn…) is a row;
    the server applies the deltas and the log update **in one transaction**
    (`execute_command`). Undo/redo soft-delete/restore rows. Replay is a pure

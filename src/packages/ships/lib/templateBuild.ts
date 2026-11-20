@@ -3,7 +3,8 @@
 // catalogs, deck layout, and derived stats.
 
 import { ShipArmor, ShipComponent, ShipTemplate, ShipWeapon } from '@/types/ship';
-import { COMPONENT_NAMES, ShipBuild, componentById, componentByName } from './shipStats';
+import { COMPONENT_NAMES, ShipBuild, componentById, componentByName, computeCargoCapacity } from './shipStats';
+import { cargoManifestMass } from './cargoManifest';
 import { DeckCard, syncDeckLayout } from './deckLayout';
 
 export function buildShipFromTemplate(
@@ -36,9 +37,6 @@ export function buildShipFromTemplate(
   pushComponentCards(`component:${bridgeComponent.id || 'command_bridge'}`, template.commandBridge, bridgeComponent.canCombine);
   // Deck is mandatory and always present (hittable, 20% of hull mass min 1).
   deckCards.push({ key: componentKey(COMPONENT_NAMES.deck, 'deck'), kind: 'component' });
-  if (Math.round(template.crewQuarters) > 0) {
-    deckCards.push({ key: componentKey(COMPONENT_NAMES.crewQuarters, 'crew_quarters'), kind: 'component' });
-  }
   // Hull is always present, even when its remaining boxes are 0 (no-box Hull
   // exception: it remains the repair station).
   deckCards.push({ key: componentKey(COMPONENT_NAMES.hull, 'hull'), kind: 'component' });
@@ -61,7 +59,8 @@ export function buildShipFromTemplate(
 
   const deckLayout = syncDeckLayout(template.deckLayout, deckCards);
   const cardKeys = new Set(deckCards.map(c => c.key));
-  return {
+  const manifest = template.manifest ?? [];
+  const build: ShipBuild = {
     armor,
     components,
     weaponsCatalog: weapons,
@@ -71,16 +70,20 @@ export function buildShipFromTemplate(
     sails: template.sails,
     rudders: template.rudders,
     reinforcement: template.reinforcement,
-    crewQuarters: template.crewQuarters ?? 0,
     weaponCapacity: template.weaponCapacity ?? 0,
     atmosphericSpeed: template.atmosphericSpeed ?? 0,
     damageThreshold: template.damageThreshold ?? 15,
     cargoArea: template.cargoArea,
     crews: template.crews,
+    manifest,
     deckLayout,
     reinforcements: template.reinforcements.filter(key => cardKeys.has(key)),
     weaponArcs: template.weaponArcs,
     templateComponents: template.optionalComponents,
     templateWeapons: template.weapons,
   };
+  // The manifest is the real cargo load; it drives performance mass.
+  const cargoCapacity = computeCargoCapacity(build);
+  build.performanceMass = Math.max(1, build.totalMass - cargoCapacity + cargoManifestMass(manifest));
+  return build;
 }

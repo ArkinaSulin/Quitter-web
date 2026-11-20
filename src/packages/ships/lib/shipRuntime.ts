@@ -4,9 +4,11 @@
 // so later template edits do not mutate a placed ship.
 
 import { Hex } from '@/types/gameProtocol';
-import { ShipBuild, ShipDerivedStats, computeShipBuild } from './shipStats';
+import { ShipBuild, ShipDerivedStats, computeMassBreakdown, computeShipBuild } from './shipStats';
 import { ShipComponent, ShipTemplate } from '@/types/ship';
-import { deckOrderedCardKeys, ensureCardSlot } from './deckLayout';
+import { deckOrderedCardKeys, ensureCardSlot, normalizeDeckLayout } from './deckLayout';
+import { cargoManifestMass, normalizeCargoManifest } from './cargoManifest';
+import { ShipCardStepState, normalizeCardStepState } from './cardSteps';
 
 const DEFAULT_HULL_COMPONENT: ShipComponent = {
   id: 'Hull',
@@ -48,7 +50,7 @@ export interface ShipSnapshot {
 export interface ShipStationAssignment {
   /** Single-hero stations (Helm/Bridge/weapons/etc.). */
   heroId?: string | null;
-  /** Multi-hero stations (Crew Quarters/Deck). */
+  /** Multi-hero stations (Cargo/Deck). */
   heroIds?: string[];
   crewIds?: string[];
   /** Hero token positions as percentages of the card's inner box. */
@@ -104,10 +106,19 @@ export interface ShipRuntime {
   /** Turn number a ram was used (0 = none). */
   ramUsedTurn: number;
   reload: Record<string, ShipReloadState>;
-  weaponState: Record<string, unknown>;
+  /** Per-card function budget (turn/step + steps used). */
+  cardState: ShipCardStepState;
   imageUrl: string;
   keelLength: number;
   imageOffsetY: number;
+  /** Shared scenario serial label number (A=1, B=2, ...). */
+  serialNumber: number;
+  /** Linked persistent player ship, if any. */
+  playerShipId: string | null;
+  /** Dry-dock editor window is open for this ship. */
+  dryDockOpen: boolean;
+  /** DM-hidden: invisible/non-interactive for players, dim for the DM. */
+  hidden: boolean;
   isDeleted: boolean;
   commandSeq: number;
 }
@@ -157,11 +168,15 @@ function normalizeSnapshot(snapshot: ShipSnapshot): ShipSnapshot {
   const deckKey = `component:${deck.id || 'Deck'}`;
   const hullKey = `component:${hull.id || 'Hull'}`;
   if (build.deckLayout) {
+    build.deckLayout = normalizeDeckLayout(build.deckLayout);
     build.deckLayout = ensureCardSlot(build.deckLayout, deckKey);
     build.deckLayout = ensureCardSlot(build.deckLayout, hullKey);
   }
   const template: ShipTemplate = { ...snapshot.template };
+  template.manifest = normalizeCargoManifest(template.manifest);
+  build.manifest = normalizeCargoManifest(build.manifest ?? template.manifest);
   if (template.deckLayout) {
+    template.deckLayout = normalizeDeckLayout(template.deckLayout);
     template.deckLayout = ensureCardSlot(template.deckLayout, deckKey);
     template.deckLayout = ensureCardSlot(template.deckLayout, hullKey);
   }
@@ -188,7 +203,47 @@ export function findCardKeyForComponent(build: ShipBuild, name: string): string 
   return findCardKeysForComponent(build, name)[0] ?? null;
 }
 
+/** Repair station capacity on the Hull card (heroes + crew, hard limit). */
+export const SHIP_HULL_REPAIR_CAPACITY = 3;
+
+/** Deck card key of the hull. */
+export function shipHullCardKey(build: ShipBuild): string | null {
+  return findCardKeyForComponent(build, 'Hull');
+}
+
+/** Tonnage (boxes) of the hull card. */
+export function shipHullBoxes(build: ShipBuild): number {
+  return Math.max(0, Math.round(computeMassBreakdown(build).hull));
+}
+
+/**
+ * Hull is the ship's structural spine: once every hull box is destroyed the
+ * ship falls apart and its HP is 0 regardless of any HP left.
+ */
+export function shipHullDestroyed(snapshot: ShipSnapshot | null | undefined, boxState: Record<string, unknown> | null | undefined): boolean {
+  const build = snapshot?.build;
+  if (!build) return false;
+  const key = shipHullCardKey(build);
+  if (!key) return false;
+  const boxes = shipHullBoxes(build);
+  if (boxes <= 0) return false;
+  return Number(boxState?.[key] ?? 0) >= boxes;
+}
+
+/** Stored HP clamped to 0 while the hull is destroyed. */
+export function effectiveShipHp(
+  snapshot: ShipSnapshot | null | undefined,
+  boxState: Record<string, unknown> | null | undefined,
+  shipHp: number,
+): number {
+  return shipHullDestroyed(snapshot, boxState) ? 0 : shipHp;
+}
+
 export function mapShipRuntimeRow(row: any): ShipRuntime {
+  const boxState = obj(row.box_state);
+  const snapshot = row.snapshot && typeof row.snapshot === 'object' && row.snapshot.template && row.snapshot.build
+    ? normalizeSnapshot(row.snapshot as ShipSnapshot)
+    : null;
   return {
     id: row.id,
     scenarioId: row.scenario_id,
@@ -198,14 +253,12 @@ export function mapShipRuntimeRow(row: any): ShipRuntime {
     hex: parseShipHex(row.hex),
     facing: num(row.facing),
     speedStat: num(row.speed_stat),
-    shipHp: num(row.ship_hp),
+    shipHp: effectiveShipHp(snapshot, boxState, num(row.ship_hp)),
     shipHpMax: num(row.ship_hp_max),
     loadedCargo: num(row.loaded_cargo),
     crewAssigned: obj(row.crew_assigned),
-    boxState: obj(row.box_state),
-    snapshot: row.snapshot && typeof row.snapshot === 'object' && row.snapshot.template && row.snapshot.build
-      ? normalizeSnapshot(row.snapshot as ShipSnapshot)
-      : null,
+    boxState,
+    snapshot,
     elevation: num(row.elevation),
     lastSpeed: num(row.last_speed, 5),
     declaredSpeed: num(row.declared_speed),
@@ -215,16 +268,20 @@ export function mapShipRuntimeRow(row: any): ShipRuntime {
     stepBudget: parseStepBudget(row.step_budget),
     stations: obj(row.stations),
     crewState: obj(row.crew_state),
-    crewTeam: row.crew_team || null,
+    crewTeam: row.crew_team || 'blue',
     mcReduction: num(row.mc_reduction),
     sailMaxStep: num(row.sail_max_step),
     sailTrimStep: num(row.sail_trim_step),
     ramUsedTurn: num(row.ram_used_turn),
     reload: obj(row.reload),
-    weaponState: obj(row.weapon_state),
+    cardState: normalizeCardStepState(row.card_state ?? row.weapon_state),
     imageUrl: row.image_url || '',
     keelLength: num(row.keel_length, 100),
     imageOffsetY: num(row.image_offset_y),
+    serialNumber: num(row.serial_number),
+    playerShipId: row.player_ship_id || null,
+    dryDockOpen: !!row.dry_dock_open,
+    hidden: !!row.hidden,
     isDeleted: !!row.is_deleted,
     commandSeq: num(row.command_seq),
   };
@@ -239,6 +296,13 @@ export function shipRowFromParts(args: {
   stats: ShipDerivedStats;
   hex: Hex;
   team?: string | null;
+  name?: string;
+  serialNumber?: number;
+  playerShipId?: string | null;
+  shipHp?: number;
+  shipHpMax?: number;
+  damage?: Record<string, unknown>;
+  crewState?: Record<string, unknown>;
 }): Record<string, unknown> {
   const { id, scenarioId, template, build, stats, hex, team } = args;
   const snapshot: ShipSnapshot = { template, build, stats };
@@ -246,16 +310,19 @@ export function shipRowFromParts(args: {
     id,
     scenarioId,
     templateId: template.id,
-    name: template.name || 'Ship',
+    name: args.name ?? (template.name || 'Ship'),
+    serialNumber: args.serialNumber ?? 0,
+    playerShipId: args.playerShipId ?? null,
     team: team ?? null,
     hex,
     facing: 0,
     speedStat: 0,
-    shipHp: Math.max(1, stats.shipHp),
-    shipHpMax: Math.max(1, stats.shipHp),
-    loadedCargo: template.cargoArea ?? 0,
+    shipHp: Math.max(0, args.shipHp ?? stats.shipHp),
+    shipHpMax: Math.max(1, args.shipHpMax ?? stats.shipHp),
+    loadedCargo: cargoManifestMass(template.manifest),
     crewAssigned: {},
-    boxState: {},
+    boxState: args.damage ?? {},
+    crewState: args.crewState ?? {},
     snapshot,
     elevation: 0,
     lastSpeed: 5,
@@ -265,17 +332,18 @@ export function shipRowFromParts(args: {
     turnsSinceFacing: 0,
     stepBudget: [0, 0, 0, 0, 0],
     stations: {},
-    crewState: {},
-    crewTeam: null,
+    crewTeam: 'blue',
     mcReduction: 0,
     sailMaxStep: 0,
     sailTrimStep: 0,
     ramUsedTurn: 0,
     reload: {},
-    weaponState: {},
+    cardState: {},
     imageUrl: template.imageUrl,
     keelLength: template.keelLength,
     imageOffsetY: template.imageOffsetY,
+    dryDockOpen: false,
+    hidden: false,
     isDeleted: false,
   };
 }

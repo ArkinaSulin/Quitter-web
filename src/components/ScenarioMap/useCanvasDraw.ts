@@ -15,6 +15,7 @@ import { corpseDots, corpseDotShape, FallenMap } from '@/packages/battle';
 import { TEAM_COLORS, Team } from '@/packages/units';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, PlacedShip, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
 import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
+import { shipFacingRadians } from '@/packages/ships';
 import { parseClimbTo, hexDirection, flyMax } from '@/packages/movement';
 import { FOG_RGB } from '@/packages/world';
 import { Walls, EdgeRef, wallHp, edgeRef } from '@/packages/movement';
@@ -231,23 +232,38 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       if (!ship.imageUrl || isFogHidden(`${ship.hex.q},${ship.hex.r}`)) continue;
       const img = getLoadedImage(ship.imageUrl);
       if (!img) continue;
+      const hidden = !!ship.hidden;
+      if (hidden) {
+        if (!isGM) continue;
+        ctx.save();
+        ctx.globalAlpha = 0.3;
+      }
       const { cx, cy } = hexCenter(ship.hex);
       const height = shipImageHeightPx(ship.keelLength, HEX_SIZE) * currentZoom;
       const width = height * (img.naturalWidth / Math.max(1, img.naturalHeight));
       const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * currentZoom;
-      const allianceColor = ship.alliance ? ALLIANCE_COLORS[ship.alliance] : null;
+      const helmsmanColor = ship.alliance ? ALLIANCE_COLORS[ship.alliance] : null;
+      const crewColor = ship.crewAlliance ? ALLIANCE_COLORS[ship.crewAlliance] : null;
       ctx.save();
-      if (allianceColor) {
-        // Two glow passes trace the image alpha silhouette.
-        ctx.shadowColor = allianceColor;
-        ctx.shadowBlur = 18 * currentZoom;
-        ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+      ctx.translate(cx, cy);
+      ctx.rotate(shipFacingRadians(ship.facing));
+      // Two glow passes trace the image alpha silhouette: the outer (larger)
+      // ring is the helmsman's alliance, the inner (smaller) ring the crew's.
+      // Contrasting rings signal split control (foreign crew / hijacked helm).
+      if (helmsmanColor) {
+        ctx.shadowColor = helmsmanColor;
         ctx.shadowBlur = 30 * currentZoom;
-        ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
-        ctx.shadowBlur = 0;
+        ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
       }
-      ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+      if (crewColor) {
+        ctx.shadowColor = crewColor;
+        ctx.shadowBlur = 18 * currentZoom;
+        ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
+      }
+      ctx.shadowBlur = 0;
+      ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
       ctx.restore();
+      if (hidden) ctx.restore();
     }
     const hoveredHexKey = (() => {
       const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
@@ -1207,13 +1223,20 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (!ship.imageUrl) continue;
         const img = getLoadedImage(ship.imageUrl);
         if (!img) continue;
+        const hidden = !!ship.hidden;
+        if (hidden && !isGM) continue;
         const pos = hexToPixel(ship.hex, HEX_SIZE);
         const cx = pos.x * fitZoom + fitOffsetX;
         const cy = pos.y * fitZoom + fitOffsetY;
         const height = shipImageHeightPx(ship.keelLength, HEX_SIZE) * fitZoom;
         const width = height * (img.naturalWidth / Math.max(1, img.naturalHeight));
         const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * fitZoom;
-        ctx.drawImage(img, cx - width / 2, cy - height / 2 - offset, width, height);
+        ctx.save();
+        if (hidden) ctx.globalAlpha = 0.3;
+        ctx.translate(cx, cy);
+        ctx.rotate(shipFacingRadians(ship.facing));
+        ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
+        ctx.restore();
       }
 
       // Draw units using drawToken

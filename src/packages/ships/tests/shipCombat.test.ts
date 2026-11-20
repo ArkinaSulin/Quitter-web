@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceShipReload,
   fireShipWeapon,
+  manualShipWeaponLoad,
+  planShipWeaponAutoLoad,
   pickShipComponent,
   rollShipDamage,
   shipArcAllowed,
@@ -41,6 +43,22 @@ describe('firing arcs', () => {
     expect(shipTargetArc(origin, 0, at(2))).toBe('stern');
     expect(shipTargetArc(origin, 0, at(3))).toBe('port');
     expect(shipTargetArc(origin, 0, at(0))).toBe('starboard');
+  });
+
+  it('resolves the same sectors at any range', () => {
+    const far = (q: number, r: number) => ({ q, r, s: -q - r });
+    expect(shipTargetArc(origin, 0, far(3, 0))).toBe('starboard');
+    expect(shipTargetArc(origin, 0, far(-3, 0))).toBe('port');
+    expect(shipTargetArc(origin, 0, far(0, -3))).toBe('bow');
+    expect(shipTargetArc(origin, 0, far(0, 3))).toBe('stern');
+    expect(shipTargetArc(origin, 0, far(3, -3))).toBe('bow');
+    expect(shipTargetArc(origin, 0, far(-3, 3))).toBe('stern');
+  });
+
+  it('allows a weapon arc against a distant target on that side', () => {
+    const east = { q: 3, r: 0, s: -3 };
+    expect(shipAttackMode(3, weapon, ['starboard'], origin, 0, east).mode).toBe('normal');
+    expect(shipAttackMode(3, weapon, ['port'], origin, 0, east).mode).toBe('none');
   });
 
   it('respects arc lists, and arcs off is 360', () => {
@@ -102,5 +120,50 @@ describe('reload', () => {
 
   it('an armed weapon stays armed until fired', () => {
     expect(advanceShipReload({ progress: 4, armed: true }, 4)).toEqual({ progress: 4, armed: true });
+  });
+});
+
+describe('manualShipWeaponLoad', () => {
+  it('advances one reload step and arms at the reload maximum', () => {
+    expect(manualShipWeaponLoad({ progress: 0, armed: false }, 2)).toEqual({
+      progress: 1,
+      armed: false,
+    });
+    expect(manualShipWeaponLoad({ progress: 1, armed: false }, 2)).toEqual({
+      progress: 2,
+      armed: true,
+    });
+  });
+});
+
+describe('planShipWeaponAutoLoad', () => {
+  const base = { reloadSteps: 4, fullCrew: true, hasHero: false, cardStepsRemaining: 5 };
+
+  it('loads one step per ship step in wildspace', () => {
+    expect(planShipWeaponAutoLoad({ progress: 0, armed: false }, { ...base, mode: 'wildspace' })).toEqual({
+      state: { progress: 1, armed: false },
+      loads: 1,
+    });
+  });
+
+  it('batches up to the remaining card steps at the start of an atmosphere turn', () => {
+    expect(planShipWeaponAutoLoad({ progress: 0, armed: false }, { ...base, mode: 'atmosphere' })).toEqual({
+      state: { progress: 4, armed: true },
+      loads: 4,
+    });
+  });
+
+  it('a hero on the card suppresses auto-load', () => {
+    expect(planShipWeaponAutoLoad(
+      { progress: 1, armed: false },
+      { ...base, mode: 'wildspace', hasHero: true },
+    )).toEqual({ state: { progress: 1, armed: false }, loads: 0 });
+  });
+
+  it('never loads more than the remaining card steps', () => {
+    expect(planShipWeaponAutoLoad(
+      { progress: 0, armed: false },
+      { ...base, reloadSteps: 5, mode: 'atmosphere', cardStepsRemaining: 1 },
+    )).toEqual({ state: { progress: 1, armed: false }, loads: 1 });
   });
 });

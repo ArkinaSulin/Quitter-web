@@ -88,7 +88,7 @@ export function CrewAdjustDialog({ draft: initial, title = 'Adjust Crew', allowR
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          {field('Crew count', <RepeatStepper value={draft.count} onChange={v => set({ count: v })} min={allowRemove ? 0 : 1} max={50} />)}
+          {field('Crew count', <RepeatStepper value={draft.count} onChange={v => set({ count: v })} min={allowRemove ? 0 : 1} />)}
           {field('Name (blank = Crew)', (
             <input
               type="text"

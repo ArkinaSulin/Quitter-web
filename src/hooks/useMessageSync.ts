@@ -84,12 +84,12 @@ function getSync(scenarioId: string, dispatchIncoming: (text: string, tone?: str
  * Messages sent before the channel subscribes are buffered and flushed on SUBSCRIBED.
  */
 export function useMessageSync(scenarioId: string) {
-  const { addMessage, addError } = useMessages();
+  const { addMessage: addLocalMessage, addError: addLocalError } = useMessages();
 
-  const addMessageRef = useRef(addMessage);
-  const addErrorRef = useRef(addError);
-  addMessageRef.current = addMessage;
-  addErrorRef.current = addError;
+  const addMessageRef = useRef(addLocalMessage);
+  const addErrorRef = useRef(addLocalError);
+  addMessageRef.current = addLocalMessage;
+  addErrorRef.current = addLocalError;
 
   // Re-bind when scenarioId changes so a different scenario gets its own channel.
   const syncRef = useRef<ScenarioSync | null>(null);
@@ -140,5 +140,10 @@ export function useMessageSync(scenarioId: string) {
     send({ text, ...(verboseText ? { verboseText } : {}), tone: 'error' });
   }, [send]);
 
-  return { addMessage: syncAddMessage, addError: syncAddError };
+  return {
+    addMessage: syncAddMessage,
+    addError: syncAddError,
+    addLocalMessage,
+    addLocalError,
+  };
 }

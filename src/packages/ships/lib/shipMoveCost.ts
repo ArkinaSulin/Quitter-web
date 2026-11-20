@@ -4,6 +4,7 @@
 // pools mirror units: land MP (ground), FP (atmosphere airborne), speed (space).
 
 import { Hex, hexDistance } from '@/types/gameProtocol';
+import { HEX_DIRS } from '@/packages/primitives';
 import { MCBand, ShipDerivedStats } from './shipStats';
 
 export const SHIP_MAX_SPEED = 12;
@@ -20,6 +21,21 @@ export function effectiveMCForSpeed(stats: Pick<ShipDerivedStats, 'mcBands'> | n
 /** Hexes the ship must travel between facing changes. */
 export function facingChangeDistance(stats: Pick<ShipDerivedStats, 'mcBands'> | null | undefined, speed: number): number {
   return effectiveMCForSpeed(stats, speed);
+}
+
+/** Canvas rotation for a ship facing (0 = nose north, +1 = 60° clockwise). */
+export function shipFacingRadians(facing: number | null | undefined): number {
+  const step = ((Math.floor(Number(facing) || 0) % 6) + 6) % 6;
+  return (step * Math.PI) / 3;
+}
+
+/** MC for the turn after the rudder trim (never below 0). */
+export function effectiveTurnDistance(
+  stats: Pick<ShipDerivedStats, 'mcBands'> | null | undefined,
+  speed: number,
+  mcReduction = 0,
+): number {
+  return Math.max(0, facingChangeDistance(stats, speed) - Math.max(0, Math.floor(mcReduction)));
 }
 
 /** Spell-slot cost of buying extra speed hexes: |hexes| × max(1, round(mass/10)). */
@@ -39,6 +55,20 @@ export function declareSpeed(args: {
   const free = Math.max(-accel, Math.min(accel, Math.trunc(args.accelDelta)));
   const total = Math.trunc(args.previousSpeed) + free + Math.trunc(args.extraHexes);
   return Math.max(SHIP_MIN_SPEED, Math.min(args.maxSpeed ?? SHIP_MAX_SPEED, total));
+}
+
+/**
+ * Apply a sail-speed delta to one step's budget. Soft clamp: the budget can
+ * never drop below 0, but there is no upper clamp (a successful sail maxing may
+ * push it above the usual 12; callers warn above 13).
+ */
+export function adjustStepBudget(stepBudget: number[] | undefined, step: number, delta: number): number[] {
+  const next = Array.from({ length: 5 }, (_, i) =>
+    Math.max(0, Math.floor(Number((stepBudget ?? [])[i] ?? 0))),
+  );
+  const idx = Math.max(0, Math.min(4, Math.floor(step) - 1));
+  next[idx] = Math.max(0, next[idx] + Math.trunc(delta));
+  return next;
 }
 
 /** Remaining movement this step (wildspace step budget minus already spent). */
@@ -73,15 +103,6 @@ export interface ShipReachOpts {
 
 const keyOf = (h: Hex) => `${h.q},${h.r}`;
 const stateKey = (h: Hex, facing: number, dist: number) => `${h.q},${h.r},${facing},${dist}`;
-
-const NEIGHBOURS: Hex[] = [
-  { q: 1, r: 0, s: -1 },
-  { q: 1, r: -1, s: 0 },
-  { q: 0, r: -1, s: 1 },
-  { q: -1, r: 0, s: 1 },
-  { q: -1, r: 1, s: 0 },
-  { q: 0, r: 1, s: -1 },
-];
 
 function add(h: Hex, d: Hex): Hex {
   const q = h.q + d.q;
@@ -140,7 +161,7 @@ export function computeShipReachable(
     // Move forward into the two front-arc hexes.
     for (const delta of [4, 5]) {
       const dir = (cur.facing + delta) % 6;
-      const next = add(cur.hex, NEIGHBOURS[dir]);
+      const next = add(cur.hex, HEX_DIRS[dir]);
       push(next, cur.facing, cur.dist + 1, cur.cost + 1, [...cur.path, next]);
     }
   }

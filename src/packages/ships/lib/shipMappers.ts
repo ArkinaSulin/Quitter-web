@@ -15,6 +15,7 @@ import {
 } from '@/types/ship';
 import { DEFAULT_TOTAL_MASS, computeCrewHp, computeCrewWeeklyCost } from './shipStats';
 import { normalizeDeckLayout } from './deckLayout';
+import { normalizeCargoManifest } from './cargoManifest';
 
 /** Map a ship_armors row. */
 export function mapShipArmorRow(row: any): ShipArmor {
@@ -105,7 +106,6 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     sails: Number(row.sails) || 0,
     rudders: Number(row.rudders) || 0,
     reinforcement: Number(row.reinforcement ?? row.hull_r) || 0,
-    crewQuarters: Number(row.crew_quarters) || 0,
     weaponCapacity: Number(row.weapon_capacity) || 0,
     deckLayout: normalizeDeckLayout(row.deck_layout),
     reinforcements: row.reinforcements || [],
@@ -130,6 +130,7 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
         count: Number(w.count) || 1,
       })),
     crews: (row.ship_crews || []).map(mapShipCrewRow),
+    manifest: normalizeCargoManifest(row.manifest),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -148,7 +149,6 @@ export function mapShipTemplateToRow(t: ShipTemplate) {
     sails: t.sails,
     rudders: t.rudders,
     reinforcement: t.reinforcement,
-    crew_quarters: t.crewQuarters,
     weapon_capacity: t.weaponCapacity,
     deck_layout: t.deckLayout,
     reinforcements: t.reinforcements,
@@ -159,6 +159,7 @@ export function mapShipTemplateToRow(t: ShipTemplate) {
     keel_length: t.keelLength,
     image_offset_y: t.imageOffsetY,
     cargo_area: t.cargoArea,
+    manifest: t.manifest ?? [],
     updated_at: new Date().toISOString(),
   };
 }

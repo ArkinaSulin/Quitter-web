@@ -135,6 +135,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     id: unit.id,
     scenario_id: scenarioId,
     unit_name: unit.unitName,
+    serial_number: (unit as any).serialNumber ?? null,
     template_id: unit.templateId,
     race_id: unit.raceId || null,
     race_name: unit.raceName,
@@ -425,7 +426,13 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
     // regardless of template / team / alliance, so "Human Soldier A" and
     // "Human Guard A" can never collide. Soft-deleted units stay in state, so
     // the count is monotonic and serials are never reused.
-    const instanceNumber = ++nextSerialRef.current;
+    // Shared scenario serial (units, ships, player ships). Fall back to the
+    // legacy count-based label if the allocator is unavailable.
+    let instanceNumber = ++nextSerialRef.current;
+    const serialRes = await supabase.rpc('next_scenario_serial', { p_scenario_id: scenarioId });
+    if (!serialRes.error && Number.isFinite(Number(serialRes.data)) && Number(serialRes.data) > 0) {
+      instanceNumber = Number(serialRes.data);
+    }
 
     // Inherited template effects (design-time, permanent) + materialized stat deltas.
     const inherited = expandInheritedEffects(template.effects, template.movementPoints || 3);
@@ -435,6 +442,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       scenarioId: scenarioId,
       templateId: template.id,
       unitName: `${template.unitName} ${alphaLabel(instanceNumber)}`,
+      ...( { serialNumber: instanceNumber } as any ),
       raceId: template.raceId || '',
       raceName: template.raceName || '',
       armorName: template.armorName || '',

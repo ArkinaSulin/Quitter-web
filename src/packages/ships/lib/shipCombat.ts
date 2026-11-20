@@ -29,15 +29,35 @@ export function shipRangeBand(distance: number, weapon: Pick<ShipWeapon, 'minRan
 }
 
 /**
- * Relative sector of a target: bow (4,5), stern (1,2), port (3), starboard (0)
- * around the ship's facing. `arcsEnabled` false = 360°.
+ * Index of the `HEX_DIRS` sector containing a displacement at ANY range. Exact
+ * integer cube math: the nearest of the six directions has the largest cube dot
+ * product against the displacement. Ties keep the first index (stable).
+ */
+function nearestHexDirIndex(dq: number, dr: number, ds: number): number {
+  let best = 0;
+  let bestDot = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < HEX_DIRS.length; i += 1) {
+    const d = HEX_DIRS[i];
+    const dot = dq * d.q + dr * d.r + ds * d.s;
+    if (dot > bestDot) {
+      bestDot = dot;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Relative sector of a target at any range: bow (4,5), stern (1,2), port (3),
+ * starboard (0) around the ship's facing. The displacement is resolved to its
+ * nearest hex direction first, so the adjacency sectors extend outward.
+ * `arcsEnabled` false = 360°.
  */
 export function shipTargetArc(origin: Hex, facing: number, target: Hex): WeaponArc | null {
   const dq = target.q - origin.q;
   const dr = target.r - origin.r;
   if (dq === 0 && dr === 0) return null;
-  const idx = HEX_DIRS.findIndex(d => d.q === dq && d.r === dr);
-  if (idx < 0) return null;
+  const idx = nearestHexDirIndex(dq, dr, -dq - dr);
   const rel = ((idx - facing) % 6 + 6) % 6;
   if (rel === 4 || rel === 5) return 'bow';
   if (rel === 1 || rel === 2) return 'stern';
@@ -102,6 +122,10 @@ export interface ShipHitCard {
   key: string;
   name: string;
   tons: number;
+  /** Card AC (catalog value); combat uses max(ship AC, card AC). */
+  ac?: number;
+  /** Card Damage Threshold (catalog value); combat uses max(ship DT, card DT). */
+  dt?: number;
   safe?: boolean;
   kind?: 'component' | 'weapon';
 }
@@ -139,6 +163,63 @@ export function advanceShipReload(state: ShipWeaponReloadState, reloadSteps: num
 /** Firing consumes the loaded state. */
 export function fireShipWeapon(): ShipWeaponReloadState {
   return { progress: 0, armed: false };
+}
+
+/** One hero-ordered load: +1 progress. The card step is tracked separately. */
+export function manualShipWeaponLoad(
+  state: ShipWeaponReloadState | null | undefined,
+  reloadSteps: number,
+): ShipWeaponReloadState {
+  const needed = Math.max(0, Math.floor(reloadSteps));
+  const progress = Math.min(needed, Math.max(0, Math.floor(state?.progress ?? 0)) + 1);
+  return {
+    progress,
+    armed: needed === 0 || progress >= needed,
+  };
+}
+
+export interface ShipWeaponAutoLoadArgs {
+  reloadSteps: number;
+  mode: 'atmosphere' | 'wildspace';
+  hasHero: boolean;
+  fullCrew: boolean;
+  /** Card steps left on this card this turn/step. */
+  cardStepsRemaining: number;
+}
+
+export interface ShipWeaponAutoLoadPlan {
+  state: ShipWeaponReloadState;
+  loads: number;
+}
+
+/**
+ * Crew auto-load for a weapon card. A hero on the card suppresses auto-load
+ * (the hero must click Load/Fire and spend actions). In wildspace the crew load
+ * one step per ship step; in atmosphere they load up to the remaining card
+ * steps (max 5) at the start of the ship's turn.
+ */
+export function planShipWeaponAutoLoad(
+  state: ShipWeaponReloadState | null | undefined,
+  args: ShipWeaponAutoLoadArgs,
+): ShipWeaponAutoLoadPlan {
+  const base: ShipWeaponReloadState = {
+    progress: Math.max(0, Math.floor(state?.progress ?? 0)),
+    armed: !!state?.armed,
+  };
+  const reloadSteps = Math.max(0, Math.floor(args.reloadSteps));
+  if (args.hasHero || !args.fullCrew || base.armed) return { state: base, loads: 0 };
+  if (reloadSteps === 0) return { state: { progress: 0, armed: true }, loads: 0 };
+  const remainingProgress = Math.max(0, reloadSteps - base.progress);
+  const remainingSteps = Math.max(0, Math.floor(args.cardStepsRemaining));
+  const loads = args.mode === 'atmosphere'
+    ? Math.min(remainingSteps, remainingProgress)
+    : Math.min(1, remainingSteps, remainingProgress);
+  if (loads <= 0) return { state: base, loads: 0 };
+  const progress = base.progress + loads;
+  return {
+    state: { progress, armed: progress >= reloadSteps },
+    loads,
+  };
 }
 
 export interface ShipWeaponCard {
@@ -186,6 +267,8 @@ export function shipHitCards(build: ShipBuild): ShipHitCard[] {
         key,
         name: weaponCard.weapon.name,
         tons: weaponCard.tons,
+        ac: weaponCard.weapon.ac,
+        dt: weaponCard.weapon.dt,
         safe: false,
         kind: 'weapon',
       });
@@ -204,12 +287,19 @@ export function shipHitCards(build: ShipBuild): ShipHitCard[] {
         case COMPONENT_NAMES.sail: tons = perUnit ? Math.round(component.mass) : m.sails; break;
         case COMPONENT_NAMES.rudder: tons = perUnit ? Math.round(component.mass) : m.rudders; break;
         case COMPONENT_NAMES.cargo: tons = m.cargo; break;
-        case COMPONENT_NAMES.crewQuarters: tons = m.crewQuarters; break;
         case COMPONENT_NAMES.helm: tons = Math.round(build.helm * component.mass); break;
         case COMPONENT_NAMES.commandBridge: tons = Math.round(build.commandBridge * component.mass); break;
         default: tons = Math.round(component.mass); break;
       }
-      out.push({ key, name: component.name, tons, safe: !component.hittable, kind: 'component' });
+      out.push({
+        key,
+        name: component.name,
+        tons,
+        ac: component.ac,
+        dt: component.dt,
+        safe: !component.hittable,
+        kind: 'component',
+      });
       continue;
     }
     if (key.startsWith('optional:')) {
@@ -222,6 +312,8 @@ export function shipHitCards(build: ShipBuild): ShipHitCard[] {
         key,
         name: component.name,
         tons: Math.round(component.mass * count),
+        ac: component.ac,
+        dt: component.dt,
         safe: !component.hittable,
         kind: 'component',
       });

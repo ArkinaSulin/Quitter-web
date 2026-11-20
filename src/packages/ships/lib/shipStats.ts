@@ -6,16 +6,17 @@
 //  - The player designates a TOTAL ship mass. Hull and armor are paid out of it:
 //      hullMass  = totalMass × (10% + totalMass / 500)
 //      armorMass = totalMass × armor.massPct
-//    The rest is furnished with components, weapons, cargo and crew quarters.
+//    The rest is furnished with components, weapons and cargo.
 //  - HP = totalMass × 3 + 40, multiplied by the armor's HP multiplier (×2).
 //  - Acceleration = (sails + rudders) / totalMass × 15 (counts, not masses).
 //  - MC = x = rudders × 10 / totalMass; if x < 1 then 1/x + 2 else 4 − x.
 //    Effective MC adds a speed band: −1 at speed 0–2, 0 at 3–7, +1 at 8–12.
 //  - Hit boxes: 1 ton = 1 box. Boxes carry no HP; each hit destroys one box.
 //    Hull + armor are safe. Reinforcement is +10 temp HP per unit (assigned later).
-//  - Crew quarters are authored in tons (1 ton = 5 crew + 28 days of supplies).
+//  - Crew sleep wherever there is space (Deck/Cargo); food & water supplies limit endurance.
 
 import {
+  CargoManifestItem,
   ShipArmor,
   ShipComponent,
   ShipCrew,
@@ -36,7 +37,6 @@ export const HP_PER_TON = 3;
 export const HP_BASE = 40;
 export const ACCEL_SCALE = 15;
 export const MC_RUDDER_SCALE = 10;
-export const CREW_PER_QUARTER_TON = 5;
 export const REINFORCEMENT_TEMP_HP = 10;
 export const COMMAND_PER_BRIDGE = 5;
 export const HULL_COST_PER_TON = 1000;
@@ -66,7 +66,6 @@ export const COMPONENT_NAMES = {
   rudder: 'Rudder',
   reinforcement: 'Reinforcement',
   cargo: 'Cargo',
-  crewQuarters: 'Crew quarters',
   weaponCapacity: 'Weapon capacity',
 } as const;
 
@@ -79,7 +78,6 @@ const DEFAULT_COMPONENTS: Record<string, ShipComponent> = {
   [COMPONENT_NAMES.rudder]: { id: 'Rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
   [COMPONENT_NAMES.reinforcement]: { id: 'Reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
   [COMPONENT_NAMES.cargo]: { id: 'Cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  [COMPONENT_NAMES.crewQuarters]: { id: 'Crew quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
   [COMPONENT_NAMES.weaponCapacity]: { id: 'Weapon capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, canCombine: true, dt: 15 },
 };
 
@@ -133,7 +131,6 @@ export interface ShipBuild {
   sails: number;
   rudders: number;
   reinforcement: number;
-  crewQuarters: number;
   /** Authored weapon capacity (tons). Falls back to placed weapon tons. */
   weaponCapacity?: number;
   atmosphericSpeed?: number;
@@ -143,6 +140,8 @@ export interface ShipBuild {
   templateWeapons: ShipTemplateWeapon[];
   /** Template roster used for the non-functional card crew preview. */
   crews?: ShipCrew[];
+  /** Cargo manifest (tons). */
+  manifest?: CargoManifestItem[];
   /** Region-container deck layout. */
   deckLayout?: ShipDeckLayout;
   /** Card keys carrying a reinforcement. */
@@ -241,18 +240,26 @@ export function computeComponentCrew(build: ShipBuild): number {
   );
 }
 
-/** Minimum crew to operate the ship — already whole after per-group rounding. */
+/**
+ * Minimum crew to operate the ship: one helm, plus the sail and rudder crews.
+ * Command bridge, optional components and weapon handling crew are excluded.
+ */
 export function computeMinCrew(build: ShipBuild): number {
-  return computeComponentCrew(build);
+  const c = build.components;
+  const helmCrew = build.helm > 0 ? Math.ceil(componentByName(c, COMPONENT_NAMES.helm).crew) : 0;
+  const sailCrew = build.sails > 0 ? Math.max(1, Math.floor(build.sails / 4)) : 0;
+  const rudderCrew = build.rudders > 0 ? Math.max(1, Math.ceil(build.rudders / 2)) : 0;
+  return helmCrew + sailCrew + rudderCrew;
 }
 
 /**
- * Full crew is the larger of two shifts of the minimum crew and the minimum
- * plus all weapon handling crew.
+ * Full crew is the larger of two shifts of the minimum crew and every crew
+ * slot on the ship (all component + weapon handling crew).
  */
 export function computeFullCrew(build: ShipBuild): number {
   const min = computeMinCrew(build);
-  return Math.max(min * 2, min + computeWeaponCrew(build));
+  const allSlots = computeComponentCrew(build) + computeWeaponCrew(build);
+  return Math.max(min * 2, allSlots);
 }
 
 /** Total weekly cost of the current crew roster. */
@@ -263,12 +270,6 @@ export function computeCrewWeeklyCostTotal(build: ShipBuild): number {
 /** Weekly operation cost = 0.4% of ship cost + roster weekly cost. */
 export function computeWeeklyOperationCost(build: ShipBuild): number {
   return Math.round(computeBuildCost(build) * SHIP_WEEKLY_OPERATION_FRACTION + computeCrewWeeklyCostTotal(build));
-}
-
-/** Authored crew-quarters capacity (1 ton = 5 crew). */
-export function computeCrewCapacity(crewQuarters: number): number {
-  const tons = Number.isFinite(crewQuarters) ? crewQuarters : 0;
-  return Math.max(0, tons) * CREW_PER_QUARTER_TON;
 }
 
 // --- Mass -------------------------------------------------------------------
@@ -326,7 +327,6 @@ export interface ShipMassBreakdown {
   reinforcement: number;
   optionalComponents: number;
   cargo: number;
-  crewQuarters: number;
   used: number;
   remaining: number;
 }
@@ -349,10 +349,9 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
   const reinforcement = roundTons(build.reinforcement * componentByName(c, COMPONENT_NAMES.reinforcement).mass);
   const optionalComponents = roundTons(computeOptionalComponentMass(build));
   const cargo = Math.max(0, roundTons(build.cargoArea || 0));
-  const crewQuarters = Math.max(0, roundTons(build.crewQuarters || 0));
   const used =
     hull + deck + armor + helm + commandBridge + sails + rudders + weapons +
-    reinforcement + optionalComponents + cargo + crewQuarters;
+    reinforcement + optionalComponents + cargo;
   return {
     hull,
     deck,
@@ -365,13 +364,12 @@ export function computeMassBreakdown(build: ShipBuild): ShipMassBreakdown {
     reinforcement,
     optionalComponents,
     cargo,
-    crewQuarters,
     used,
     remaining: Math.max(0, build.totalMass) - used,
   };
 }
 
-/** Built-in + optional components + weapons + cargo + crew quarters (rounded tons). */
+/** Built-in + optional components + weapons + cargo (rounded tons). */
 export function computeFittingMass(build: ShipBuild): number {
   const m = computeMassBreakdown(build);
   return m.used - m.hull - m.deck - m.armor;
@@ -385,6 +383,15 @@ export function computeUsedMass(build: ShipBuild): number {
 /** Tons left to furnish (negative = overloaded). */
 export function computeRemainingMass(build: ShipBuild): number {
   return computeMassBreakdown(build).remaining;
+}
+
+/**
+ * Cargo capacity: the authored cargo hold plus any still-unallocated tonnage.
+ * Matches the Ship Editor's Cargo row / manifest capacity.
+ */
+export function computeCargoCapacity(build: ShipBuild): number {
+  const cargoArea = Math.max(0, build.cargoArea || 0);
+  return Math.max(0, Math.max(cargoArea, Math.floor(computeRemainingMass(build) + cargoArea)));
 }
 
 // --- Performance ------------------------------------------------------------
@@ -476,7 +483,6 @@ function boxGroupsFromMass(m: ShipMassBreakdown, hullSafe = true): ShipBoxGroup[
     { id: 'reinforcement', label: 'Reinforcement', boxes: m.reinforcement, safe: false },
     { id: 'optional_components', label: 'Components', boxes: m.optionalComponents, safe: false },
     { id: 'cargo', label: 'Cargo', boxes: m.cargo, safe: false },
-    { id: 'crew_quarters', label: 'Crew quarters', boxes: m.crewQuarters, safe: false },
   ].filter(g => g.boxes > 0);
 
   if (m.remaining > 0) {
@@ -508,7 +514,6 @@ export function computeWeaponCost(build: ShipBuild): number {
 
 export function computeBuildCost(build: ShipBuild): number {
   const c = build.components;
-  const quarters = Math.max(0, build.crewQuarters || 0);
   const capacity = computeWeaponCapacity(build);
   const capacityComponent = componentByName(c, COMPONENT_NAMES.weaponCapacity);
   const componentCost =
@@ -519,7 +524,6 @@ export function computeBuildCost(build: ShipBuild): number {
     build.rudders * componentByName(c, COMPONENT_NAMES.rudder).cost +
     build.reinforcement * componentByName(c, COMPONENT_NAMES.reinforcement).cost +
     Math.max(0, build.cargoArea) * componentByName(c, COMPONENT_NAMES.cargo).cost +
-    quarters * componentByName(c, COMPONENT_NAMES.crewQuarters).cost +
     capacity * capacityComponent.cost;
   const optionalComponentCost = build.templateComponents.reduce((sum, row) => {
     const component = componentById(build.components, row.componentId);
@@ -553,10 +557,6 @@ export interface ShipDerivedStats {
   crew: number;
   minCrew: number;
   fullCrew: number;
-  /** Authored crew-quarters mass. */
-  crewQuarters: number;
-  /** `crewQuarters × 5`. */
-  crewCapacity: number;
   /** Roster weekly cost total. */
   crewWeeklyCost: number;
   /** 0.4% of ship cost + roster weekly cost, rounded to whole gp. */
@@ -600,8 +600,6 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     crew: computeCrew(build),
     minCrew: computeMinCrew(build),
     fullCrew: computeFullCrew(build),
-    crewQuarters: Math.max(0, build.crewQuarters || 0),
-    crewCapacity: computeCrewCapacity(build.crewQuarters),
     crewWeeklyCost,
     weeklyOperationCost: Math.round(buildCost * SHIP_WEEKLY_OPERATION_FRACTION + crewWeeklyCost),
     performanceMass: performanceMassOf(build),

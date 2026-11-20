@@ -30,7 +30,6 @@ function build(overrides: Partial<ShipBuild> = {}): ShipBuild {
     sails: 8,
     rudders: 4,
     reinforcement: 0,
-    crewQuarters: 2,
     cargoArea: 1,
     templateComponents: [],
     templateWeapons: [{ id: 'Fore', weaponId: WEAPON.id, count: 2 }],

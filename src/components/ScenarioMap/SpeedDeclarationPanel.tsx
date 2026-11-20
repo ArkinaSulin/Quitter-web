@@ -4,7 +4,7 @@
 // recipient is the Helm hero owner, else the Bridge hero owner, else the DM.
 
 import { useEffect, useState } from 'react';
-import { ShipRuntime, declareSpeed, spellSlotCostForHexes } from '@/packages/ships';
+import { ShipRuntime, declareSpeed, effectiveMCForSpeed, effectiveTurnDistance, spellSlotCostForHexes } from '@/packages/ships';
 import { DraggablePanel } from '@/components/shared/DraggablePanel';
 
 export interface SpeedDeclarationPanelProps {
@@ -80,6 +80,8 @@ export function SpeedDeclarationPanel({ ship, onClose, onDeclare }: SpeedDeclara
     acceleration: maxAccel,
   });
   const spellSlots = spellSlotCostForHexes(extraHexes, stats?.totalMass ?? 0);
+  const baseMc = effectiveMCForSpeed(stats, declaredSpeed);
+  const effectiveMc = effectiveTurnDistance(stats, declaredSpeed, ship.mcReduction ?? 0);
 
   return (
     <DraggablePanel
@@ -105,6 +107,12 @@ export function SpeedDeclarationPanel({ ship, onClose, onDeclare }: SpeedDeclara
           <div className="flex items-center justify-between gap-2 border-t border-gray-700 pt-2">
             <span className="text-gray-400">Declared speed</span>
             <span className="font-mono text-lg font-bold text-amber-300">{declaredSpeed}</span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-gray-400">Base MC</span>
+            <span className="font-mono text-amber-300">
+              {baseMc}{effectiveMc !== baseMc ? ` (−${baseMc - effectiveMc} trim → ${effectiveMc})` : ''}
+            </span>
           </div>
         </div>
         <button

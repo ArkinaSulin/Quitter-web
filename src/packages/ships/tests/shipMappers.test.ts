@@ -4,6 +4,7 @@
 // the NaN bug — camelCase reads of snake_case keys are undefined.
 
 import { describe, expect, it } from 'vitest';
+import { bodySlotCount } from '@/packages/ships';
 import {
   mapShipArmorRow,
   mapShipComponentRow,
@@ -94,7 +95,7 @@ describe('mapShipTemplateRow', () => {
     const t = mapShipTemplateRow({
       id: 'wasp', name: 'Wasp Ship', role: 'Shuttle', armor_id: 'armor-wood',
       total_mass: '20', helm: 1, command_bridge: 0, rudders: 2, sails: 6,
-      reinforcement: 0, crew_quarters: 2, cargo_area: 8,
+      reinforcement: 0, cargo_area: 8,
       keel_length: 150, image_offset_y: -5,
       ship_template_components: [{ component_id: 'acc-ram', count: 1 }],
       ship_template_weapons: [
@@ -107,7 +108,6 @@ describe('mapShipTemplateRow', () => {
     expect(t.commandBridge).toBe(0);
     expect(t.sails).toBe(6);
     expect(t.reinforcement).toBe(0);
-    expect(t.crewQuarters).toBe(2);
     expect(t.weaponCapacity).toBe(0);
     expect(t.atmosphericSpeed).toBe(0);
     expect(t.damageThreshold).toBe(15);
@@ -120,7 +120,7 @@ describe('mapShipTemplateRow', () => {
       { id: 'row-1', weaponId: 'wpn-ballista', count: 2 },
     ]);
     expect(t.deckLayout.bow).toHaveLength(3);
-    expect(t.deckLayout.body).toHaveLength(8);
+    expect(bodySlotCount(t.deckLayout)).toBe(8);
   });
 });
 
@@ -129,18 +129,18 @@ describe('mapShipTemplateToRow', () => {
     const row = mapShipTemplateToRow({
       id: 'wasp', name: 'Wasp Ship', role: null, armorId: 'armor-wood',
       totalMass: 20, helm: 1, commandBridge: 0, sails: 6, rudders: 2,
-      reinforcement: 0, crewQuarters: 2,
+      reinforcement: 0,
       weaponCapacity: 2, atmosphericSpeed: 5, damageThreshold: 15, imageUrl: 'https://x/ship.png',
       keelLength: 140, imageOffsetY: 4,
       cargoArea: 8, deckLayout: { bow: [], stern: [], port: [], body: [], starboard: [] },
       reinforcements: [], weaponArcs: {}, optionalComponents: [], weapons: [], crews: [],
+      manifest: [{ name: 'Crate', category: 'general_cargo' as const, quantity: 1.5 }],
       createdAt: '', updatedAt: '',
     });
     expect(row.total_mass).toBe(20);
     expect(row.helm).toBe(1);
     expect(row.command_bridge).toBe(0);
     expect(row.reinforcement).toBe(0);
-    expect(row.crew_quarters).toBe(2);
     expect(row.weapon_capacity).toBe(2);
     expect(row.atmospheric_speed).toBe(5);
     expect(row.damage_threshold).toBe(15);
@@ -149,6 +149,7 @@ describe('mapShipTemplateToRow', () => {
     expect(row.image_offset_y).toBe(4);
     expect(row.cargo_area).toBe(8);
     expect(row.deck_layout).toEqual({ bow: [], stern: [], port: [], body: [], starboard: [] });
+    expect(row.manifest).toEqual([{ name: 'Crate', category: 'general_cargo', quantity: 1.5 }]);
     expect(row.weapon_arcs).toEqual({});
   });
 });

@@ -3,6 +3,9 @@
 
 import React, { useState } from 'react';
 import { ShipLibraryEntry, useShipTemplates } from '@/hooks/useShipTemplates';
+import { usePlayerShips } from '@/hooks/usePlayerShips';
+import { type PlayerShip } from '@/packages/ships';
+import { alphaLabel } from '@/packages/units';
 import { ShipTemplateTooltip } from './ShipTemplateTooltip';
 
 export function SailingShipIcon({ size = 16 }: { size?: number }) {
@@ -29,12 +32,16 @@ export function SailingShipIcon({ size = 16 }: { size?: number }) {
 }
 
 interface ShipSelectorProps {
+  scenarioId: string;
   canViewLibrary: boolean;
   onShipDragStart: (entry: ShipLibraryEntry) => void;
+  onPlayerShipDragStart: (playerShip: PlayerShip, entry: ShipLibraryEntry) => void;
 }
 
-export function ShipSelector({ canViewLibrary, onShipDragStart }: ShipSelectorProps) {
+export function ShipSelector({ scenarioId, canViewLibrary, onShipDragStart, onPlayerShipDragStart }: ShipSelectorProps) {
   const { ships, loading, error } = useShipTemplates();
+  const { ships: playerShips } = usePlayerShips(scenarioId, null);
+  const templateById = new Map(ships.map(entry => [entry.template.id, entry]));
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredShip, setHoveredShip] = useState<ShipLibraryEntry | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
@@ -88,6 +95,40 @@ export function ShipSelector({ canViewLibrary, onShipDragStart }: ShipSelectorPr
           className="w-full bg-gray-700 text-white text-sm px-2 py-1 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
         />
       </div>
+
+      {playerShips.length > 0 && (
+        <div className="px-2 pb-2 flex-shrink-0 space-y-1">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Player ships</div>
+          {playerShips.map(playerShip => {
+            const entry = templateById.get(playerShip.templateId);
+            const available = !playerShip.deployedScenarioId || playerShip.deployedScenarioId === scenarioId;
+            return (
+              <div
+                key={playerShip.id}
+                onMouseDown={(e) => {
+                  if (e.button !== 0 || !available || !entry) return;
+                  onPlayerShipDragStart(playerShip, entry);
+                }}
+                className={`rounded border p-1.5 text-xs ${
+                  available
+                    ? 'cursor-grab border-amber-700/70 bg-amber-900/10 text-amber-100 hover:bg-amber-900/25'
+                    : 'cursor-not-allowed border-gray-700 bg-gray-800/60 text-gray-500'
+                }`}
+                title={available ? 'Drag onto the map as this player ship' : 'Already deployed in another scenario'}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">
+                    {playerShip.name} {alphaLabel(playerShip.serialNumber)}
+                  </span>
+                  <span className="text-[10px] text-gray-400">
+                    HP {playerShip.shipHp}/{playerShip.shipHpMax}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
         {filtered.length === 0 ? (

@@ -17,24 +17,25 @@ import {
   COMPONENT_NAMES,
   DEFAULT_CREW_STATS,
   DEFAULT_TOTAL_MASS,
-  WEAPON_ARCS,
   addSlotToRegion,
   addWeaponArc,
   buildShipFromTemplate,
   canPlaceWeapon,
   canRemoveLastEmptySlot,
+  cargoManifestMass,
+  supplyDays,
   componentById,
   componentByName,
+  computeCargoCapacity,
   computeCrewHp,
   computeCrewWeeklyCost,
   computeHullCost,
-  computeRemainingMass,
   computeShipBuild,
   createDefaultDeckLayout,
   deckDirection,
   effectiveWeaponArcs,
-  isProtectedDefaultArc,
-  removeLastEmptySlot,
+  regionSlotAt,
+  removeEmptySlotAt,
   removeWeaponArc,
   resolveShipWeaponDamage,
   weaponById,
@@ -49,6 +50,7 @@ import {
   mapWeaponRows,
 } from '@/packages/ships';
 import { CrewRoster } from '@/components/ShipRenderer/CrewRoster';
+import { CargoManifest, CargoLoadBadge } from '@/components/ShipRenderer/CargoManifest';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
 import { ShipImagePreview } from '@/components/ShipRenderer/ShipImagePreview';
@@ -225,9 +227,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const build = formData
     ? buildShipFromTemplate(formData, armors, components, weaponsCatalog)
     : null;
-  const cargoCapacity = formData && build
-    ? Math.max(0, Math.max(formData.cargoArea, Math.floor(computeRemainingMass(build) + formData.cargoArea)))
-    : 0;
+  const cargoCapacity = formData && build ? computeCargoCapacity(build) : 0;
+  const cargoManifest = formData?.manifest ?? [];
+  const manifestMass = cargoManifestMass(cargoManifest);
+  const foodWaterDays = supplyDays(cargoManifest, formData?.crews.length ?? 0);
   const simulatedCargoClamped = Math.min(Math.max(0, simulatedCargo), cargoCapacity);
   const performanceMass = build
     ? Math.max(1, build.totalMass - cargoCapacity + simulatedCargoClamped)
@@ -350,11 +353,19 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     setCardMenu(null);
   };
 
+  const handleEmptySlotClick = (region: ShipDeckRegion, index: number) => {
+    if (readOnly || !build?.deckLayout) return;
+    if (region !== 'body' || regionSlotAt(build.deckLayout, region, index)?.cardKey) return;
+    if (!canRemoveLastEmptySlot(build.deckLayout, region)) return;
+    setError(null);
+    updateFormData('deckLayout', removeEmptySlotAt(build.deckLayout, region, index));
+  };
+
   const removeSlot = () => {
     if (!formData || !build || !cardMenu?.region) return;
     if (!canRemoveLastEmptySlot(build.deckLayout!, cardMenu.region)) return;
     setError(null);
-    updateFormData('deckLayout', removeLastEmptySlot(build.deckLayout!, cardMenu.region));
+    updateFormData('deckLayout', removeEmptySlotAt(build.deckLayout!, cardMenu.region, cardMenu.index ?? -1));
     setCardMenu(null);
   };
 
@@ -436,7 +447,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     const group = new Set(args.ids);
     const kept = formData.crews.filter(c => group.has(c.id));
     const others = formData.crews.filter(c => !group.has(c.id));
-    const target = Math.max(0, Math.min(50, Math.floor(args.count)));
+    const target = Math.max(0, Math.floor(args.count));
     const make = (base?: ShipCrew): ShipCrew => ({
       id: base?.id ?? crypto.randomUUID(),
       name: args.draft.name.trim() || base?.name || `Crew Level ${args.draft.level}`,
@@ -534,8 +545,14 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   }, [selectedId, templates]);
 
   useEffect(() => {
-    setSimulatedCargo(formData?.cargoArea ?? 0);
+    setSimulatedCargo(cargoManifestMass(formData?.manifest));
   }, [selectedId, formData?.id]);
+
+  // Keep the preview at the real manifest load when the manifest changes; the
+  // slider can then dry-run other loads.
+  useEffect(() => {
+    setSimulatedCargo(cargoManifestMass(formData?.manifest));
+  }, [formData?.manifest]);
 
   useEffect(() => {
     setSimulatedCargo(cargo => Math.min(cargo, cargoCapacity));
@@ -566,7 +583,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       sails: 0,
       rudders: 0,
       reinforcement: 0,
-      crewQuarters: 0,
       weaponCapacity: 0,
       deckLayout: createDefaultDeckLayout(),
       reinforcements: [],
@@ -580,6 +596,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       optionalComponents: [],
       weapons: [],
       crews: [],
+      manifest: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -724,10 +741,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       setError('A ship with this name already exists');
       return false;
     }
-    if (stats && formData.crews.length > stats.crewCapacity) {
-      setError(`Crew roster (${formData.crews.length}) exceeds quarters capacity (${stats.crewCapacity}). Add crew quarters or remove crew before saving.`);
-      return false;
-    }
 
     try {
       const withDeck = withSyncedDeck(formData);
@@ -803,7 +816,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const weaponOptions = [...weaponsCatalog].sort(
     (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
   );
-  const crewOverCapacity = !!formData && !!stats && formData.crews.length > stats.crewCapacity;
   const isNew = !!formData && !templates.some(t => t.id === formData.id);
   const mcLabel = (v: number) => (Number.isFinite(v) ? `${v}` : '—');
   const armorName = (id: string) => {
@@ -824,7 +836,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     ? formData.weaponCapacity * (weaponCapacityComponent?.cost ?? 0)
     : 0;
   const reinforcementCost = rowCost(COMPONENT_NAMES.reinforcement, formData?.reinforcement ?? 0);
-  const quartersCost = rowCost(COMPONENT_NAMES.crewQuarters, formData?.crewQuarters ?? 0);
   const cargoCost = rowCost(COMPONENT_NAMES.cargo, formData?.cargoArea ?? 0);
 
 
@@ -871,11 +882,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
             {formData && stats && formData.crews.length < stats.minCrew && (
               <div className="rounded border border-amber-500 bg-amber-900/90 px-3 py-1.5 text-[11px] text-amber-100">
                 Below minimum crew ({stats.minCrew}) — the ship cannot operate all stations.
-              </div>
-            )}
-            {crewOverCapacity && (
-              <div className="rounded border border-red-500 bg-red-900/90 px-3 py-1.5 text-[11px] text-red-100">
-                Crew roster ({formData?.crews.length ?? 0}) exceeds quarters capacity ({stats?.crewCapacity ?? 0}).
               </div>
             )}
           </div>
@@ -1019,15 +1025,20 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         <StatCell label="Damage threshold">{stats.damageThreshold}</StatCell>
                       </div>
                       <div className="grid grid-cols-4 gap-2 mt-2">
-                        <StatCell label="Cargo">{simulatedCargoClamped} / {cargoCapacity}t</StatCell>
+                        <StatCell label="Cargo">
+                          <CargoLoadBadge mass={manifestMass} capacity={cargoCapacity} />
+                        </StatCell>
                         <StatCell label="Crew (min / full)">{stats.minCrew} / {stats.fullCrew}</StatCell>
+                        <StatCell label="Food & water">
+                          {foodWaterDays == null ? '—' : `${foodWaterDays} days`}
+                        </StatCell>
                         <StatCell label="Ship cost">{stats.buildCost.toLocaleString()}gp</StatCell>
-                        <StatCell label="Weekly operation">{stats.weeklyOperationCost.toLocaleString()}gp</StatCell>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 mt-2">
+                      <div className="grid grid-cols-4 gap-2 mt-2">
                         <StatCell label="Atmospheric speed">{stats.atmosphericSpeed}</StatCell>
                         <StatCell label="Space Acceleration">{stats.accel}</StatCell>
                         <StatCell label="Maneuver class (MC)">{mcLabel(stats.mcRaw)}</StatCell>
+                        <StatCell label="Weekly operation">{stats.weeklyOperationCost.toLocaleString()}gp</StatCell>
                       </div>
 
                       <div className="mt-2">
@@ -1361,19 +1372,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         </tr>
 
                         <tr className="border-b border-gray-700/50">
-                          <td className="py-1 pr-2">Crew quarter</td>
-                          <td className="text-center px-2">
-                            <div className="mx-auto w-full max-w-16">
-                              <NumInput value={formData.crewQuarters} min={0} max={99} onChange={(v) => updateFormData('crewQuarters', Math.max(0, Math.floor(v)))} />
-                            </div>
-                          </td>
-                          <td className="text-right px-2">{stats?.massBreakdown.crewQuarters ?? 0}</td>
-                          <td className="text-right px-2">0</td>
-                          <td className="pl-2 text-gray-500">1t each · {stats?.crewCapacity ?? 0} capacity</td>
-                          <td className="text-right pl-2 text-yellow-400">{quartersCost.toLocaleString()}gp</td>
-                        </tr>
-
-                        <tr className="border-b border-gray-700/50">
                           <td className="py-1 pr-2">Cargo</td>
                           <td className="text-center px-2">
                             <div className="mx-auto w-full max-w-16">
@@ -1442,16 +1440,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                 <div className="flex-none px-6 py-3 border-t border-gray-700 bg-[#0d0d1a] flex gap-3">
                   <button
                     onClick={handleSave}
-                    disabled={crewOverCapacity}
                     className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isNew ? 'Create' : 'Save'}
                   </button>
-                  {crewOverCapacity && (
-                    <span className="self-center text-[10px] text-red-400">
-                      Crew roster exceeds quarters capacity.
-                    </span>
-                  )}
                   <button
                     onClick={handleClone}
                     disabled={!formData}
@@ -1531,14 +1523,15 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     readOnly={readOnly}
                     onDeckChange={(layout) => updateFormData('deckLayout', layout)}
                     onSlotContextMenu={readOnly ? undefined : handleSlotContextMenu}
+                    onEmptySlotClick={readOnly ? undefined : handleEmptySlotClick}
                   />
                 </div>
               </div>
 
               <div className="max-h-[38%] shrink-0 overflow-y-auto rounded border border-gray-700 bg-gray-800 p-2.5">
                 <div className="flex items-center justify-between mb-2">
-                  <label className={`block text-[10px] ${crewOverCapacity ? 'text-red-400' : 'text-gray-400'}`}>
-                    Ship roster ({formData.crews.length}) · Min {stats.minCrew} / Full {stats.fullCrew} · Quarters {stats.crewCapacity}
+                  <label className="block text-[10px] text-gray-400">
+                    Ship roster ({formData.crews.length}) · Min {stats.minCrew} / Full {stats.fullCrew} · Food &amp; water {foodWaterDays == null ? '—' : `${foodWaterDays} days`}
                   </label>
                   <button
                     type="button"
@@ -1550,11 +1543,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   </button>
                 </div>
 
-                {crewOverCapacity && (
-                  <p className="text-[10px] text-red-400 mb-1">
-                    Roster exceeds crew capacity by {formData.crews.length - stats.crewCapacity}. Saving is blocked.
-                  </p>
-                )}
                 <div className="flex flex-wrap gap-1 mb-2" title="Crew roster">
                   {Array.from({ length: Math.min(formData.crews.length, 80) }).map((_, i) => (
                     <span key={i} className="w-2.5 h-2.5 rounded-full border border-gray-400" />
@@ -1569,6 +1557,17 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   canEdit={!readOnly}
                   readOnly={readOnly}
                   onAdjust={applyCrewAdjust}
+                />
+              </div>
+
+              <div className="shrink-0">
+                <CargoManifest
+                  items={formData.manifest}
+                  capacity={cargoCapacity}
+                  canEdit={!readOnly}
+                  foodWaterDays={foodWaterDays}
+                  people={formData.crews.length}
+                  onChange={items => updateFormData('manifest', items)}
                 />
               </div>
             </div>
@@ -1747,7 +1746,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                     type="button"
                     onClick={removeSlot}
                     disabled={!canRemove}
-                    title={canRemove ? 'Remove the bottom-most empty slot in this region' : 'No removable empty slot'}
+                    title={canRemove ? 'Remove the empty slot under the cursor in Body, otherwise the bottom-most empty slot' : 'No removable empty slot'}
                     className="w-full text-left px-2 py-1.5 text-xs rounded text-red-300 hover:bg-red-900/40 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Remove slot
@@ -1762,7 +1761,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                   </div>
                   <WeaponArcCompass
                     active={arcs}
-                    locked={WEAPON_ARCS.filter(arc => isProtectedDefaultArc(cardMenu.region!, arc))}
                     onToggle={arc => setFiringArc(arc, arcs.includes(arc) ? 'remove' : 'add')}
                   />
                 </>
@@ -1803,7 +1801,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
             <div className="space-y-2">
               <div className="flex items-end gap-2">
                 <Cell label="Number of crew" widthClass="w-24">
-                  <NumInput value={crewDraft.count} min={1} max={999} onChange={(v) => setCrewDraft(d => ({ ...d, count: Math.max(1, Math.floor(v) || 1) }))} />
+                  <NumInput value={crewDraft.count} min={1} onChange={(v) => setCrewDraft(d => ({ ...d, count: Math.max(1, Math.floor(v) || 1) }))} />
                 </Cell>
                 <Cell label="Name (optional — blank = unnamed)" widthClass="flex-1">
                   <input

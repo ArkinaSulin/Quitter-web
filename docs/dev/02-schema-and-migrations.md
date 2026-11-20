@@ -221,7 +221,7 @@ as applied in the notes — check the live DB before relying on it).
 | 152 | Scenario Spelljammer mode: `ship_mode`, `ship_firing_arcs`, `ship_step` | applied (schema verified 2026-11-14) |
 | 153 | Ship weapon reload/area fields: `reload_steps`, `magic_dimension`, `shape`, `saving_throw`, `save_dc`, `on_save_half_or_neg` | applied (schema verified 2026-11-14) |
 | 154 | `ship_components.is_ram` + hull repair station | applied (schema verified 2026-11-14) |
-| 155 | `ship_spelljammer` runtime columns (`snapshot`, `stations`, `crew_state`, `reload`, `weapon_state`, movement fields) | applied (schema verified 2026-11-14) |
+| 155 | `ship_spelljammer` runtime columns (`snapshot`, `stations`, `crew_state`, `reload`, `card_state` (renamed by 169), movement fields) | applied (schema verified 2026-11-14) |
 | 156 | `ship_spelljammer` RLS (participant read, GM write) | applied (logic; not anon-verifiable) |
 | 157 | `SHIP` command sub-steps + `ship_step` scenario field | applied (logic; not anon-verifiable) |
 | 158 | `SHIP` placement insert fix (NOT NULL `name`) | applied (logic; not anon-verifiable) |
@@ -233,6 +233,14 @@ as applied in the notes — check the live DB before relying on it).
 | 164 | Per-card box state + hittable hull | applied (data rewrite; not anon-verifiable) |
 | 165 | New generic-crew defaults + station state (`mc_reduction`, `sail_max_step`, `sail_trim_step`, `ram_used_turn`) | applied (schema verified 2026-11-14) |
 | 165 | Halloween Siege saved sequences: `halloween_siege_presets` (name + plan jsonb; global DM library RLS via `create_scenario`) | applied (schema verified 2026-11-14) |
+| 166 | Cargo manifest: `ship_templates.manifest` jsonb (array of `{name, category, mass}`) | pending |
+| 167 | Remove crew quarters: seed Food & water manifest, drop `ship_templates.crew_quarters` + the built-in catalog row | pending |
+| 168 | Cargo manifest units: convert `{name,category,mass}` → `{name,category,quantity}` on templates + placed-ship snapshots | pending |
+| 169 | Ship card-state naming + universal card-step ledger: rename `ship_spelljammer.weapon_state` → `card_state`; keep `weaponState` as a legacy command-log alias | pending |
+| 170 | DM-hidden ships: `ship_spelljammer.hidden` boolean (default false) | pending |
+| 171 | Persistent player ships: `player_ships`, `player_ship_versions`, shared serial counter, ship links + dry-dock lease RPCs | applied |
+| 172 | Claim an ordinary placed ship as a player ship (`convert_ship_to_player`) + initial v1 version | applied |
+| 173 | Claim with confirmation name (`convert_ship_to_player(p_ship_id, p_name)`) | pending |
 
 ### Verify what's actually applied
 

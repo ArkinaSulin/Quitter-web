@@ -8,6 +8,7 @@ import { elevationOffset, canFly, parseClimbTo, hexDirection } from '@/packages/
 import { hexToPixel, pixelToHex } from '@/packages/primitives';
 import { getAttachedHeroPos, getHeroSquareSize, TOKEN_HEIGHT } from '@/packages/units';
 import { EdgeRef, Walls, nearestWallEdge, EDGE_HIT_RATIO } from '@/packages/movement';
+import { shipFacingRadians } from '@/packages/ships';
 
 // Re-export the pure hex math so existing importers keep working.
 export { hexToPixel, pixelToHex } from '@/packages/primitives';
@@ -30,6 +31,8 @@ export interface GrabbableShip {
   hex: Hex;
   keelLength: number;
   imageOffsetY?: number;
+  /** Ship facing (0 = nose north; +1 = 60° clockwise). */
+  facing?: number;
 }
 
 /** Does `unit` pass the active target filter? (`structure` never passes a unit.) */
@@ -101,6 +104,8 @@ export interface UseHexGridProps {
   onShipMove?: (shipId: string, targetHex: Hex) => void;
   /** Click (no drag) on a ship image. */
   onShipClick?: (ship: GrabbableShip, clientX: number, clientY: number) => void;
+  /** Right-click on a ship image (DM/controller menu). */
+  onShipRightClick?: (ship: GrabbableShip, clientX: number, clientY: number) => void;
   /** Permission gate for grabbing a ship. */
   canGrabShip?: (ship: GrabbableShip) => boolean;
   /** Fired when a ship starts being grabbed (for the movement overlay). */
@@ -147,6 +152,7 @@ export function useHexGrid({
   ships = [],
   onShipMove,
   onShipClick,
+  onShipRightClick,
   canGrabShip,
   onShipGrab,
 }: UseHexGridProps) {
@@ -501,9 +507,15 @@ export function useHexGrid({
       const half = Math.max(size * 0.7, h / 2);
       const offset = ((ship.imageOffsetY ?? 0) * size) / 50;
       const dx = world.x - pos.x;
-      const dy = world.y - (pos.y - offset);
-      if (Math.abs(dx) <= half && Math.abs(dy) <= half) {
-        const d = dx * dx + dy * dy;
+      const dy = world.y - pos.y;
+      // Rotate the cursor into ship-local space so the hit box follows facing.
+      const angle = shipFacingRadians(ship.facing);
+      const cos = Math.cos(-angle);
+      const sin = Math.sin(-angle);
+      const lx = dx * cos - dy * sin;
+      const ly = dx * sin + dy * cos;
+      if (Math.abs(lx) <= half && Math.abs(ly + offset) <= half) {
+        const d = lx * lx + ly * ly;
         if (d < bestD) { bestD = d; best = ship; }
       }
     }
@@ -739,11 +751,17 @@ export function useHexGrid({
     // On macOS, ctrl+click fires a contextmenu event — it's a ping here, not a menu.
     if (e.ctrlKey || e.metaKey) return;
     const hex = getHexFromScreen(e.clientX, e.clientY);
-    if (hex) {
-      const unit = getUnitAtScreen(e.clientX, e.clientY);
-      if (onHexRightClick) onHexRightClick(hex, unit, e.clientX, e.clientY);
+    if (!hex) return;
+    const unit = getUnitAtScreen(e.clientX, e.clientY);
+    if (!unit && onShipRightClick) {
+      const ship = getShipAtScreen(e.clientX, e.clientY);
+      if (ship) {
+        onShipRightClick(ship, e.clientX, e.clientY);
+        return;
+      }
     }
-  }, [getHexFromScreen, getUnitAtScreen, targetFilter, onHexRightClick, readOnly]);
+    if (onHexRightClick) onHexRightClick(hex, unit, e.clientX, e.clientY);
+  }, [getHexFromScreen, getUnitAtScreen, getShipAtScreen, targetFilter, onHexRightClick, onShipRightClick, readOnly]);
 
   const centerOn = useCallback((hex: { q: number; r: number }) => {
     const canvas = canvasRef.current;

@@ -140,8 +140,8 @@ export function CrewRoster({
 
   const stationName = (key: string) => stations?.find(s => s.key === key)?.name ?? key;
   const rowClass = 'flex items-center gap-2 px-2 py-1 text-[11px]';
-  const grid = 'grid grid-cols-[minmax(0,1fr)_26px_14px_26px]';
-  const deadGrid = 'grid grid-cols-[minmax(0,1fr)_26px_14px_84px]';
+  const grid = 'grid grid-cols-[18px_minmax(0,1fr)_26px_14px_26px]';
+  const deadGrid = 'grid grid-cols-[18px_minmax(0,1fr)_26px_14px_84px]';
 
   const tooltipFor = (group: CrewGroup) => {
     const crew = group.crew;
@@ -179,7 +179,7 @@ export function CrewRoster({
     <div ref={rootRef} className="rounded-lg border border-gray-700">
       <div className="border-b border-gray-800 px-2 py-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500">Roster</span>
+          <span className="text-[10px] uppercase tracking-wide text-gray-500">Crew reserve</span>
           <div className="flex items-center gap-1">
             {canAuto && onAuto && (
               <button
@@ -206,12 +206,12 @@ export function CrewRoster({
           </div>
         </div>
         <div className={`mt-0.5 ${grid} gap-1 text-[9px] uppercase tracking-wide text-gray-500`}>
-          <span>Name</span><span>Level</span><span /><span />
+          <span /><span>Name</span><span>Level</span><span /><span />
         </div>
       </div>
 
       <div className="max-h-[42vh] divide-y divide-gray-800 overflow-y-auto">
-        {aliveGroups.length === 0 && <div className="p-2 text-[11px] text-gray-500">No living crew.</div>}
+        {aliveGroups.length === 0 && <div className="p-2 text-[11px] text-gray-500">No crew in reserve.</div>}
 
         {aliveGroups.map(group => (
           <div
@@ -220,8 +220,9 @@ export function CrewRoster({
             onMouseEnter={e => setHover({ x: e.clientX, y: e.clientY, group })}
             onMouseLeave={() => setHover(null)}
           >
+            <span className="text-center tabular-nums text-gray-400">{group.count}</span>
             <span className="truncate text-gray-200">
-              {group.displayName}{group.count > 1 ? ` x${group.count}` : ''}
+              {group.displayName}
             </span>
             <span className="text-gray-400">{group.crew.level}</span>
             <span />
@@ -247,8 +248,9 @@ export function CrewRoster({
             onMouseEnter={e => setHover({ x: e.clientX, y: e.clientY, group })}
             onMouseLeave={() => setHover(null)}
           >
+            <span className="text-center tabular-nums text-gray-400">{group.count}</span>
             <span className="truncate text-gray-400">
-              {group.displayName}{group.count > 1 ? ` x${group.count}` : ''}
+              {group.displayName}
             </span>
             <span className="text-gray-500">{group.crew.level}</span>
             <span title="Dead" className="text-red-300">&#9760;</span>

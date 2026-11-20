@@ -1538,9 +1538,12 @@ failed spawn may require re-arming; see the developer chapter for limitations.
 |---|---|
 | **AGR** | Aggressiveness, 1–10. Roll d10 ≤ AGR to commit a melee attack. |
 | **AC** | Armor Class. D20 roll + bonuses must meet or beat it to hit. |
-| **Action** | A unit's deed currency: 2 for units, 5 for heroes per turn. |
+| **Action** | A unit's deed currency: 2 for units, 5 for heroes per turn (wildspace heroes get 1 per step). |
 | **Alliance** | Friendly / Enemy / Neutral; teams grouped into them; turn order. |
+| **Alliance boundary** | The engine command `END_TURN`; the UI calls it End Step in wildspace and End Turn in atmosphere. |
 | **Baseline/effective** | Base stat vs the live value after formation/effects. |
+| **Card function** | An operation on a ship card (Fire, Load, Repair, Speed +/−, Trim MC, Ram). Fill/Empty crew is free. |
+| **Card step** | One of a card's 5 function uses per turn. Wildspace: at most one per step. Atmosphere: all five in the turn. |
 | **Charge** | A locked-straight run in your front wedge ending in a double-damage attack. |
 | **Critical** | Natural 20: auto-hit, damage dice doubled. |
 | **Darkvision** | Sight in hexes beyond the scenario radius (fog). |
@@ -1557,7 +1560,9 @@ failed spawn may require re-arming; see the developer chapter for limitations.
 | **Reach** | Weapon property; decides first-strike and retaliation order. |
 | **Reaction** | Opportunity fire/reposition an archer takes when an enemy moves. |
 | **Rout** | A broken unit (white flag): flees, can't fight, must retreat/rally. |
+| **Step** | Wildspace only: 1/5 of a turn. Heroes refresh 1 action per step; ships move 1/5 of turn speed. |
 | **Threat** | A unit's scariness rating; presses enemy morale via kill zones. |
+| **Turn** | One complete cycle of all alliances; per-turn resources reset. |
 | **Unit** | A block of troops on the board (vs a Hero). |
 | **Zone of control** | A formation's front hexes that block enemy passage. |
 

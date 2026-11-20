@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { componentById, weaponById } from '@/packages/ships';
+import { componentById, weaponById, supplyDays } from '@/packages/ships';
 import { ShipLibraryEntry } from '@/hooks/useShipTemplates';
 import { Floating } from './Floating';
 
@@ -20,6 +20,7 @@ export function ShipTemplateTooltip({
   y: number;
 }) {
   const { template, build, stats } = entry;
+  const foodWaterDays = supplyDays(template.manifest, stats?.fullCrew ?? 0);
   const optional = (build?.templateComponents ?? []).map(row => {
     const component = componentById(build!.components, row.componentId);
     return `${component.name || humanize(row.componentId)}${row.count > 1 ? ` ×${row.count}` : ''}`;
@@ -43,11 +44,11 @@ export function ShipTemplateTooltip({
         <span className="text-gray-400">HP:</span><span>{stats?.shipHp ?? '—'}</span>
         <span className="text-gray-400">Damage threshold:</span><span>{stats?.damageThreshold ?? template.damageThreshold}</span>
         <span className="text-gray-400">Crew min / full:</span><span>{stats ? `${stats.minCrew} / ${stats.fullCrew}` : '—'}</span>
-        <span className="text-gray-400">Quarters:</span><span>{stats?.crewCapacity ?? 0}</span>
+        <span className="text-gray-400">Food &amp; water:</span><span>{foodWaterDays == null ? '—' : `${foodWaterDays} days`}</span>
         <span className="text-gray-400">Cargo:</span><span>{template.cargoArea}t</span>
         <span className="text-gray-400">Atmo speed:</span><span>{template.atmosphericSpeed}</span>
         <span className="text-gray-400">Acceleration:</span><span>{stats?.accel ?? '—'}</span>
-        <span className="text-gray-400">MC:</span><span>{stats ? stats.mcRaw : '—'}</span>
+        <span className="text-gray-400">MC:</span><span>{stats ? (Number.isFinite(stats.mcRaw) ? Math.ceil(stats.mcRaw) : '—') : '—'}</span>
         <span className="text-gray-400">Armor:</span><span>{build ? humanize(build.armor.name) : '—'}</span>
       </div>
 
