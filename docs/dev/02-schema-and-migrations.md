@@ -238,9 +238,10 @@ as applied in the notes — check the live DB before relying on it).
 | 168 | Cargo manifest units: convert `{name,category,mass}` → `{name,category,quantity}` on templates + placed-ship snapshots | pending |
 | 169 | Ship card-state naming + universal card-step ledger: rename `ship_spelljammer.weapon_state` → `card_state`; keep `weaponState` as a legacy command-log alias | pending |
 | 170 | DM-hidden ships: `ship_spelljammer.hidden` boolean (default false) | pending |
-| 171 | Persistent player ships: `player_ships`, `player_ship_versions`, shared serial counter, ship links + dry-dock lease RPCs | applied |
+| 171 | Persistent player ships: `player_ships`, `player_ship_versions`, shared serial counter, ship links + dry-dock lease RPCs (renamed by 174) | applied |
 | 172 | Claim an ordinary placed ship as a player ship (`convert_ship_to_player`) + initial v1 version | applied |
 | 173 | Claim with confirmation name (`convert_ship_to_player(p_ship_id, p_name)`) | pending |
+| 174 | Rename `player_ships` → `ship_player` and `player_ship_versions` → `ship_player_versions`; RPC bodies + policies/indexes updated | pending |
 
 ### Verify what's actually applied
 

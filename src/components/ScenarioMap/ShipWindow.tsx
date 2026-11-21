@@ -22,6 +22,8 @@ import {
   shipCardCrewCount,
   shipCommandHero,
   canSpendCardStep,
+  cardStepsRemaining,
+  effectiveMCForSpeed,
   shipHullCardKey,
   shipHullDestroyed,
   shipDamagedCards,
@@ -65,6 +67,13 @@ export interface ShipWindowProps {
   turnNumber: number;
   /** False when the viewer's alliance does not hold the current turn. */
   weaponActionsAllowed: boolean;
+  /** True when the viewer controls this ship (helmsman/captain/DM). */
+  canRam: boolean;
+  /** True when a hostile ship is in the two forward hexes. */
+  ramTargetAvailable: boolean;
+  /** DM/controller may open the speed declaration panel from the summary. */
+  canEditSpeed: boolean;
+  onOpenSpeedPanel: () => void;
   onClose: () => void;
   boardedHeroes: BoardedHero[];
   onFireWeapon: (cardKey: string, approvedNegative?: boolean) => void;
@@ -106,6 +115,10 @@ export function ShipWindow({
   shipStep,
   turnNumber,
   weaponActionsAllowed,
+  canRam,
+  ramTargetAvailable,
+  canEditSpeed,
+  onOpenSpeedPanel,
   onClose,
   boardedHeroes,
   onFireWeapon,
@@ -157,6 +170,16 @@ export function ShipWindow({
   const foodWaterDays = supplyDays(manifest, livingCrew + livingHeroes);
   const stationCards = build ? shipStationCards(build) : [];
   const stations = stationCards.map(card => ({ key: card.key, name: card.name, crew: card.crewRequired }));
+  // Runtime-only card-step ledger: one digit per deck card (0..5 left this turn).
+  // Helm is excluded: its Dodge placeholder spends no card steps.
+  const cardStepsByCard: Record<string, number> = {};
+  if (build?.deckLayout) {
+    const helmKeys = new Set(findCardKeysForComponent(build, 'Helm'));
+    for (const key of deckOrderedCardKeys(build.deckLayout)) {
+      if (helmKeys.has(key)) continue;
+      cardStepsByCard[key] = cardStepsRemaining(ship.cardState, key, turnNumber);
+    }
+  }
   const [autoArmed, setAutoArmed] = useState(false);
   const [autoEnabled, setAutoEnabled] = useState<Record<string, boolean>>({});
   const [cardMenu, setCardMenu] = useState<{
@@ -522,13 +545,34 @@ export function ShipWindow({
             },
           },
         ];
-      } else if (component.name === 'Helm') {
+      } else if (component.isRam) {
+        const ramPayerReady = (commandHero?.actionsAvailable ?? 0) >= 1;
+        const ramTitle = readOnly
+          ? undefined
+          : !canRam
+            ? 'Only the ship’s helmsman or controller can ram.'
+            : !ramPayerReady
+              ? 'No helm or bridge hero has an action available.'
+              : !ramTargetAvailable
+                ? 'No hostile ship in the two forward hexes.'
+                : !stepsAvailable
+                  ? 'No card steps left on that card this turn.'
+                  : undefined;
         cardFunctions[key] = [
           {
             label: 'Ram',
-            enabled: canUse && stepsAvailable,
-            title: canUse && !stepsAvailable ? 'No card steps left on that card this turn.' : undefined,
+            enabled: !readOnly && canRam && ramPayerReady && ramTargetAvailable && stepsAvailable,
+            title: ramTitle,
             onClick: () => onRam(key),
+          },
+        ];
+      } else if (component.name === 'Helm') {
+        cardFunctions[key] = [
+          {
+            label: 'Dodge',
+            enabled: false,
+            title: 'Dodge is not implemented yet.',
+            onClick: () => {},
           },
         ];
       } else if (component.name === 'Command bridge' || component.name === 'Bridge') {
@@ -570,27 +614,54 @@ export function ShipWindow({
       <div className="grid h-full min-h-0 gap-3 p-3 lg:grid-cols-[210px_1fr]">
         <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
           <div className="rounded-lg border border-gray-700 p-2">
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Tactical summary</div>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Ship summary</div>
             {stats ? (
               <div className="space-y-0.5 text-[11px]">
                 <div className="flex justify-between"><span className="text-gray-400">AC / DT</span><span>{stats.ac} / {stats.damageThreshold}</span></div>
                 <div className="flex justify-between"><span className="text-gray-400">HP</span><span>{ship.shipHp}/{ship.shipHpMax}</span></div>
                 <div className="flex justify-between"><span className="text-gray-400">Mass</span><span>{stats.totalMass}t</span></div>
                 <div className="flex justify-between pl-3 text-[10px]"><span className="text-gray-500">Current</span><span className="text-gray-300">{stats.performanceMass}t</span></div>
-                <div className="flex justify-between"><span className="text-gray-400">Atmo speed</span><span>{stats.atmosphericSpeed}</span></div>
-                <div className="flex justify-between"><span className="text-gray-400">Accel</span><span>{stats.accel}</span></div>
-                <div className="flex justify-between"><span className="text-gray-400">MC</span><span>{stats.mcBands.map((b, i) => {
-                  const band = i === stats.mcBands.length - 1 ? `${b.speedMin}+` : `${b.speedMin}-${b.speedMax}`;
-                  const value = Number.isFinite(b.mc) ? `(${Math.ceil(b.mc)})` : '—';
-                  return `${band}: ${value}`;
-                }).join(' / ')}</span></div>
                 <div className="flex justify-between"><span className="text-gray-400">Crew</span><span>{livingCrew}</span></div>
                 <div className="flex justify-between"><span className="text-gray-400">Food &amp; water</span><span className={foodWaterDays === 0 ? 'text-red-300' : foodWaterDays != null && foodWaterDays <= 7 ? 'text-amber-300' : 'text-gray-200'}>{foodWaterDays == null ? '—' : `${foodWaterDays} days`}</span></div>
                 <div className="flex justify-between pl-3 text-[10px]"><span className="text-gray-500">Min</span><span className="text-gray-300">{stats.minCrew}</span></div>
                 <div className="flex justify-between pl-3 text-[10px]"><span className="text-gray-500">Full</span><span className="text-gray-300">{stats.fullCrew}</span></div>
-                {shipMode === 'wildspace' && (
-                  <div className="flex justify-between"><span className="text-gray-400">Speed (step {shipStep})</span><span>{ship.declaredSpeed || ship.lastSpeed}</span></div>
-                )}
+                <div className="flex justify-between"><span className="text-gray-400">Acceleration</span><span>{Math.max(0, Math.floor(stats.accel))}</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">MC</span><span>{shipMode === 'atmosphere'
+                  ? (() => {
+                      const mc = effectiveMCForSpeed(stats, stats.atmosphericSpeed);
+                      return Number.isFinite(mc) ? mc : '—';
+                    })()
+                  : stats.mcBands.map((b, i) => {
+                      const band = i === stats.mcBands.length - 1 ? `${b.speedMin}+` : `${b.speedMin}-${b.speedMax}`;
+                      const value = Number.isFinite(b.mc) ? `(${Math.ceil(b.mc)})` : '—';
+                      return `${band}: ${value}`;
+                    }).join(' / ')}</span></div>
+                {shipMode === 'atmosphere' ? (
+                  <div className="flex justify-between"><span className="text-gray-400">Speed</span><span>{stats.atmosphericSpeed}</span></div>
+                ) : (() => {
+                  const declared = ship.declaredRound === turnNumber;
+                  const label = declared ? ship.declaredSpeed : 'Not declared';
+                  const title = declared
+                    ? `Declared speed ${ship.declaredSpeed} (previous ${ship.lastSpeed})`
+                    : `Not declared this round (previous ${ship.lastSpeed}). Click to declare.`;
+                  return (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Speed (step {shipStep})</span>
+                      {canEditSpeed ? (
+                        <button
+                          type="button"
+                          onClick={onOpenSpeedPanel}
+                          title={title}
+                          className="underline decoration-dotted underline-offset-2 text-amber-300 hover:text-amber-200"
+                        >
+                          {label}
+                        </button>
+                      ) : (
+                        <span title={title}>{label}</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="text-[11px] text-gray-500">No frozen snapshot on this ship.</div>
@@ -666,6 +737,7 @@ export function ShipWindow({
               hideEmpty
               heroesByCard={heroesByCard}
               boxState={ship.boxState as Record<string, number>}
+              cardStepsByCard={cardStepsByCard}
               presentCrewByCard={presentCrewByCard}
               occupantsByCard={occupantsByCard}
               weaponInfoByCard={weaponInfoByCard}

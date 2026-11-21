@@ -101,9 +101,16 @@ A ship may have three pools (`shipMoveCost.ts`):
 
 - **Land MP** — on the ground / structure top, same unit movement/turning rules.
 - **FP** — atmosphere airborne; fixed `atmosphericSpeed`. The pilot may spend
-  none, part, or all of it during the turn (formed-unit style).
+  none, part, or all of it during the turn (formed-unit style). Implemented as
+  `atmosphericSpeed − speedSpent`; remaining FP is shown on the ship readout.
 - **Speed** — wildspace; the declared speed split over the five steps. The pilot
-  **must spend the whole current step budget** before the step can pass.
+  **must spend the whole current step budget** before the step can pass. The
+  whole-turn remaining movement is the current step remainder plus all later
+  step budgets.
+
+Atmosphere moves may also change altitude: each hex moved allows up to **10 ft of
+free climb or dive** (never more than the path length in hexes), chosen with the
+same altitude slider used by flyers on drop. Wildspace remains 2D.
 
 ### Ship control
 
@@ -114,6 +121,15 @@ the same piloting rule but has no turn/movement limits. A single click selects a
 ship; **double-click opens the ship window** (a unit token on the hex wins the
 double-click). While Fire or Ram targeting is active, double-click is ignored so
 it cannot open the window mid-shot.
+
+**Free Move / turn 0.** When the scenario Free Move toggle is on (or turn 0 free
+play), a controlled ship may be picked up and dropped on any on-grid hex. This is
+pure repositioning: **no facing change**, no speed/step-budget/FP spend, and no
+declaration or movement-state reset. Rotation in Free Move changes only `facing`
+— it spends nothing and does **not** reset the facing-distance counter. Atmosphere
+still asks for the drop altitude (free, ±10 ft per hex of distance, clamped at
+0 ft); wildspace keeps the current altitude. The whole grid is highlighted while
+dragging.
 
 ### Right-click ship menu
 
@@ -133,7 +149,7 @@ restored (not just a partial local row).
 
 ### Persistent player ships
 
-A player ship is a persistent row in `player_ships` linked to a normal
+A player ship is a persistent row in `ship_player` linked to a normal
 `ship_templates` design. The row carries identity + runtime only: name, shared
 serial, HP, damage, crew HP/dead state, cargo and the deployed scenario link.
 Heroes are never part of the ship record.
@@ -156,7 +172,7 @@ Heroes are never part of the ship record.
   it; the DM can force-release.
 - **Save Ship** restores full HP, records the repair cost (100 gp per missing
   HP, display only), updates the persistent runtime, appends an immutable
-  `player_ship_versions` full snapshot, updates the scenario instance, and
+  `ship_player_versions` full snapshot, updates the scenario instance, and
   creates a version number. Every save creates a version; nothing is
   overwritten. Design/crew/cargo edits are made in Archfar's Shipyard and are
   re-read into the scenario snapshot on Save.
@@ -167,20 +183,38 @@ Heroes are never part of the ship record.
 
 ### Speed declaration
 
-Once per turn, at wildspace **step 1** only:
+The declaration panel auto-opens at wildspace **step 1**; it can be reopened by
+the controller/DM at any step:
+
+- **single-click** a controllable ship whose speed is not declared this round, or
+- click the **Speed** row in the ship window’s ship summary (works even after
+  a declaration, so a wrong/misdirected declaration can be replaced).
 
 ```
 declared = previousSpeed ± freeAccel ± spellHexes
 ```
 
 - `freeAccel` is capped by the **derived** acceleration
-  `((sails + rudders) / mass) × 15` from `shipStats.ts`.
+  `((sails + rudders) / mass) × 15` from `shipStats.ts`. Gameplay displays and
+  rules use `floor(acceleration)` (the Ship Editor keeps the decimal reference).
+- Re-declaring preserves `speed_spent`, `turns_since_facing`, and the completed
+  step budgets; only the current and later step budgets are rebuilt so the new
+  whole-turn remaining equals `newSpeed − alreadySpent`.
+- A re-declaration may not go below movement already spent this round:
+  `spent = declaredSpeed − wholeTurnRemaining`. The minimum is `spent` (>=, so a
+  ship that moved 11 may declare 11, which leaves zero movement). Declaring
+  below the minimum is rejected and the old declaration stays.
+- `lastSpeed` is the **previous round’s final declared speed** and is not changed
+  by a declaration. It advances at the full round boundary (END_TURN) from the
+  outgoing `declaredSpeed`. Re-declaring in the same round therefore always uses
+  the same base and cannot compound toward 12.
 - `spellHexes` is signed; cost = `|hexes| × max(1, round(mass/10))` spell slots.
   The cost is informational for now (helmsman slot tracking is a future task).
 - Speed is an integer in `0..12`; round 1 starts from `previousSpeed = 5`.
 - **Declaration is mandatory before moving.** Every piloted wildspace ship must
   declare each turn; `0` is valid. Closing the popup accepts the previous speed
-  (`accelDelta = 0`, `extraHexes = 0`) so it still counts as a declaration.
+  (`accelDelta = 0`, `extraHexes = 0`) so it still counts as a declaration. The
+  move/turn error names the ship: “Declare {ship name}’s speed before moving.”
 - The popup goes to the **Helm hero → captain with same-alliance helm crew → DM**.
   `declared_round` prevents repeat popups; an undeclared ship keeps `lastSpeed`
   and is checked again next turn.
@@ -203,7 +237,9 @@ leftover atmosphere MP is allowed.
 
 - A facing change costs **1 pool point**.
 - It is legal only after the ship has travelled `ceil(effectiveMC)` hexes since
-  the previous facing change; the counter resets at the start of a full turn.
+  the previous facing change. The counter resets **only on a real facing change**
+  (normal rotation); it persists across End Step/End Turn, speed re-declarations,
+  and Free Move.
 - MC 0 turns freely (still 1 pool point per turn).
 - Base MC comes from the speed band (`mcBands` in `ShipDerivedStats`). The
   rudder trim subtracts `mcReduction` for the turn (`effectiveTurnDistance`).
@@ -226,6 +262,22 @@ passed through but not ended on; structures/obstacles can block entry.
   Dropping on a potential-only hex is rejected with an error; potential is for
   planning only.
 - **Free play:** whole-grid placement preview.
+
+### Back readout
+
+Each ship draws two large, upright, centered numbers at the **center of its hex**:
+
+- **Line 1** - `whole-turn remaining FP / speed this turn`:
+  - wildspace: current-step remainder + later step budgets / declared speed;
+  - atmosphere: remaining atmospheric FP / atmospheric speed.
+- **Line 2** - hexes travelled since the last facing change
+  (`turnsSinceFacing`). The number turns **green** when it reaches the effective
+  MC after rudder trim (`effectiveTurnDistance`), i.e. when a turn is legal.
+
+An atmosphere ship with altitude also shows a small `X ft` altitude label above
+the two numbers. White text with a black outline; size scales with the ship
+image/zoom (roughly double the old stern-label size), so it stays proportional to
+the grid. Hidden ships dim with the image for the DM.
 
 ### End Step gate (wildspace)
 
@@ -387,12 +439,27 @@ an approved **negative action** may still use it: the function happens, but no
 card step is spent and the hero action is logged as a separate `OTHER_ACTION`
 command. Fill/Empty station is free.
 
-**Ram.** Helm card function; spends 1 card step; one per turn; contest attacker
-Wis+PB(+CS) vs defender Wis+PB+8. Damage is `min(floor(currentMass/10),16)d(speed)`; with a ram
-the target takes full and the attacker half, without a ram both take half.
-Random per-card box damage; movement forfeited; both shift along the heading.
+**Ram.** The Ram component sits in its normal weapon slot and exposes a **Ram**
+card action (no reload/load step). Only the ship’s **helmsman/controller** may
+order it (hero helm, or a same-alliance captain/DM through an NPC helm); weapon
+card heroes and crew do not authorize it. The button is enabled only when the
+helm/bridge hero has an action available **and** a hostile ship is in one of the
+two forward hexes (range 1). A ram spends **1 hero action** from that
+helm/bridge hero plus **1 card step**, and has **no once-per-turn limit**. The
+chosen target must stay hostile and in the two forward hexes at resolution.
+Contest
+attacker Wis+PB(+CS) vs defender Wis+PB+8. Damage is
+`min(floor(currentMass/10),16)d(speed)`; with a ram the target takes full and the
+attacker half, without a ram both take half. Random per-card box damage; movement
+forfeited; both shift along the heading according to the ram type (piercing
+shifts both, bludgeoning shifts only the target).
+
+On a hit the target’s **speed becomes 0 for the rest of the round**: wildspace
+zeroes all remaining `stepBudget`s and sets `declaredSpeed`/`lastSpeed` to 0;
+atmosphere spends the whole atmospheric pool. The next round starts from 0.
 Clicking **Ram** enters target mode (the cursor becomes the amber target rings);
 click a ship in the two forward hexes to resolve, or Escape/right-click to cancel.
+The Helm card shows a disabled **Dodge** placeholder instead (not implemented).
 
 **Weapon/Ram targeting cursor.** While a ship weapon or ram is waiting for a
 target, the map cursor is the same amber concentric-ring marker used for the
@@ -430,14 +497,20 @@ adjusting an available group preserves assigned crew. Crew, hero and card hover
 tooltips are bounded to their panel: below-right first, then left/above when
 space is short.
 
-**Tactical summary.** Aside from AC/DT and HP, the left panel shows Mass with an
-indented **Current** (`performanceMass`; cargo is empty when no manifest exists),
-**Crew: current** and **Food & water: N days** (200 person-days per ton) with
-indented **Min** and **Full**. Only current values update live. A **Best in ship
-skill** block below it lists the best living crew plus heroes stationed only in
-Deck/Cargo for **Helmsmanship (Helm)**, **Captaincy (Bridge)**, **Sail Trimming
-(Rudder)**, **Sail maxing (Sail)**, **Weapon handling** and **Repair (Hull)**. It
-stays visible to every viewer.
+**Ship summary.** The left panel order is AC/DT, HP, Mass, indented **Current**
+(`performanceMass`), **Crew**, **Food & water** with indented **Min** and **Full**,
+**Acceleration**, **MC**, then **Speed**. Only current values update live.
+- **Acceleration** is `floor(stats.accel)` in gameplay.
+- **Atmosphere MC** is the single base MC at the fixed atmospheric speed (no
+  band list); **wildspace MC** keeps the three speed bands.
+- **Speed** is exclusive to the mode: atmosphere shows `atmosphericSpeed`;
+  wildspace shows the declared speed (or “Not declared”, with the re-declare
+  button). “Atmo speed” and a separate space row are not shown together.
+
+A **Best in ship skill** block below the summary lists the best living crew plus
+heroes stationed only in Deck/Cargo for **Helmsmanship (Helm)**, **Captaincy
+(Bridge)**, **Sail Trimming (Rudder)**, **Sail maxing (Sail)**, **Weapon handling**
+and **Repair (Hull)**. It stays visible to every viewer.
 
 **Bridge card status.** The Bridge card shows an action-style **Command bonus**
 button in place of its note. It lights when the bridge has its full crew
@@ -572,7 +645,12 @@ struck card, e.g. `Shrike hit Turtle with Ballista light for 23 (Hull)`; a
 deflected hit reads `… for 5 (Hull) deflected, no damage`. Each card draws one
 box per ton; destroyed boxes render as **hollow red** boxes and the card shows a
 `remaining/total` counter, so a penetrating hit is visible on the struck card
-even when the component still has boxes left. Destroying every hull
+even when the component still has boxes left. Every runtime deck card **with a
+card function** also shows a bottom-center badge with its **remaining card steps
+this turn** (0-5; red at 0), straddling the bottom border. Cards with no action
+(e.g. Deck/Cargo) omit the badge, as do the Helm card (Dodge placeholder spends
+no steps), the Ship Editor, and the dry dock (no turn ledger). Destroying every
+hull
 box **sinks the ship**: HP becomes 0 and it falls apart (see the hull rule above).
 0 HP = derelict: components stop, weapons fire at disadvantage, the ship drifts.
 

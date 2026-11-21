@@ -76,6 +76,48 @@ interface CanvasDrawDeps {
   overlayLabels?: Record<string, string>;
 }
 
+/** Ship back readout: whole-turn remaining/speed, then hexes since facing. */
+function drawShipBackReadout(
+  ctx: CanvasRenderingContext2D,
+  ship: PlacedShip,
+  cx: number,
+  cy: number,
+  height: number,
+  _offset: number,
+): void {
+  if (ship.movementRemaining == null || ship.speedThisTurn == null) return;
+  const fontSize = Math.max(12, height * 0.11);
+  const x = cx;
+  const y = cy;
+  const turns = Math.max(0, Math.floor(ship.turnsSinceFacing ?? 0));
+  const canTurn = ship.turnDistance != null
+    && (ship.turnDistance <= 0 || turns >= ship.turnDistance);
+  const lineGap = fontSize * 1.25;
+  ctx.save();
+  ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(2, fontSize * 0.22);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
+  const line = (text: string, lineY: number, color: string) => {
+    ctx.strokeText(text, x, lineY);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, lineY);
+  };
+  line(
+    `${Math.max(0, Math.floor(ship.movementRemaining))}/${Math.max(0, Math.floor(ship.speedThisTurn))}`,
+    y - lineGap / 2,
+    '#ffffff',
+  );
+  line(String(turns), y + lineGap / 2, canTurn ? '#22c55e' : '#ffffff');
+  if ((ship.elevation ?? 0) > 0) {
+    ctx.font = `500 ${Math.max(8, fontSize * 0.62)}px system-ui, sans-serif`;
+    line(`${Math.round(ship.elevation!)} ft`, y - lineGap * 1.55, '#ffffff');
+  }
+  ctx.restore();
+}
+
 export function useCanvasDraw(deps: CanvasDrawDeps) {
   const {
     canvasRef,
@@ -263,6 +305,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.shadowBlur = 0;
       ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
       ctx.restore();
+      drawShipBackReadout(ctx, ship, cx, cy, height, offset);
       if (hidden) ctx.restore();
     }
     const hoveredHexKey = (() => {
@@ -1233,9 +1276,12 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * fitZoom;
         ctx.save();
         if (hidden) ctx.globalAlpha = 0.3;
+        ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(shipFacingRadians(ship.facing));
         ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
+        ctx.restore();
+        drawShipBackReadout(ctx, ship, cx, cy, height, offset);
         ctx.restore();
       }
 

@@ -19,6 +19,8 @@ export interface ShipComponentCardData {
   tons: number;
   /** Boxes already destroyed (runtime only); each ton is one box. */
   destroyedBoxes?: number;
+  /** Remaining card steps this turn (runtime only). */
+  cardSteps?: number;
   ac: number;
   dt: number;
   crewRequired: number;
@@ -95,7 +97,7 @@ export function ShipComponentCard({ data, weaponInfo, functions }: { data: ShipC
   return (
     <div
       onContextMenu={(event) => data.onContextMenu?.(event, data)}
-      className={`h-full min-h-[110px] w-full min-w-0 rounded-2xl bg-gray-800/70 p-1.5 flex flex-col ${
+      className={`relative h-full min-h-[110px] w-full min-w-0 rounded-2xl bg-gray-800/70 p-1.5 flex flex-col ${
         data.reinforced
           ? 'border-4 border-slate-300 shadow-[0_0_0_1px_rgba(255,255,255,0.35)]'
           : 'border border-gray-600'
@@ -188,6 +190,19 @@ export function ShipComponentCard({ data, weaponInfo, functions }: { data: ShipC
           {data.note}
         </div>
       ) : null}
+
+      {typeof data.cardSteps === 'number' && (
+        <span
+          title={`${data.cardSteps}/5 card steps left this turn`}
+          className={`pointer-events-none absolute -bottom-2 left-1/2 z-20 flex h-4 min-w-4 -translate-x-1/2 items-center justify-center rounded-full border px-1 text-[8px] font-semibold ${
+            data.cardSteps <= 0
+              ? 'border-red-500 bg-gray-950 text-red-300'
+              : 'border-gray-500 bg-gray-900 text-gray-200'
+          }`}
+        >
+          {Math.max(0, Math.min(5, Math.round(data.cardSteps)))}
+        </span>
+      )}
     </div>
   );
 }

@@ -1176,9 +1176,16 @@ export function useGameEngine({
         const changes: { field: string; from: unknown; to: unknown }[] = [];
         if (ship.speedSpent) changes.push({ field: 'speedSpent', from: ship.speedSpent, to: 0 });
         if (ship.mcReduction) changes.push({ field: 'mcReduction', from: ship.mcReduction, to: 0 });
-        // Facing distance belongs to the full turn, not the wildspace step.
-        if (newTurnNumber !== args.turnNumber && ship.turnsSinceFacing) {
-          changes.push({ field: 'turnsSinceFacing', from: ship.turnsSinceFacing, to: 0 });
+        // turnsSinceFacing is a pure "hexes since the last facing change"
+        // counter. It persists across steps/turns; only a real turn resets it.
+        // Advance the previous-round speed only at the round boundary. Within a
+        // round, repeated declarations keep using the same base (no compounding).
+        if (
+          newTurnNumber !== args.turnNumber
+          && ship.declaredRound === args.turnNumber
+          && ship.declaredSpeed !== ship.lastSpeed
+        ) {
+          changes.push({ field: 'lastSpeed', from: ship.lastSpeed, to: ship.declaredSpeed });
         }
         // Sail maxing / trimming are one success per turn; END_TURN reopens them
         // in every mode (atmosphere keeps ship_step at 1, so step comparison

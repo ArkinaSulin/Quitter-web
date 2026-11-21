@@ -1,5 +1,185 @@
 # QuiTTER Changelog
 
+## Rename player-ship tables to ship_* convention (2026-11-19, migration 174)
+**Files:** supabase/migrations/174_ship_player_rename.sql, src/hooks/usePlayerShips.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{02,21,changelog}.md
+
+- `player_ships` → **`ship_player`**
+- `player_ship_versions` → **`ship_player_versions`**
+- Indexes and RLS policies renamed; the editor/dry-dock/claim RPC bodies were
+  recreated against the new names. RPC names and columns (`player_ship_id`) are
+  unchanged, so client APIs keep working.
+- **Justification:** subsystem-prefixed table naming (`ship_*`) matches the rest
+  of the schema. The header + immutable-versions split is unchanged; no data was
+  copied or merged.
+- **Example:** a query/realtime subscription now targets `ship_player` /
+  `ship_player_versions`; `ship_spelljammer.player_ship_id` follows the renamed
+  table via its FK.
+- **Apply migration 174 in Supabase.**
+
+## Straight-line counter persists across turns (2026-11-19)
+**Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- `turnsSinceFacing` no longer resets at End Step or End Turn. It is a pure
+  “hexes since the last facing change” counter and persists across steps, rounds,
+  speed re-declarations, and Free Move.
+- A real rotation still resets it to 0. Rotation while Free Move/turn-0 is active
+  changes only `facing` (no pool spend, no counter reset).
+- **Justification:** End Turn is not a direction change; resetting there let a
+  ship re-earn MC distance without flying straight.
+- **Example:** a ship that has flown 5 straight hexes still shows `5` after End
+  Step and End Turn; rotating once resets it to `0`.
+
+## Ship Free Move keeps heading (2026-11-19)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Ship drags now honour the scenario **Free Move** toggle in both atmosphere and
+  wildspace (previously only turn 0 used the free-placement branch).
+- Free Move/turn-0 ship drops are pure repositioning: any on-grid hex, **no
+  facing change**, no speed/step/FP spend, and no declaration or movement-state
+  reset. The whole grid is highlighted while dragging.
+- Atmosphere Free Move still opens the altitude slider (free, ±10 ft per hex of
+  distance, clamped at 0 ft); wildspace keeps the current altitude.
+- **Justification:** turn 0 changed the ship’s heading toward the drop hex, which
+  was unintended; Free Move is a GM repositioning tool, not a turn.
+- **Example:** drop a ship on the opposite side of the map during Free Move — it
+  keeps its original heading instead of rotating toward the drop.
+
+## Ship summary layout + atmosphere MC/speed (2026-11-19)
+**Files:** src/components/ScenarioMap/ShipWindow.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- The tactical summary is renamed **Ship summary** and ordered: AC/DT, HP, Mass,
+  Current, Crew, Food & water, Min, Full, Acceleration, MC, Speed.
+- **Atmosphere MC** is now a single fixed number: base MC at the fixed atmospheric
+  speed. Wildspace keeps the three speed bands.
+- **Speed** is exclusive to the mode: atmosphere shows atmospheric speed;
+  wildspace shows declared speed (or “Not declared”). The separate “Atmo speed”
+  row is removed so gameplay never shows both modes’ speeds.
+- **Justification:** atmosphere speed is fixed, so a three-band MC list implied
+  speed choices that do not exist there; showing both speed types caused confusion.
+- **Example:** atmosphere: MC `2`, Speed `8`. Wildspace: MC `0-2: (2) / 3-7: (3) /
+  8+: (4)`, Speed `10`.
+
+## Whole-turn FP readout + atmosphere altitude (2026-11-19)
+**Files:** src/packages/ships/{lib/shipMoveCost.ts,tests/shipMoveCost.test.ts}, src/packages/world/lib/placedShips.ts, src/components/ScenarioMap/{ScenarioMap,useCanvasDraw,SpeedDeclarationPanel}.tsx/ts, docs/dev/{21-ship-runtime,changelog}.md
+
+- The back readout is now **whole-turn remaining FP / speed this turn**:
+  - wildspace: current-step remainder + later step budgets / declared speed;
+  - atmosphere: remaining atmospheric FP / atmospheric speed.
+  The second line remains straight-line hexes since the last facing change,
+  green at effective MC.
+- Speed re-declaration now uses `spent = declaredSpeed − whole-turn remaining`.
+  The minimum is `spent` (>=). It preserves `speedSpent`, `turnsSinceFacing`, and
+  completed step budgets; only current/later budgets are rebuilt to
+  `newSpeed − spent`. Declaring below the minimum is rejected.
+- Atmosphere ship moves now allow free altitude change up to **10 ft per hex
+  moved** (climb or dive, no more unlimited drops). A drop opens the same kind of
+  elevation slider used by flyers; the chosen altitude is stored on the ship and
+  shown as a small `X ft` label above the back readout.
+- **Justification:** the old readout showed only the current step, making the
+  speed-change math look more complex than “declared − hexes left”; ships also
+  had an unused elevation field and could not actually climb or dive.
+- **Example:** declared 12, 11 hexes already moved, whole-turn remaining 1 →
+  minimum re-declaration 11. Declaring 11 leaves zero movement for the round.
+  An atmosphere ship moving 2 hexes may end 0–20 ft above or below its start
+  altitude (clamped at 0 ft).
+
+## Speed re-declaration preserves the straight-line count (2026-11-19)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Declaring or re-declaring speed no longer resets `turnsSinceFacing`. The
+  step budget and `speedSpent` are rebuilt, but the hexes already travelled since
+  the last facing change stay intact.
+- **Justification:** changing a declaration is a correction to this round’s speed,
+  not a facing change; resetting the MC counter let a ship re-earn turn distance
+  without actually flying straight.
+- **Example:** a ship has travelled 2 hexes straight since its last turn, then the
+  DM corrects its declared speed. The stern readout still shows `2`, not `0`.
+
+## Speed re-declare fix + stern movement readout (2026-11-19)
+**Files:** src/components/ScenarioMap/{ScenarioMap,useCanvasDraw}.tsx/ts, src/hooks/useGameEngine.ts, src/packages/world/lib/placedShips.ts, docs/dev/{21-ship-runtime,changelog}.md
+
+- Speed declarations no longer compound when the panel is re-opened and Declare is
+  clicked again. `handleDeclareShipSpeed` writes only `declaredSpeed`; `lastSpeed`
+  (the previous-round base) advances at the full round boundary from the outgoing
+  declaration. Re-declare within a round uses the same base, so the speed cannot
+  walk up to 12. Closing a re-opened panel after a declaration no longer
+  re-declares/reverts it.
+- Each ship now draws a large readout, upright and centered at the **center of its
+  hex**:
+  - `remaining movement / speed this turn`
+    (wildspace: step remaining / declared; atmosphere: pool remaining / atmospheric speed)
+  - `hexes travelled since the last facing change`, green once it reaches the
+    effective MC (base MC − rudder trim).
+  White text with a black outline; roughly double the old stern-label size and
+  scaled with the ship image and zoom.
+- **Justification:** repeated Declare used the just-updated speed as its own base,
+  and the movement state was invisible on the map (players had to open the ship
+  window to know remaining hexes or whether a turn was legal).
+- **Example:** a speed-8 ship cannot be re-declared to 10, 12, 14 by clicking
+  Declare repeatedly; the base stays 8 until the next round. Its hex shows
+  `2/8` and a white `1`; after three straight hexes the second number shows a
+  green `3` when effective MC is 3.
+
+## Reopenable speed declaration + acceleration display (2026-11-19)
+**Files:** src/components/ScenarioMap/{ScenarioMap,ShipWindow,ShipTemplateTooltip}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Speed declaration can now be reopened instead of being lost when the step-1 popup
+  is closed or sent to the wrong player:
+  - single-click a controllable ship that has not declared this round, or
+  - click the **Speed** row in the ship window’s tactical summary (controller/DM,
+    any step, including after a declaration).
+  Reopening uses the normal panel and re-declaration rebuilds the step budget and
+  resets spent movement/facing distance.
+- The tactical Speed row now shows `Not declared` (instead of silently showing
+  `lastSpeed`) and displays a declared speed of `0` correctly.
+- Move/turn errors now name the ship: “Declare {ship name}’s speed before moving.”
+- Tactical summary label **Acceleration** replaces “Accel”; gameplay displays use
+  `floor(accel)`, matching the existing calculation (`declareSpeed` and the
+  declaration panel already floor it). The Ship Editor keeps the decimal.
+- **Justification:** closing/misdirecting the one-shot popup could leave a ship
+  permanently unable to move for the round, and the summary showed a misleading
+  speed when `0` was declared.
+- **Example:** a speed declaration is dismissed by mistake at step 1; single-click
+  the ship (or click its Speed row) to reopen the panel and declare. A speed-0
+  declaration shows `0`, not the previous speed.
+
+## Ram moves to its weapon card; stops the target (2026-11-19)
+**Files:** src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Ram is now a card action on the **Ram component in its weapon slot**; the Helm
+  card shows a disabled **Dodge** placeholder instead. Only the ship’s
+  helmsman/controller (hero helm, or same-alliance captain/DM through an NPC
+  helm) can order it. The button lights only when a helm/bridge hero has an
+  action **and** a hostile ship is in a forward hex (range 1). A ram spends
+  **1 hero action + 1 card step**, has **no reload** and **no once-per-turn
+  limit**. The helm card’s Wis actor makes the contest.
+- A hit now sets the target’s speed to **0 for the rest of the round**: wildspace
+  zeroes remaining step budgets and declared/last speed; atmosphere spends the
+  whole pool. Follow-up shifting still follows the ram type (piercing = both
+  shift, bludgeoning = target only).
+- **Justification:** ramming is a helm manoeuvre, not a weapon load/fire cycle;
+  the old Helm button and once-per-turn cap made it inconsistent with the ram
+  component and its weapon slot.
+- **Example:** a ship with “Ram - Piercing” in a weapon slot clicks Ram there,
+  selects a hostile forward target, spends a hero action + card step, and on a
+  hit both ships shift one hex while the target cannot move again until next
+  round. With no hostile ship ahead or no hero action left, the button is
+  disabled and explains why.
+
+## Ship deck card-step badges (2026-11-19)
+**Files:** src/components/ScenarioMap/ShipWindow.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Every runtime deck card **with a card function** now shows a single-digit,
+  bottom-center badge with its **remaining card steps this turn** (0–5). The badge
+  straddles the bottom border; `0` is red, otherwise neutral. Cards without an
+  action (Deck/Cargo), the Helm card (Dodge placeholder spends no steps), empty
+  slots, and hidden-detail cards omit it.
+- Ship Editor/dry dock previews show no badge because they have no turn ledger.
+- **Justification:** the 5-step card budget is otherwise invisible, so players
+  had to open a card or attempt an action to learn whether it could still act.
+- **Example:** an untouched helm card shows `5`; after Ram it shows `4`; once all
+  five card functions are spent it shows a red `0`.
+
 ## Ship box/UI polish: hollow damage, double-click window, target cursor (2026-11-19)
 **Files:** src/components/ShipRenderer/{ShipComponentCard,ShipLayout}.tsx, src/components/ScenarioMap/ScenarioMap.tsx, app/globals.css, docs/dev/{21-ship-runtime,changelog}.md
 

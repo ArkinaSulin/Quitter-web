@@ -24,8 +24,8 @@ export function usePlayerShips(scenarioId: string, ownerId: string | null) {
   const reload = useCallback(async () => {
     setLoading(true);
     const [shipsRes, versionsRes] = await Promise.all([
-      supabase.from('player_ships').select('*').order('serial_number'),
-      supabase.from('player_ship_versions').select('*').order('version_number', { ascending: false }),
+      supabase.from('ship_player').select('*').order('serial_number'),
+      supabase.from('ship_player_versions').select('*').order('version_number', { ascending: false }),
     ]);
     if (shipsRes.error) {
       setError(shipsRes.error.message);
@@ -49,8 +49,8 @@ export function usePlayerShips(scenarioId: string, ownerId: string | null) {
 
   useEffect(() => {
     const channel = supabase
-      .channel(`player_ships:${scenarioId}:${channelId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'player_ships' }, () => {
+      .channel(`ship_player:${scenarioId}:${channelId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ship_player' }, () => {
         void reload();
       })
       .subscribe();
@@ -71,7 +71,7 @@ export function usePlayerShips(scenarioId: string, ownerId: string | null) {
     }
     const serial = Number(serialData) || 0;
     const { data, error: insertError } = await supabase
-      .from('player_ships')
+      .from('ship_player')
       .insert({
         owner_id: ownerId,
         template_id: args.templateId,
@@ -139,7 +139,7 @@ export function usePlayerShips(scenarioId: string, ownerId: string | null) {
     ) + 1;
 
     const { error: updateError } = await supabase
-      .from('player_ships')
+      .from('ship_player')
       .update({
         name,
         ship_hp: args.shipHp,
@@ -156,7 +156,7 @@ export function usePlayerShips(scenarioId: string, ownerId: string | null) {
     }
 
     const { data, error: versionError } = await supabase
-      .from('player_ship_versions')
+      .from('ship_player_versions')
       .insert({
         player_ship_id: args.playerShip.id,
         version_number: versionNumber,

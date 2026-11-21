@@ -42,8 +42,10 @@ import {
   effectiveTurnDistance,
   declareSpeed,
   shipStepRemaining,
+  shipRoundRemaining,
+  shipRoundSpent,
   shipHasPilot,
-  splitSpeedAcrossSteps,
+  rebuildStepBudgetPreservingMoved,
   resolveShipWeaponDamage,
   shipWeaponCards,
   fireShipWeapon,
@@ -61,6 +63,7 @@ import {
   computeShipBuild,
   shipViewerAccess,
   shipCardFunctionHeroes,
+  shipCommandHero,
   shipHeroesOnCard,
   shipCardCrewCount,
   canSpendCardStep,
@@ -366,6 +369,17 @@ function formFromUnitEffect(e: import('@/types/gameProtocol').UnitEffect): Effec
 /** Free Move auto-disables after this long once explicitly turned ON mid-session. */
 const FREE_MOVE_AUTO_OFF_MS = 60_000;
 
+/** Best Wis actor on the ship's helm cards (the helmsman or NPC helm crew). */
+function bestHelmActorBonus(
+  ship: ShipRuntime,
+  units: Unit[],
+): { bonus: number; name: string } | null {
+  return shipFunctionalCardKeys(ship, 'Helm')
+    .map(key => bestShipActorBonus(ship, key, 'wis', units))
+    .filter((v): v is { bonus: number; name: string } => !!v)
+    .sort((a, b) => b.bonus - a.bonus)[0] ?? null;
+}
+
 /** The two forward hexes a ship can ram into. */
 function shipRamFrontHexes(ship: ShipRuntime): Hex[] {
   if (!ship.hex) return [];
@@ -418,6 +432,30 @@ function shipBridgeHero(ship: ShipRuntime, units: Unit[]): Unit | null {
 /** Ship colour/owner alliance: helm hero -> helm crew team -> none. */
 function shipOwnerAlliance(ship: ShipRuntime, units: Unit[], alliances: Record<string, AllianceGroup>): AllianceGroup | null {
   return shipHelmOccupant(ship, units, alliances).alliance;
+}
+
+/** A hostile ship in one of the attacker's two forward hexes. */
+function isHostileRamTarget(
+  attacker: ShipRuntime,
+  target: ShipRuntime,
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+): boolean {
+  if (!attacker.hex || !target.hex) return false;
+  if (!shipRamFrontHexes(attacker).some(h => h.q === target.hex!.q && h.r === target.hex!.r)) return false;
+  const targetAlliance = shipOwnerAlliance(target, units, alliances);
+  return targetAlliance !== null && targetAlliance !== shipOwnerAlliance(attacker, units, alliances);
+}
+
+function hasHostileRamTarget(
+  attacker: ShipRuntime,
+  ships: ShipRuntime[],
+  units: Unit[],
+  alliances: Record<string, AllianceGroup>,
+): boolean {
+  return ships.some(s =>
+    s.id !== attacker.id && !s.isDeleted && isHostileRamTarget(attacker, s, units, alliances),
+  );
 }
 
 /** Who may declare speed: helm hero -> same-alliance bridge hero -> null (DM). */
@@ -800,6 +838,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   }, [scenarioId]);
   const [selectedShipId, setSelectedShipId] = useState<string | null>(null);
   const [shipWindowId, setShipWindowId] = useState<string | null>(null);
+  const [pendingShipElevation, setPendingShipElevation] = useState<{
+    shipId: string;
+    targetHex: Hex;
+    currentElevation: number;
+    elevation: number;
+    min: number;
+    max: number;
+  } | null>(null);
   const [ghostHex, setGhostHex] = useState<Hex | null>(null);
 
   // Tooltip
@@ -850,20 +896,42 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Rendering bridge: the canvas still consumes the lightweight PlacedShip shape.
   const ships: PlacedShip[] = shipRuntime
     .filter(s => !!s.hex && !s.isDeleted)
-    .map(s => ({
-      id: s.id,
-      templateId: s.templateId || '',
-      name: s.name,
-      role: s.snapshot?.template?.role ?? null,
-      imageUrl: s.imageUrl || s.snapshot?.template?.imageUrl || '',
-      keelLength: s.keelLength,
-      imageOffsetY: s.imageOffsetY,
-      hex: s.hex!,
-      alliance: shipOwnerAlliance(s, units, alliances),
-      crewAlliance: s.crewTeam ? allianceOf(s.crewTeam, alliances) : null,
-      hidden: s.hidden,
-      facing: s.facing,
-    }));
+    .map(s => {
+      const stats = s.snapshot?.stats;
+      const speedSpent = s.speedSpent ?? 0;
+      const movementRemaining = stats
+        ? shipMode === 'wildspace'
+          ? shipRoundRemaining({ stepBudget: s.stepBudget, step: shipStep, speedSpent }, shipStep)
+          : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent)
+        : undefined;
+      const speedThisTurn = stats
+        ? shipMode === 'wildspace'
+          ? (s.declaredRound === turnNumber ? s.declaredSpeed : (s.lastSpeed ?? 5))
+          : stats.atmosphericSpeed
+        : undefined;
+      const turnDistance = stats && speedThisTurn != null
+        ? effectiveTurnDistance(stats, speedThisTurn, s.mcReduction ?? 0)
+        : undefined;
+      return {
+        id: s.id,
+        templateId: s.templateId || '',
+        name: s.name,
+        role: s.snapshot?.template?.role ?? null,
+        imageUrl: s.imageUrl || s.snapshot?.template?.imageUrl || '',
+        keelLength: s.keelLength,
+        imageOffsetY: s.imageOffsetY,
+        hex: s.hex!,
+        alliance: shipOwnerAlliance(s, units, alliances),
+        crewAlliance: s.crewTeam ? allianceOf(s.crewTeam, alliances) : null,
+        hidden: s.hidden,
+        facing: s.facing,
+        movementRemaining,
+        speedThisTurn,
+        elevation: s.elevation ?? 0,
+        turnsSinceFacing: s.turnsSinceFacing ?? 0,
+        turnDistance,
+      };
+    });
 
   // Players cannot hit-test/click/drag a hidden ship; the DM keeps the full list
   // so hidden ships can be unhidden/rotated/deleted.
@@ -1171,7 +1239,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Ship drag: spend the current pool (step budget / atmospheric FP) and write a
   // SHIP command (undo/replay/realtime all ride it).
-  const handleShipMove = useCallback(async (shipId: string, targetHex: Hex) => {
+  const handleShipMove = useCallback(async (shipId: string, targetHex: Hex, chosenElevation?: number) => {
     const ship = shipRuntime.find(s => s.id === shipId);
     if (!ship || !ship.hex) return;
     if (!canControlShip(ship, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance)) {
@@ -1182,8 +1250,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const stats = ship.snapshot?.stats;
     if (!stats) { addError('This ship has no frozen template snapshot.'); return; }
 
-    // Turn 0 / free play: placement only. No step budget, no declaration.
-    if (currentTurnAlliance === null) {
+    // Free Move / turn 0 free play: pick up and drop anywhere on the grid.
+    // This is pure repositioning — no facing, speed, step or declaration change.
+    if (freeMove || currentTurnAlliance === null) {
       if (!isHexOnGrid(targetHex, backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS)) {
         addError('That hex is off the grid.');
         return;
@@ -1192,11 +1261,30 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         addError('Another ship is already on that hex.');
         return;
       }
-      const same = ship.hex.q === targetHex.q && ship.hex.r === targetHex.r;
+      const currentElevation = ship.elevation ?? 0;
+      const distance = hexDistance(ship.hex, targetHex);
+      const minElevation = Math.max(0, currentElevation - distance * 10);
+      const maxElevation = currentElevation + distance * 10;
+      if (shipMode === 'atmosphere' && chosenElevation === undefined && distance > 0) {
+        setPendingShipElevation({
+          shipId,
+          targetHex,
+          currentElevation,
+          elevation: currentElevation,
+          min: minElevation,
+          max: maxElevation,
+        });
+        return;
+      }
+      const nextElevation = shipMode === 'atmosphere'
+        ? Math.max(minElevation, Math.min(maxElevation, Math.round(chosenElevation ?? currentElevation)))
+        : currentElevation;
       const changes: { field: string; from: unknown; to: unknown }[] = [
         { field: 'hex', from: ship.hex, to: targetHex },
+        ...(nextElevation !== currentElevation
+          ? [{ field: 'elevation', from: currentElevation, to: nextElevation }]
+          : []),
       ];
-      if (!same) changes.push({ field: 'facing', from: ship.facing, to: facingToward(ship.hex, targetHex) });
       await execute('MOVE', [{
         type: 'SHIP',
         unitId: shipId,
@@ -1207,7 +1295,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
 
     if (shipMode === 'wildspace' && ship.declaredRound !== turnNumber) {
-      addError('Declare this ship’s speed before moving.');
+      addError(`Declare ${ship.name}’s speed before moving.`);
       return;
     }
     const speedSpent = ship.speedSpent ?? 0;
@@ -1242,6 +1330,24 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : 'That hex is not a legal ship destination.');
       return;
     }
+    const currentElevation = ship.elevation ?? 0;
+    const hexesMoved = Math.max(0, entry.path.length - 1);
+    const minElevation = Math.max(0, currentElevation - hexesMoved * 10);
+    const maxElevation = currentElevation + hexesMoved * 10;
+    if (shipMode === 'atmosphere' && chosenElevation === undefined && hexesMoved > 0) {
+      setPendingShipElevation({
+        shipId,
+        targetHex,
+        currentElevation,
+        elevation: currentElevation,
+        min: minElevation,
+        max: maxElevation,
+      });
+      return;
+    }
+    const nextElevation = shipMode === 'atmosphere'
+      ? Math.max(minElevation, Math.min(maxElevation, Math.round(chosenElevation ?? currentElevation)))
+      : currentElevation;
     await execute('MOVE', [{
       type: 'SHIP',
       unitId: shipId,
@@ -1251,9 +1357,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         { field: 'facing', from: ship.facing, to: entry.finalFacing },
         { field: 'speedSpent', from: speedSpent, to: speedSpent + entry.cost },
         { field: 'turnsSinceFacing', from: ship.turnsSinceFacing ?? 0, to: entry.distanceSinceFacing },
+        ...(nextElevation !== currentElevation
+          ? [{ field: 'elevation', from: currentElevation, to: nextElevation }]
+          : []),
       ],
     }], `${ship.name} moved`);
-  }, [shipRuntime, units, structures, shipMode, shipStep, turnNumber, execute, addError, currentTurnAlliance, backgroundConfig, isGM, effectiveIsGM, myTeam, alliances]);
+  }, [shipRuntime, units, structures, shipMode, shipStep, turnNumber, freeMove, execute, addError, currentTurnAlliance, backgroundConfig, isGM, effectiveIsGM, myTeam, alliances]);
 
   const handleDeclareShipSpeed = useCallback(async (shipId: string, args: {
     declaredSpeed: number;
@@ -1277,18 +1386,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError('Declared speed must be previous speed ± acceleration ± helmsman adjustment.');
       return;
     }
-    const budget = splitSpeedAcrossSteps(declared);
+    const spent = ship.declaredRound === turnNumber
+      ? shipRoundSpent(ship.declaredSpeed, ship, shipStep)
+      : 0;
+    if (declared < spent) {
+      addError(`Cannot declare ${declared}: ${ship.name} has already moved ${spent} hexes this turn (minimum ${spent}).`);
+      return;
+    }
+    const budget = rebuildStepBudgetPreservingMoved({ newSpeed: declared, ship, step: shipStep });
     await execute('OTHER_ACTION', [{
       type: 'SHIP',
       unitId: shipId,
       description: `${ship.name} declares speed ${declared}`,
       changes: [
         { field: 'declaredSpeed', from: ship.declaredSpeed, to: declared },
-        { field: 'lastSpeed', from: ship.lastSpeed, to: declared },
         { field: 'declaredRound', from: ship.declaredRound ?? 0, to: turnNumber },
         { field: 'stepBudget', from: ship.stepBudget, to: budget },
-        { field: 'speedSpent', from: ship.speedSpent ?? 0, to: 0 },
-        { field: 'turnsSinceFacing', from: ship.turnsSinceFacing ?? 0, to: 0 },
       ],
     }], `${ship.name} declares speed ${declared}`);
   }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, execute, turnNumber, addError]);
@@ -1303,7 +1416,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (ship.dryDockOpen) { addError('This ship is in dry dock and cannot turn.'); return; }
     const delta = direction === 'right' ? 1 : -1;
     const facing = ((ship.facing + delta) % 6 + 6) % 6;
-    if (currentTurnAlliance === null) {
+    if (freeMove || currentTurnAlliance === null) {
+      // Free Move/turn-0 rotation changes heading only — no movement spend,
+      // no facing-distance counter reset.
       await execute('MOVE', [{
         type: 'SHIP',
         unitId: ship.id,
@@ -1315,7 +1430,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const stats = ship.snapshot?.stats;
     if (!stats) return;
     if (shipMode === 'wildspace' && ship.declaredRound !== turnNumber) {
-      addError('Declare this ship’s speed before turning.');
+      addError(`Declare ${ship.name}’s speed before turning.`);
       return;
     }
     const speedForMC = shipMode === 'wildspace'
@@ -1341,7 +1456,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         { field: 'turnsSinceFacing', from: ship.turnsSinceFacing ?? 0, to: 0 },
       ],
     }], `${ship.name} turned ${direction}`);
-  }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, shipMode, shipStep, turnNumber, execute, addError]);
+  }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, freeMove, shipMode, shipStep, turnNumber, execute, addError]);
 
   const handleToggleShipHidden = useCallback(async (shipId: string) => {
     const ship = shipRuntime.find(s => s.id === shipId);
@@ -1373,7 +1488,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }], `${ship.name} deleted`);
     if (ship.playerShipId) {
       await supabase
-        .from('player_ships')
+        .from('ship_player')
         .update({ deployed_scenario_id: null, editor_user_id: null, editor_heartbeat_at: null })
         .eq('id', ship.playerShipId);
       await playerShipStore.reload();
@@ -2313,43 +2428,50 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const beginShipRam = useCallback((shipId: string, cardKey: string) => {
     const ship = shipRuntime.find(s => s.id === shipId);
     if (!ship?.hex || !ship.snapshot) return;
-    if ((ship.ramUsedTurn ?? 0) === turnNumber) {
-      showToast('This ship has already rammed this turn.');
+    if (!canControlShip(ship, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance)) {
+      addError('Only the ship’s helmsman or controller can ram.');
       return;
     }
-    if (!bestShipActorBonus(ship, cardKey, 'wis', units)) {
+    if (!bestHelmActorBonus(ship, units)) {
       addError('No crew or hero is manning the helm.');
+      return;
+    }
+    const payer = shipCommandHero(ship, units);
+    if (!payer || (payer.actionsAvailable ?? 0) < 1) {
+      addError('No helm or bridge hero has an action available to ram.');
       return;
     }
     const cardUse = beginCardUse(ship, cardKey, turnNumber, shipStep, shipMode, false);
     if (!cardUse) { addError('No card steps left on that card this turn.'); return; }
-    const front = shipRamFrontHexes(ship);
-    const hasTarget = shipRuntime.some(s =>
-      s.id !== ship.id && !s.isDeleted && s.hex &&
-      front.some(h => h.q === s.hex!.q && h.r === s.hex!.r),
-    );
-    if (!hasTarget) { addError('No target in the two forward hexes.'); return; }
+    if (!hasHostileRamTarget(ship, shipRuntime, units, alliances)) {
+      addError('No hostile ship in the two forward hexes.');
+      return;
+    }
     setShipFireMode(null);
     setShipRamMode({ shipId, cardKey });
-    addMessage(`Select a ship in ${ship.name}'s forward hexes to ram.`);
-  }, [shipRuntime, units, turnNumber, shipStep, shipMode, addError, addMessage]);
+    addMessage(`Select a hostile ship in ${ship.name}'s forward hexes to ram.`);
+  }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, turnNumber, shipStep, shipMode, addError, addMessage]);
 
   const resolveShipRam = useCallback(async (shipId: string, cardKey: string, targetShipId: string) => {
     const ship = shipRuntime.find(s => s.id === shipId);
     const target = shipRuntime.find(s => s.id === targetShipId && !s.isDeleted);
     setShipRamMode(null);
     if (!ship?.hex || !ship.snapshot || !target?.hex) return;
-    if ((ship.ramUsedTurn ?? 0) === turnNumber) {
-      showToast('This ship has already rammed this turn.');
+    if (!canControlShip(ship, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance)) {
+      addError('Only the ship’s helmsman or controller can ram.');
       return;
     }
-    const front = shipRamFrontHexes(ship);
-    if (!front.some(h => h.q === target.hex!.q && h.r === target.hex!.r)) {
-      addError('That ship is not in the two forward hexes.');
+    if (!isHostileRamTarget(ship, target, units, alliances)) {
+      addError('That ship is not a hostile target in the two forward hexes.');
       return;
     }
-    const actor = bestShipActorBonus(ship, cardKey, 'wis', units);
+    const actor = bestHelmActorBonus(ship, units);
     if (!actor) { addError('No crew or hero is manning the helm.'); return; }
+    const payer = shipCommandHero(ship, units);
+    if (!payer || (payer.actionsAvailable ?? 0) < 1) {
+      addError('No helm or bridge hero has an action available to ram.');
+      return;
+    }
     const cardUse = beginCardUse(ship, cardKey, turnNumber, shipStep, shipMode, false);
     if (!cardUse) { addError('No card steps left on that card this turn.'); return; }
     const targetHelm = shipFunctionalCardKeys(target, 'Helm')
@@ -2386,7 +2508,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return { boxState, hp };
     };
 
-    const subSteps: SubStep[] = [];
+    const subSteps: SubStep[] = [{
+      type: 'OTHER_ACTION',
+      unitId: payer.id,
+      description: `${payer.unitName} spent an action ramming`,
+      changes: [{ field: 'actionsAvailable', from: payer.actionsAvailable, to: payer.actionsAvailable - 1 }],
+    }];
     if (hit) {
       const t = applyShipDamage(target, targetDamage);
       const a = applyShipDamage(ship, selfDamage);
@@ -2399,11 +2526,26 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       const attackerDest = dest(ship.hex);
       const targetShift = !occupied.has(`${targetDest.q},${targetDest.r}`);
       const attackerShift = piercing && !occupied.has(`${attackerDest.q},${attackerDest.r}`);
+      const tStats = target.snapshot?.stats;
+      const stoppedChanges: { field: string; from: unknown; to: unknown }[] = shipMode === 'wildspace'
+        ? [
+            { field: 'declaredSpeed', from: target.declaredSpeed, to: 0 },
+            { field: 'lastSpeed', from: target.lastSpeed, to: 0 },
+            { field: 'stepBudget', from: target.stepBudget ?? [0, 0, 0, 0, 0], to: [0, 0, 0, 0, 0] },
+          ]
+        : [
+            {
+              field: 'speedSpent',
+              from: target.speedSpent ?? 0,
+              to: Math.max(target.speedSpent ?? 0, tStats?.atmosphericSpeed ?? 0),
+            },
+          ];
       subSteps.push({
         type: 'SHIP', unitId: target.id, description: `${target.name} rammed for ${targetDamage}`,
         changes: [
           { field: 'shipHp', from: target.shipHp, to: t.hp },
           { field: 'boxState', from: target.boxState ?? {}, to: t.boxState },
+          ...stoppedChanges,
           ...(targetShift ? [{ field: 'hex', from: target.hex, to: targetDest }] : []),
         ],
       });
@@ -2413,7 +2555,6 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           { field: 'shipHp', from: ship.shipHp, to: a.hp },
           { field: 'boxState', from: ship.boxState ?? {}, to: a.boxState },
           { field: 'speedSpent', from: ship.speedSpent ?? 0, to: (ship.stepBudget ?? [])[shipStep - 1] ?? 0 },
-          { field: 'ramUsedTurn', from: ship.ramUsedTurn ?? 0, to: turnNumber },
           ...(cardUse.spent ? [{ field: 'cardState', from: ship.cardState ?? {}, to: cardUse.next }] : []),
           ...(attackerShift ? [{ field: 'hex', from: ship.hex, to: attackerDest }] : []),
         ],
@@ -2423,14 +2564,13 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       subSteps.push({
         type: 'SHIP', unitId: ship.id, description: `${ship.name} ram missed`,
         changes: [
-          { field: 'ramUsedTurn', from: ship.ramUsedTurn ?? 0, to: turnNumber },
           ...(cardUse.spent ? [{ field: 'cardState', from: ship.cardState ?? {}, to: cardUse.next }] : []),
         ],
       });
       showToast(`${actor.name}: ram MISSED (${total} vs ${dc}).`);
     }
     await execute('ATTACK', subSteps, `${ship.name} ram`);
-  }, [shipRuntime, units, execute, addError, showToast, turnNumber, shipStep, shipMode]);
+  }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, execute, addError, showToast, turnNumber, shipStep, shipMode]);
 
   const tryShipRam = useCallback((hex: Hex): boolean => {
     if (!shipRamMode) return false;
@@ -2461,12 +2601,29 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // still enforce the paying actor's side.
   const shipWeaponActionsAllowed = effectiveIsGM || currentTurnAlliance === null
     || (!!myTeam && allianceOf(myTeam, alliances) === currentTurnAlliance);
+  const shipCanRam = !!shipWindow && !controlsLocked
+    && canControlShip(shipWindow, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance);
+  const shipRamTargetAvailable = !!shipWindow
+    && hasHostileRamTarget(shipWindow, shipRuntime, units, alliances);
+  const shipCanEditSpeed = !!shipWindow && !shipWindowReadOnly && shipMode === 'wildspace'
+    && canControlShip(shipWindow, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance);
 
   // Step-1 speed declaration. Helm hero -> same-alliance Bridge hero -> DM.
   // Ships have no intrinsic alliance; the helm occupant defines the owner.
   const [speedPanelShipId, setSpeedPanelShipId] = useState<string | null>(null);
+  const [speedPanelPinned, setSpeedPanelPinned] = useState(false);
   const [speedDismissedKey, setSpeedDismissedKey] = useState<string | null>(null);
   useEffect(() => {
+    if (speedPanelPinned) {
+      const pinned = speedPanelShipId
+        ? shipRuntime.find(s => s.id === speedPanelShipId && !s.isDeleted)
+        : null;
+      if (!pinned) {
+        setSpeedPanelPinned(false);
+        setSpeedPanelShipId(null);
+      }
+      return;
+    }
     if (shipMode !== 'wildspace' || currentTurnAlliance === null || shipStep !== 1 || turnNumber < 1) {
       setSpeedPanelShipId(null);
       return;
@@ -2480,9 +2637,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return canControlShip(s, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance);
     });
     setSpeedPanelShipId(candidate?.id ?? null);
-  }, [shipMode, currentTurnAlliance, shipStep, turnNumber, shipRuntime, alliances, effectiveIsGM, speedDismissedKey, units, myTeam]);
+  }, [shipMode, currentTurnAlliance, shipStep, turnNumber, shipRuntime, alliances, effectiveIsGM, speedDismissedKey, units, myTeam, speedPanelPinned, speedPanelShipId]);
 
   const speedPanelShip = speedPanelShipId ? shipRuntime.find(s => s.id === speedPanelShipId) ?? null : null;
+  const speedPanelSpent = speedPanelShip && speedPanelShip.declaredRound === turnNumber
+    ? shipRoundSpent(speedPanelShip.declaredSpeed, speedPanelShip, shipStep)
+    : 0;
+  const openSpeedPanel = useCallback((shipId: string) => {
+    setSpeedDismissedKey(null);
+    setSpeedPanelPinned(true);
+    setSpeedPanelShipId(shipId);
+  }, []);
+  const closeSpeedPanel = useCallback(() => {
+    if (speedPanelShipId) setSpeedDismissedKey(`${speedPanelShipId}:${turnNumber}`);
+    setSpeedPanelPinned(false);
+    setSpeedPanelShipId(null);
+  }, [speedPanelShipId, turnNumber]);
 
   // A hidden ship drops out of player interaction entirely. The DM keeps the
   // window/menu (so it can be revealed again).
@@ -4591,6 +4761,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (controlsLocked) return;
       if (tryShipRam(ship.hex)) return;
       if (tryShipFire(ship.hex)) return;
+      const live = shipRuntime.find(s => s.id === ship.id);
+      if (live && shipMode === 'wildspace' && live.declaredRound !== turnNumber
+          && canControlShip(live, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance)) {
+        openSpeedPanel(live.id);
+      }
       setSelectedShipId(ship.id);
       setSelectedHex(null);
       setSelectedUnit(null);
@@ -4926,8 +5101,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   useEffect(() => {
     if (draggingShipId) {
       const ship = shipRuntime.find(s => s.id === draggingShipId);
-      if (currentTurnAlliance === null) {
-        // Turn 0: free placement — show the whole grid as droppable.
+      if (freeMove || currentTurnAlliance === null) {
+        // Free Move / turn 0: show the whole grid as droppable.
         const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
         const freeFills: Record<string, string> = {};
         for (let q = -radius; q <= radius; q += 1) {
@@ -5104,7 +5279,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
                 );
                 if (playerShip) {
                   await supabase
-                    .from('player_ships')
+                    .from('ship_player')
                     .update({ deployed_scenario_id: scenarioId, updated_at: new Date().toISOString() })
                     .eq('id', playerShip.id);
                   await playerShipStore.reload();
@@ -6928,6 +7103,53 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         </div>
       )}
 
+      {/* Ship move — atmosphere altitude choice (free, 10 ft per hex moved). */}
+      {pendingShipElevation && (() => {
+        const p = pendingShipElevation;
+        const ship = shipRuntime.find(s => s.id === p.shipId);
+        if (!ship) return null;
+        return (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-6 min-w-[320px]">
+              <p className="text-white text-sm mb-1 text-center">
+                {ship.name} — altitude (ft) · {p.currentElevation} → {p.elevation}
+              </p>
+              <input
+                type="range"
+                min={p.min}
+                max={p.max}
+                step={10}
+                value={p.elevation}
+                onChange={e => setPendingShipElevation({ ...p, elevation: Number(e.target.value) })}
+                className="w-full accent-amber-400"
+              />
+              <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+                <span>{p.min} ft</span>
+                <span className="text-yellow-300">{p.elevation} ft</span>
+                <span>{p.max} ft</span>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button
+                  className="flex-1 bg-green-800 border-2 border-yellow-400 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700"
+                  onClick={() => {
+                    setPendingShipElevation(null);
+                    void handleShipMove(p.shipId, p.targetHex, p.elevation);
+                  }}
+                >
+                  Move
+                </button>
+                <button
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm"
+                  onClick={() => setPendingShipElevation(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Fall — a non-flying hero detaching from an airborne host drops } */}
       {pendingHeroFall && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -7110,6 +7332,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           shipStep={shipStep}
           turnNumber={turnNumber}
           weaponActionsAllowed={shipWeaponActionsAllowed}
+          canRam={shipCanRam}
+          ramTargetAvailable={shipRamTargetAvailable}
+          canEditSpeed={shipCanEditSpeed}
+          onOpenSpeedPanel={() => openSpeedPanel(shipWindow.id)}
           onClose={() => setShipWindowId(null)}
             boardedHeroes={units
             .filter(u => !u.isDeleted && u.attachedToShipId === shipWindow.id)
@@ -7156,15 +7382,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       {speedPanelShip && (
         <SpeedDeclarationPanel
           ship={speedPanelShip}
+          spentThisTurn={speedPanelSpent}
+          minDeclaredSpeed={speedPanelSpent}
           onClose={() => {
-            // Closing without a choice keeps the previous speed, but still
-            // declares it so the mandatory movement gate can be satisfied.
-            void handleDeclareShipSpeed(speedPanelShip.id, {
-              declaredSpeed: speedPanelShip.lastSpeed ?? 5,
-              accelDelta: 0,
-              extraHexes: 0,
-            });
-            setSpeedDismissedKey(`${speedPanelShip.id}:${turnNumber}`);
+            // Closing without a choice declares the previous speed only when
+            // this round has no declaration yet. A re-opened panel must not
+            // overwrite an existing declaration.
+            if (speedPanelShip.declaredRound !== turnNumber) {
+              void handleDeclareShipSpeed(speedPanelShip.id, {
+                declaredSpeed: speedPanelShip.lastSpeed ?? 5,
+                accelDelta: 0,
+                extraHexes: 0,
+              });
+            }
+            closeSpeedPanel();
           }}
           onDeclare={args => void handleDeclareShipSpeed(speedPanelShip.id, args)}
         />

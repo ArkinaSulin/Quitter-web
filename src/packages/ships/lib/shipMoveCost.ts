@@ -74,12 +74,66 @@ export function adjustStepBudget(stepBudget: number[] | undefined, step: number,
 /** Remaining movement this step (wildspace step budget minus already spent). */
 export function shipStepRemaining(ship: {
   stepBudget?: number[];
-  step: number;
+  step?: number;
   speedSpent?: number;
 }, step?: number): number {
   const s = Math.max(1, Math.min(5, Math.floor(step ?? ship.step ?? 1)));
   const budget = (ship.stepBudget ?? [])[s - 1] ?? 0;
   return Math.max(0, budget - (ship.speedSpent ?? 0));
+}
+
+/** Remaining movement for the whole wildspace turn (current step + later steps). */
+export function shipRoundRemaining(ship: {
+  stepBudget?: number[];
+  step?: number;
+  speedSpent?: number;
+}, step?: number): number {
+  const s = Math.max(1, Math.min(5, Math.floor(step ?? ship.step ?? 1)));
+  const budgets = ship.stepBudget ?? [];
+  let total = shipStepRemaining(ship, s);
+  for (let i = s; i < 5; i += 1) {
+    total += Math.max(0, Math.floor(Number(budgets[i]) || 0));
+  }
+  return total;
+}
+
+/** Movement already spent this round = declared speed − remaining movement. */
+export function shipRoundSpent(
+  declaredSpeed: number,
+  ship: { stepBudget?: number[]; step?: number; speedSpent?: number },
+  step?: number,
+): number {
+  return Math.max(0, Math.floor(declaredSpeed) - shipRoundRemaining(ship, step));
+}
+
+/**
+ * Rebuild the step budget after a speed change while preserving completed step
+ * budgets and the current step's spend. Only the current and later budgets are
+ * reallocated so the new whole-turn remaining equals `newSpeed - spent`.
+ */
+export function rebuildStepBudgetPreservingMoved(args: {
+  newSpeed: number;
+  ship: { stepBudget?: number[]; step?: number; speedSpent?: number };
+  step?: number;
+}): number[] {
+  const s = Math.max(1, Math.min(5, Math.floor(args.step ?? args.ship.step ?? 1)));
+  const old = Array.from({ length: 5 }, (_, i) =>
+    Math.max(0, Math.floor(Number((args.ship.stepBudget ?? [])[i]) || 0)),
+  );
+  const past = old.slice(0, s - 1);
+  const currentSpent = Math.max(0, Math.floor(args.ship.speedSpent ?? 0));
+  const pastMoved = past.reduce((sum, value) => sum + value, 0);
+  const remaining = Math.max(0, Math.floor(args.newSpeed) - pastMoved - currentSpent);
+  const stepsLeft = 6 - s;
+  const allocations: number[] = [];
+  let prev = 0;
+  for (let i = 1; i <= stepsLeft; i += 1) {
+    const cum = Math.round((remaining * i) / stepsLeft);
+    allocations.push(cum - prev);
+    prev = cum;
+  }
+  const currentBudget = currentSpent + (allocations[0] ?? 0);
+  return [...past, currentBudget, ...allocations.slice(1)];
 }
 
 export interface ShipReachEntry {

@@ -47,7 +47,7 @@ export function ShipTemplateTooltip({
         <span className="text-gray-400">Food &amp; water:</span><span>{foodWaterDays == null ? '—' : `${foodWaterDays} days`}</span>
         <span className="text-gray-400">Cargo:</span><span>{template.cargoArea}t</span>
         <span className="text-gray-400">Atmo speed:</span><span>{template.atmosphericSpeed}</span>
-        <span className="text-gray-400">Acceleration:</span><span>{stats?.accel ?? '—'}</span>
+        <span className="text-gray-400">Acceleration:</span><span>{stats ? Math.max(0, Math.floor(stats.accel)) : '—'}</span>
         <span className="text-gray-400">MC:</span><span>{stats ? (Number.isFinite(stats.mcRaw) ? Math.ceil(stats.mcRaw) : '—') : '—'}</span>
         <span className="text-gray-400">Armor:</span><span>{build ? humanize(build.armor.name) : '—'}</span>
       </div>

@@ -237,6 +237,7 @@ export function ShipLayout({
   hideEmpty = false,
   heroesByCard,
   boxState,
+  cardStepsByCard,
   presentCrewByCard,
   occupantsByCard,
   weaponInfoByCard,
@@ -263,6 +264,8 @@ export function ShipLayout({
   heroesByCard?: Record<string, ShipHeroToken[]>;
   /** Destroyed boxes per card key (1 ton = 1 box). */
   boxState?: Record<string, number>;
+  /** Remaining card steps per card key this turn (runtime only). */
+  cardStepsByCard?: Record<string, number>;
   /** Operating crew per card key (NPC + heroes). */
   presentCrewByCard?: Record<string, number>;
   /** Actual occupants (heroes first, then crew) per card key. */
@@ -649,6 +652,9 @@ export function ShipLayout({
         <div className="text-gray-400">
           {card.tons - Math.max(0, Math.min(card.tons, Number(boxState?.[key] ?? 0)))}/{card.tons} boxes intact
         </div>
+        {typeof cardStepsByCard?.[key] === 'number' && (
+          <div className="text-gray-400">{cardStepsByCard[key]}/5 card steps left this turn</div>
+        )}
         {card.kind === 'weapon' && info && <div className="text-gray-400">{info.reloadLabel}</div>}
         <div className="text-gray-300">Crew {present}/{card.crewRequired}</div>
         {occupants.length > 0 && (
@@ -690,6 +696,11 @@ export function ShipLayout({
     const destroyedBoxes = !minimal && card.cardKey
       ? Math.max(0, Math.min(Math.round(card.tons), Number(boxState?.[card.cardKey] ?? 0)))
       : 0;
+    const hasCardFunction = !minimal && !!card.cardKey && (
+      !!weaponInfoByCard?.[card.cardKey]
+      || (cardFunctions?.[card.cardKey]?.length ?? 0) > 0
+    );
+    const cardSteps = hasCardFunction && card.cardKey ? cardStepsByCard?.[card.cardKey] : undefined;
     return (
       <div
         key={`${region}-${index}`}
@@ -711,7 +722,7 @@ export function ShipLayout({
         className="relative h-full min-w-0"
       >
         <ShipComponentCard
-          data={{ ...card, minimal, destroyedBoxes }}
+          data={{ ...card, minimal, destroyedBoxes, cardSteps }}
           weaponInfo={!minimal && card.cardKey ? weaponInfoByCard?.[card.cardKey] : undefined}
           functions={!minimal && card.cardKey ? cardFunctions?.[card.cardKey] : undefined}
         />

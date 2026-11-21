@@ -9,6 +9,9 @@ import { DraggablePanel } from '@/components/shared/DraggablePanel';
 
 export interface SpeedDeclarationPanelProps {
   ship: ShipRuntime;
+  /** Movement already spent this round (re-declare cannot go below it). */
+  spentThisTurn?: number;
+  minDeclaredSpeed?: number;
   onClose: () => void;
   onDeclare: (args: { declaredSpeed: number; accelDelta: number; extraHexes: number }) => void;
 }
@@ -66,7 +69,13 @@ function SignedIntField({
   );
 }
 
-export function SpeedDeclarationPanel({ ship, onClose, onDeclare }: SpeedDeclarationPanelProps) {
+export function SpeedDeclarationPanel({
+  ship,
+  spentThisTurn = 0,
+  minDeclaredSpeed = 0,
+  onClose,
+  onDeclare,
+}: SpeedDeclarationPanelProps) {
   const stats = ship.snapshot?.stats;
   const previousSpeed = ship.lastSpeed ?? 5;
   const maxAccel = Math.floor(stats?.accel ?? 0);
@@ -101,9 +110,15 @@ export function SpeedDeclarationPanel({ ship, onClose, onDeclare }: SpeedDeclara
             <SignedIntField value={extraHexes} onChange={setExtraHexes} min={-12} max={12} />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-gray-400">Spell slots</span>
-            <span className="font-mono text-amber-300">{spellSlots}</span>
+            <span className="text-gray-400">Declared speed</span>
+            <span className={`font-mono text-lg font-bold ${declaredSpeed < minDeclaredSpeed ? 'text-red-300' : 'text-amber-300'}`}>{declaredSpeed}</span>
           </div>
+          {spentThisTurn > 0 && (
+            <div className="flex items-center justify-between gap-2 text-[10px] text-amber-200">
+              <span>Minimum</span>
+              <span>{minDeclaredSpeed} · {spentThisTurn} hexes already moved</span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2 border-t border-gray-700 pt-2">
             <span className="text-gray-400">Declared speed</span>
             <span className="font-mono text-lg font-bold text-amber-300">{declaredSpeed}</span>
@@ -116,10 +131,11 @@ export function SpeedDeclarationPanel({ ship, onClose, onDeclare }: SpeedDeclara
           </div>
         </div>
         <button
+          disabled={declaredSpeed < minDeclaredSpeed}
           onClick={() => onDeclare({ declaredSpeed, accelDelta, extraHexes })}
-          className="w-full rounded border border-amber-600 bg-amber-700/30 px-3 py-1.5 text-sm text-amber-200 hover:bg-amber-700/50"
+          className="w-full rounded border border-amber-600 bg-amber-700/30 px-3 py-1.5 text-sm text-amber-200 hover:bg-amber-700/50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Declare {declaredSpeed} hex
+          {declaredSpeed < minDeclaredSpeed ? `Minimum ${minDeclaredSpeed} hex` : `Declare ${declaredSpeed} hex`}
         </button>
         <p className="text-[10px] text-gray-500">
           Free acceleration is capped by the derived acceleration. Declared speed is an integer (0–12).

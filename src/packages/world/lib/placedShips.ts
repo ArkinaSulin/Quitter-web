@@ -20,6 +20,16 @@ export interface PlacedShip {
   hidden?: boolean;
   /** Ship facing (0 = nose north; +1 = 60° clockwise). */
   facing?: number;
+  /** Whole-turn remaining movement (current + later steps, or atmosphere pool). */
+  movementRemaining?: number;
+  /** Declared wildspace speed, or atmospheric speed. */
+  speedThisTurn?: number;
+  /** Ship altitude in feet (atmosphere). */
+  elevation?: number;
+  /** Hexes travelled since the last facing change. */
+  turnsSinceFacing?: number;
+  /** Effective MC turn gate (base MC − rudder trim). */
+  turnDistance?: number;
 }
 
 function numberOr(value: unknown, fallback: number): number {

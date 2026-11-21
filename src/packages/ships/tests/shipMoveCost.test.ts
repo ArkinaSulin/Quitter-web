@@ -6,7 +6,10 @@ import {
   effectiveMCForSpeed,
   effectiveTurnDistance,
   facingChangeDistance,
+  rebuildStepBudgetPreservingMoved,
   shipFacingRadians,
+  shipRoundRemaining,
+  shipRoundSpent,
   spellSlotCostForHexes,
   splitSpeedAcrossSteps,
 } from '@/packages/ships';
@@ -98,6 +101,33 @@ describe('computeShipReachable', () => {
     const reach = computeShipReachable(start, 2, 0, { occupied: new Set(['1,0']) });
     const entry = reach.get('1,0');
     if (entry) expect(entry.endable).toBe(false);
+  });
+});
+
+describe('round movement helpers', () => {
+  const speed12 = { stepBudget: [2, 3, 2, 3, 2], step: 5, speedSpent: 1 };
+
+  it('sums remaining current-step and later budgets', () => {
+    expect(shipRoundRemaining({ stepBudget: [2, 3, 2, 3, 2], step: 1, speedSpent: 0 }, 1)).toBe(12);
+    expect(shipRoundRemaining(speed12, 5)).toBe(1);
+  });
+
+  it('derives spent as declared speed minus whole-turn remaining', () => {
+    expect(shipRoundSpent(12, speed12, 5)).toBe(11);
+    expect(shipRoundSpent(12, { stepBudget: [2, 3, 2, 3, 2], step: 1, speedSpent: 0 }, 1)).toBe(0);
+  });
+
+  it('rebuilds current/future budgets while preserving completed steps', () => {
+    expect(rebuildStepBudgetPreservingMoved({ newSpeed: 11, ship: speed12, step: 5 }))
+      .toEqual([2, 3, 2, 3, 1]);
+    const at3 = rebuildStepBudgetPreservingMoved({
+      newSpeed: 8,
+      ship: { stepBudget: [2, 3, 2, 3, 2], step: 3, speedSpent: 1 },
+      step: 3,
+    });
+    expect(at3.slice(0, 2)).toEqual([2, 3]);
+    expect(at3.reduce((a, b) => a + b, 0)).toBe(8);
+    expect(at3[2] - 1 + at3[3] + at3[4]).toBe(2);
   });
 });
 
