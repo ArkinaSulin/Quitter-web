@@ -43,7 +43,8 @@ export function statFieldOf(kind: EffectKind): 'currentAc' | 'currentMoraleModif
     case 'save_disadvantage':
     case 'forced_stop':
     case 'ignore_climb':
-    case 'feather_fall': return null;
+    case 'feather_fall':
+    case 'cargo_debris': return null;
   }
 }
 

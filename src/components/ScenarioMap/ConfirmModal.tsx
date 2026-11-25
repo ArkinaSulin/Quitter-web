@@ -26,7 +26,7 @@ const MODAL_BUTTON_STYLES: Record<ModalButtonVariant, string> = {
 
 export function ConfirmModal({ title, children, buttons, tone = 'gray', onCancel }: ConfirmModalProps) {
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="absolute inset-0 z-[260] flex items-center justify-center bg-black/40">
       <div className={`bg-gray-900 border ${tone === 'red' ? 'border-red-800' : tone === 'amber' ? 'border-amber-700' : 'border-gray-700'} rounded-xl shadow-2xl p-6 min-w-[320px]`}>
         <p className="text-white text-sm mb-1 text-center font-semibold">{title}</p>
         <div className="text-gray-400 text-xs mb-4 text-center">{children}</div>

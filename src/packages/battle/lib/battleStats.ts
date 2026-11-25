@@ -34,14 +34,20 @@ export interface UnitStatRow {
   introTroopCount: number;
   /** introTroopCount × this unit's level (starting level-points). */
   introLevels: number;
+  /** Total HP at the same intro snapshot (fallback: HP at PLACE / max HP). */
+  introHp: number;
   currentTroopCount: number;
   /** Gross troops this unit lost (from the log). */
   troopLost: number;
   /** troopLost × this unit's level. */
   levelsLost: number;
+  /** Gross HP this unit lost (from the log). */
+  hpLost: number;
   status: UnitStatus;
   kills: number;
   killLevels: number;
+  /** HP damage this unit dealt (payload-attributed). */
+  killHp: number;
 }
 
 export interface TeamStats {
@@ -57,15 +63,18 @@ export interface AllianceStats {
   survived: number;
   totalTroops: number;
   totalLevels: number;
+  totalHp: number;
   totalTroopLost: number;
   totalLevelsLost: number;
+  totalHpLost: number;
   totalKills: number;
   totalKillLevels: number;
+  totalKillHp: number;
 }
 
 export interface BattleStats {
   alliances: AllianceStats[];
-  totals: { kills: number; killLevels: number; troopLost: number; levelsLost: number };
+  totals: { kills: number; killLevels: number; killHp: number; troopLost: number; levelsLost: number; hpLost: number };
 }
 
 const ALLIANCE_ORDER: AllianceGroup[] = ['friendly', 'enemy', 'neutral'];
@@ -85,34 +94,60 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
   const sorted = [...rows].filter(r => r.deleted_at == null).sort((a, b) => a.seq - b.seq);
 
   const troops = new Map<string, number>();
+  const hp = new Map<string, number>();
   const allianceOf = new Map<string, AllianceGroup>();
   const placedTroops = new Map<string, number>();
+  const placedHp = new Map<string, number>();
   const introTroops = new Map<string, number>();
+  const introHp = new Map<string, number>();
   const snapped = new Set<string>();
   const troopLost = new Map<string, number>();
+  const hpLost = new Map<string, number>();
   const kills = new Map<string, number>();
   const killLevels = new Map<string, number>();
+  const killHp = new Map<string, number>();
 
   for (const row of sorted) {
     const steps = parseSubSteps(row.sub_steps);
     for (const step of steps) {
       if (step.type === 'PLACE' && step.payload && typeof step.payload === 'object') {
-        const p = step.payload as { id?: string; team?: string; currentTroopCount?: number };
+        const p = step.payload as {
+          id?: string;
+          team?: string;
+          currentTroopCount?: number;
+          currentUnitHp?: number;
+        };
         if (p.id) {
           const t = p.currentTroopCount ?? 0;
           troops.set(p.id, t);
           placedTroops.set(p.id, t);
+          if (typeof p.currentUnitHp === 'number') {
+            hp.set(p.id, p.currentUnitHp);
+            placedHp.set(p.id, p.currentUnitHp);
+          }
           allianceOf.set(p.id, teamAllianceOf(p.team, alliances));
         }
         continue;
       }
       const pl = step.payload as { killerUnitId?: string; victimLevel?: number } | null | undefined;
+      const editorCommand = EDITOR_COMMANDS.has(row.action_type);
       for (const change of step.changes) {
-        if (change.field === 'currentTroopCount' && typeof change.to === 'number') {
+        if (change.field === 'currentUnitHp' && typeof change.to === 'number') {
+          const from = typeof change.from === 'number' ? change.from : (hp.get(step.unitId) ?? 0);
+          const to = change.to;
+          const delta = from - to;
+          if (delta > 0 && !editorCommand) {
+            hpLost.set(step.unitId, (hpLost.get(step.unitId) ?? 0) + delta);
+            if (pl && typeof pl.killerUnitId === 'string' && typeof pl.victimLevel === 'number') {
+              killHp.set(pl.killerUnitId, (killHp.get(pl.killerUnitId) ?? 0) + delta);
+            }
+          }
+          hp.set(step.unitId, to);
+        } else if (change.field === 'currentTroopCount' && typeof change.to === 'number') {
           const from = typeof change.from === 'number' ? change.from : (troops.get(step.unitId) ?? 0);
           const to = change.to;
           const delta = from - to;
-          if (delta > 0 && !EDITOR_COMMANDS.has(row.action_type)) {
+          if (delta > 0 && !editorCommand) {
             troopLost.set(step.unitId, (troopLost.get(step.unitId) ?? 0) + delta);
             if (pl && typeof pl.killerUnitId === 'string' && typeof pl.victimLevel === 'number') {
               kills.set(pl.killerUnitId, (kills.get(pl.killerUnitId) ?? 0) + delta);
@@ -130,6 +165,7 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
             for (const [id, al] of Array.from(allianceOf.entries())) {
               if (!snapped.has(id) && al === ending) {
                 introTroops.set(id, troops.get(id) ?? placedTroops.get(id) ?? 0);
+                introHp.set(id, hp.get(id) ?? placedHp.get(id) ?? 0);
                 snapped.add(id);
               }
             }
@@ -144,6 +180,7 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
   const rowsOut: UnitStatRow[] = live.map(u => {
     const tl = troopLost.get(u.id) ?? 0;
     const intro = introTroops.get(u.id) ?? placedTroops.get(u.id) ?? u.maxTroopCount;
+    const introHpValue = introHp.get(u.id) ?? placedHp.get(u.id) ?? u.maxUnitHp ?? u.currentUnitHp ?? 0;
     return {
       unitId: u.id,
       unitName: u.unitName,
@@ -155,12 +192,15 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
       maxTroopCount: u.maxTroopCount,
       introTroopCount: intro,
       introLevels: intro * u.level,
+      introHp: introHpValue,
       currentTroopCount: u.currentTroopCount,
       troopLost: tl,
       levelsLost: tl * u.level,
+      hpLost: hpLost.get(u.id) ?? 0,
       status: statusOf(u),
       kills: kills.get(u.id) ?? 0,
       killLevels: killLevels.get(u.id) ?? 0,
+      killHp: killHp.get(u.id) ?? 0,
     };
   });
 
@@ -191,10 +231,13 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
       survived: groupRows.filter(r => r.status === 'Effective').length,
       totalTroops: groupRows.reduce((a, r) => a + r.introTroopCount, 0),
       totalLevels: groupRows.reduce((a, r) => a + r.introTroopCount * r.level, 0),
+      totalHp: groupRows.reduce((a, r) => a + r.introHp, 0),
       totalTroopLost: groupRows.reduce((a, r) => a + r.troopLost, 0),
       totalLevelsLost: groupRows.reduce((a, r) => a + r.levelsLost, 0),
+      totalHpLost: groupRows.reduce((a, r) => a + r.hpLost, 0),
       totalKills: groupRows.reduce((a, r) => a + r.kills, 0),
       totalKillLevels: groupRows.reduce((a, r) => a + r.killLevels, 0),
+      totalKillHp: groupRows.reduce((a, r) => a + r.killHp, 0),
     });
   }
 
@@ -204,10 +247,12 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
       (acc, r) => ({
         kills: acc.kills + r.kills,
         killLevels: acc.killLevels + r.killLevels,
+        killHp: acc.killHp + r.killHp,
         troopLost: acc.troopLost + r.troopLost,
         levelsLost: acc.levelsLost + r.levelsLost,
+        hpLost: acc.hpLost + r.hpLost,
       }),
-      { kills: 0, killLevels: 0, troopLost: 0, levelsLost: 0 },
+      { kills: 0, killLevels: 0, killHp: 0, troopLost: 0, levelsLost: 0, hpLost: 0 },
     ),
   };
 }
@@ -217,7 +262,7 @@ export function formatStatsText(stats: BattleStats): string {
   const lines: string[] = ['— Scenario Statistics —'];
   for (const a of stats.alliances) {
     lines.push(
-      `${ALLIANCE_LABEL[a.alliance].toUpperCase()} — deployed ${a.deployed} · survived ${a.survived} | starting ${a.totalTroops} troops / ${a.totalLevels} lv | lost ${a.totalTroopLost} troops / ${a.totalLevelsLost} lv | kills ${a.totalKills} troops / ${a.totalKillLevels} lv`,
+      `${ALLIANCE_LABEL[a.alliance].toUpperCase()} — deployed ${a.deployed} · survived ${a.survived} | starting ${a.totalTroops} troops / ${a.totalLevels} lv / ${a.totalHp} HP | lost ${a.totalTroopLost} troops / ${a.totalLevelsLost} lv / ${a.totalHpLost} HP | kills ${a.totalKills} troops / ${a.totalKillLevels} lv / ${a.totalKillHp} HP`,
     );
     for (const t of a.teams) {
       lines.push(`  ${t.team}`);
@@ -225,13 +270,13 @@ export function formatStatsText(stats: BattleStats): string {
         const tag = r.status === 'Killed' ? '✝' : r.status === 'Routed' ? '⚠' : '';
         const hidden = r.hidden ? ' (hidden)' : '';
         lines.push(
-          `    ${r.isHero ? '★ ' : ''}${r.unitName}${hidden}: ${r.status}${tag} — starting ${r.introTroopCount} troops / ${r.introLevels} lv (now ${r.currentTroopCount}) · lost ${r.troopLost} troops / ${r.levelsLost} lv · kills ${r.kills} troops / ${r.killLevels} lv`,
+          `    ${r.isHero ? '★ ' : ''}${r.unitName}${hidden}: ${r.status}${tag} — starting ${r.introTroopCount} troops / ${r.introLevels} lv / ${r.introHp} HP (now ${r.currentTroopCount}) · lost ${r.troopLost} troops / ${r.levelsLost} lv / ${r.hpLost} HP · kills ${r.kills} troops / ${r.killLevels} lv / ${r.killHp} HP`,
         );
       }
     }
   }
   lines.push(
-    `Totals: starting ${stats.alliances.reduce((n, a) => n + a.totalTroops, 0)} troops · lost ${stats.totals.troopLost} troops / ${stats.totals.levelsLost} lv · kills ${stats.totals.kills} troops / ${stats.totals.killLevels} lv`,
+    `Totals: starting ${stats.alliances.reduce((n, a) => n + a.totalTroops, 0)} troops · lost ${stats.totals.troopLost} troops / ${stats.totals.levelsLost} lv / ${stats.totals.hpLost} HP · kills ${stats.totals.kills} troops / ${stats.totals.killLevels} lv / ${stats.totals.killHp} HP`,
   );
   return lines.join('\n');
 }

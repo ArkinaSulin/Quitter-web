@@ -8,6 +8,7 @@ export * from './lib/formationCache';
 export * from './lib/structureTemplateCache';
 export * from './lib/templateMappers';
 export * from './lib/weaponMappers';
+export * from './lib/contentOwnership';
 export * from './lib/imageUrls';
 export * from './lib/commandLog';
 export * from './lib/commandHistory';

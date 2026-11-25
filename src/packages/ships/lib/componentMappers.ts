@@ -28,6 +28,7 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     range: 0,
     maxRange: 0,
     reloadSteps: 0,
+    maxTargets: 1,
     magicDimension: 0,
     shape: 'circle',
     savingThrow: 'Dex',
@@ -37,6 +38,7 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
     isRam: !!row.isRam,
+    ownerId: row.ownerId ?? null,
   };
 }
 
@@ -59,6 +61,7 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     range: row.range,
     maxRange: row.maxRange,
     reloadSteps: row.reloadSteps,
+    maxTargets: row.maxTargets,
     magicDimension: row.magicDimension,
     shape: row.shape,
     savingThrow: row.savingThrow,
@@ -68,6 +71,7 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
     isRam: false,
+    ownerId: row.ownerId ?? null,
   };
 }
 
@@ -92,6 +96,7 @@ export function validateShipComponentTemplate(t: ShipComponentTemplate): string 
     if (t.minRange > t.range) return 'Min range cannot exceed range.';
     if (t.range > t.maxRange) return 'Range cannot exceed max range.';
     if (!Number.isFinite(t.reloadSteps) || t.reloadSteps < 0) return 'Reload steps must be 0 or more.';
+    if (!Number.isFinite(t.maxTargets) || t.maxTargets < 1) return 'Max targets must be 1 or more.';
     if (!Number.isFinite(t.magicDimension) || t.magicDimension < 0) return 'Area dimension must be 0 or more.';
     if (!Number.isFinite(t.saveDC) || t.saveDC < 0) return 'Save DC must be 0 or more.';
   }
@@ -124,6 +129,7 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     range: t.range,
     max_range: t.maxRange,
     reload_steps: t.reloadSteps,
+    max_targets: t.maxTargets,
     dt: t.dt,
     crew: t.crew,
     cost: t.cost,

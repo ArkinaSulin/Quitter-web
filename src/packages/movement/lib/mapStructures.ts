@@ -447,7 +447,31 @@ export function parseStructures(raw: any): MapStructures {
     const ladderSide = (v as any).ladderSide;
     if (ladderSide === 'a' || ladderSide === 'b') inst.ladderSide = ladderSide;
     if (Array.isArray((v as any).modifiers)) inst.modifiers = (v as any).modifiers as EffectModifier[];
+    const snapshot = (v as any).template;
+    if (snapshot && typeof snapshot === 'object' && typeof snapshot.id === 'string' && snapshot.id) {
+      inst.template = snapshot as StructureTemplate;
+    }
     out[key] = inst;
+  }
+  return out;
+}
+
+/**
+ * Merge the template snapshots carried by placed instances into the shared
+ * library map. A snapshot wins for its template id, so a map keeps the rules a
+ * structure was placed with even if the library row was edited or deleted.
+ *
+ * Consumers can keep passing a plain `Record<id, StructureTemplate>` — build it
+ * with this helper and every existing lookup becomes snapshot-aware.
+ */
+export function structureTemplatesWithSnapshots(
+  structures: MapStructures | null | undefined,
+  templates: Record<string, StructureTemplate> | null | undefined,
+): Record<string, StructureTemplate> {
+  const out: Record<string, StructureTemplate> = { ...(templates ?? {}) };
+  if (!structures) return out;
+  for (const inst of Object.values(structures)) {
+    if (inst?.template) out[inst.templateId] = inst.template;
   }
   return out;
 }

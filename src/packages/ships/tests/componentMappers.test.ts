@@ -23,6 +23,7 @@ const weaponTemplate = () => ({
   range: 1,
   maxRange: 1,
   reloadSteps: 1,
+    maxTargets: 1,
   magicDimension: 0,
   shape: 'circle' as const,
   savingThrow: 'Dex' as const,
@@ -66,6 +67,7 @@ describe('component workshop mappers', () => {
     const t = mapWeaponToTemplate({
       id: 'w1', name: 'heavy ram', mass: 3, damage: '6d10', damageFormula: '{mass/10}d10',
       minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
+    maxTargets: 1,
       magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
       dt: 15, crew: 2, cost: 100, ammoCost: null, special: 'melee', ac: 10,
     });

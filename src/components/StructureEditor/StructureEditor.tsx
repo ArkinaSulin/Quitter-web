@@ -5,7 +5,7 @@
 // direction-relative movement (mp foot/mounted in/out; negative = hard block),
 // an optional battlement/stakes decoration, two durability pools (door gates
 // passage, HP gates modifiers), a Damage Threshold and a mode-scoped modifier list.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/packages/infra/supabase';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
@@ -16,6 +16,11 @@ import {
   mapStructureRow, mapStructureToRow, blankStructureTemplate, sanitizeStructureTemplate,
 } from '@/packages/movement';
 import { refreshAndReselect } from '@/packages/world';
+import type { OwnershipFilter } from '@/packages/infra';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import { OwnerChip, OwnerFilterSelect, OwnerLockNotice } from '@/components/shared/ContentOwnership';
+import { UnsavedChangesModal } from '@/components/shared/UnsavedChangesModal';
 
 type Draft = Omit<StructureTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 
@@ -88,13 +93,26 @@ function coverAc(mods: EffectModifier[]): { melee: number; ranged: number } {
   return { melee, ranged };
 }
 
-export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
+export default function StructureEditor({ readOnly: capabilityReadOnly }: { readOnly: boolean }) {
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
   const [list, setList] = useState<StructureTemplate[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const savedSnapshotRef = useRef('');
+  const isDirty = !!draft && JSON.stringify(draft) !== savedSnapshotRef.current;
+  const {
+    showUnsavedModal,
+    requestAction,
+    takePending,
+    discardPending,
+    cancelPending,
+  } = useUnsavedChanges(isDirty);
+  const ownershipLocked = !!draft?.id && !ownership.canEdit(draft.ownerId);
+  const readOnly = capabilityReadOnly || ownershipLocked;
 
   const load = useCallback(async (): Promise<StructureTemplate[]> => {
     const { data } = await supabase.from('map_structure_templates').select('*').order('name', { ascending: true });
@@ -106,16 +124,25 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
   useEffect(() => { void load(); }, [load]);
 
   const patch = (p: Partial<Draft>) => setDraft(d => (d ? { ...d, ...p } : d));
-  const select = (t: StructureTemplate) => setDraft({ ...t, id: t.id });
-  const fresh = () => setDraft({ ...blankStructureTemplate() });
+  const select = (t: StructureTemplate) => requestAction(() => {
+    setDraft({ ...t, id: t.id });
+    savedSnapshotRef.current = JSON.stringify({ ...t, id: t.id });
+  });
+  const fresh = () => requestAction(() => {
+    setDraft({ ...blankStructureTemplate() });
+    savedSnapshotRef.current = '';
+  });
   const clone = () => {
     if (!draft) return;
-    const { id, ...rest } = draft;
-    setDraft({ ...rest, name: `${draft.name} copy` });
+    requestAction(() => {
+      const { id, ...rest } = draft;
+      setDraft({ ...rest, name: `${draft.name} copy` });
+    });
   };
 
-  const save = async () => {
-    if (!draft || !draft.name.trim()) { setStatus('Give the structure a name.'); return; }
+  const save = async (): Promise<boolean> => {
+    if (!draft || readOnly) return false;
+    if (!draft.name.trim()) { setStatus('Give the structure a name.'); return false; }
     setBusy(true);
     setStatus('');
     try {
@@ -151,13 +178,25 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
       setStatus(droppedLadder ? 'Saved — apply migration 114 in Supabase to store the ladder decoration.' : 'Saved.');
       if (id) {
         const { selected } = await refreshAndReselect(load, id, t => t.id);
-        if (selected) select(selected);
+        if (selected) {
+          const clean = { ...selected, id: selected.id };
+          setDraft(clean);
+          savedSnapshotRef.current = JSON.stringify(clean);
+        }
       }
+      return true;
     } catch (err: any) {
       setStatus('Save failed: ' + (err?.message || 'unknown'));
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleUnsavedSave = async () => {
+    const action = takePending();
+    const ok = await save();
+    if (ok) action?.();
   };
 
   const remove = async () => {
@@ -167,6 +206,7 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
     try {
       await supabase.from('map_structure_templates').delete().eq('id', draft.id);
       setDraft(null);
+      savedSnapshotRef.current = '';
       setStatus('Deleted.');
       await load();
     } catch (err: any) {
@@ -193,15 +233,25 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? list.filter(t => t.name.toLowerCase().includes(q)) : list;
-  }, [list, search]);
+    const base = q ? list.filter(t => t.name.toLowerCase().includes(q)) : list;
+    return ownership.filter(base, ownerFilter);
+  }, [list, search, ownerFilter, ownership]);
 
   return (
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
         <h1 className="text-xl font-bold text-yellow-300">Structure Workshop</h1>
-        {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
-        <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
+        {capabilityReadOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
+        <a
+          href="/"
+          onClick={e => {
+            e.preventDefault();
+            requestAction(() => { window.location.href = '/'; });
+          }}
+          className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded"
+        >
+          Main Menu
+        </a>
       </header>
 
       <div className="flex flex-1 min-h-0">
@@ -219,6 +269,12 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
             onChange={e => setSearch(e.target.value)}
           />
           {filtered.length === 0 && <p className="text-xs text-gray-500">No structures yet.</p>}
+          <OwnerFilterSelect
+            ownership={ownership}
+            value={ownerFilter}
+            onChange={setOwnerFilter}
+            className="w-full mb-1"
+          />
           {filtered.map(t => (
             <button
               key={t.id}
@@ -230,6 +286,9 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
               <span className="block text-[10px] text-gray-400">
                 {t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''}{t.ladder ? ' · ladder' : ''} · {t.maxHp}hp
               </span>
+              <span className="mt-0.5 block">
+                <OwnerChip ownership={ownership} ownerId={t.ownerId} />
+              </span>
             </button>
           ))}
         </div>
@@ -240,6 +299,17 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
             <p className="text-gray-500 text-sm">Select a structure from the list (or create one) to edit it.</p>
           ) : (
             <fieldset disabled={readOnly} className="space-y-3 w-full max-w-3xl">
+              {ownershipLocked && (
+                <OwnerLockNotice
+                  ownership={ownership}
+                  ownerId={draft.ownerId}
+                  onClone={() => {
+                    const { id, ...rest } = draft;
+                    void id;
+                    setDraft({ ...rest, name: `${draft.name} copy` });
+                  }}
+                />
+              )}
               <div className="flex flex-wrap items-end gap-3">
                 <label className="block text-xs text-gray-400 flex-1 min-w-[12rem]">Name
                   <input className={input} value={draft.name} disabled={readOnly} onChange={e => patch({ name: e.target.value })} />
@@ -472,6 +542,14 @@ export default function StructureEditor({ readOnly }: { readOnly: boolean }) {
           showRaces={false}
           onSelect={url => { patch({ imageUrl: url ?? '' }); setShowImagePicker(false); }}
           onClose={() => setShowImagePicker(false)}
+        />
+      )}
+      {showUnsavedModal && (
+        <UnsavedChangesModal
+          busy={busy}
+          onSave={() => void handleUnsavedSave()}
+          onDiscard={discardPending}
+          onCancel={cancelPending}
         />
       )}
     </div>

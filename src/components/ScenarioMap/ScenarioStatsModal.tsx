@@ -8,7 +8,7 @@
 // Rows are grouped by alliance (Friendly → Enemy → Neutral) with an alliance
 // summary line, then by team (color chip) — empty teams and an empty Neutral
 // alliance are hidden.
-import { Fragment, useMemo } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Unit, AllianceGroup, ALLIANCE_COLORS } from '@/types/gameProtocol';
 import { CommandLogRow } from '@/packages/infra';
 import { buildStats, type BattleStats } from '@/packages/battle';
@@ -38,12 +38,56 @@ export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onS
     [stats, rows, units, alliances],
   );
 
+  const MIN_W = 700;
+  const MIN_H = 300;
+  const defaultW = () => Math.min(940, (typeof window === 'undefined' ? 1280 : window.innerWidth) - 32);
+  const defaultH = () => Math.min(560, (typeof window === 'undefined' ? 800 : window.innerHeight) - 32);
+  const [layout, setLayout] = useState<{ w: number; h: number }>({ w: defaultW(), h: defaultH() });
+
+  // Keep the modal inside the viewport when the window shrinks.
+  useEffect(() => {
+    const clamp = () => setLayout(current => {
+      const maxW = Math.max(320, window.innerWidth - 16);
+      const maxH = Math.max(240, window.innerHeight - 16);
+      return {
+        w: Math.max(Math.min(MIN_W, maxW), Math.min(maxW, current.w)),
+        h: Math.max(Math.min(MIN_H, maxH), Math.min(maxH, current.h)),
+      };
+    });
+    clamp();
+    window.addEventListener('resize', clamp);
+    return () => window.removeEventListener('resize', clamp);
+  }, []);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const start = { x: e.clientX, y: e.clientY, w: layout.w, h: layout.h };
+    const move = (ev: MouseEvent) => {
+      const maxW = Math.max(320, window.innerWidth - 16);
+      const maxH = Math.max(240, window.innerHeight - 16);
+      const minW = Math.min(MIN_W, maxW);
+      const minH = Math.min(MIN_H, maxH);
+      setLayout({
+        w: Math.max(minW, Math.min(maxW, start.w + ev.clientX - start.x)),
+        h: Math.max(minH, Math.min(maxH, start.h + ev.clientY - start.y)),
+      });
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
   const num = 'py-1 pr-2 text-right tabular-nums';
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50" onMouseDown={onClose}>
+    <div className="absolute inset-0 z-[260] flex items-center justify-center bg-black/50" onMouseDown={onClose}>
       <div
-        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-5 min-w-[680px] max-w-[920px] max-h-[80vh] flex flex-col"
+        className="relative bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-5 flex flex-col"
+        style={{ width: layout.w, height: layout.h }}
         onMouseDown={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
@@ -57,19 +101,22 @@ export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onS
             <thead>
               <tr className="text-gray-500">
                 <th className="py-1 pr-2" colSpan={2} />
-                <th className="py-1 pr-2 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={2}>Starting</th>
-                <th className="py-1 pr-2 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={2}>Lost</th>
-                <th className="py-1 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={2}>Kills</th>
+                <th className="py-1 pr-2 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={3}>Starting</th>
+                <th className="py-1 pr-2 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={3}>Lost</th>
+                <th className="py-1 text-center font-semibold text-gray-300 border-l border-gray-800" colSpan={3}>Kills</th>
               </tr>
               <tr className="text-left text-gray-400 border-b border-gray-700">
                 <th className="py-1 pr-2">Unit</th>
                 <th className="py-1 pr-2">Status</th>
                 <th className="py-1 pr-2 text-right border-l border-gray-800">Troop</th>
                 <th className="py-1 pr-2 text-right">Lv</th>
+                <th className="py-1 pr-2 text-right">HP</th>
                 <th className="py-1 pr-2 text-right border-l border-gray-800">Troop</th>
                 <th className="py-1 pr-2 text-right">Lv</th>
+                <th className="py-1 pr-2 text-right">HP</th>
                 <th className="py-1 pr-2 text-right border-l border-gray-800">Troop</th>
-                <th className="py-1 text-right">Lv</th>
+                <th className="py-1 pr-2 text-right">Lv</th>
+                <th className="py-1 text-right">HP</th>
               </tr>
             </thead>
             <tbody>
@@ -84,15 +131,18 @@ export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onS
                     </td>
                     <td className={`${num} font-semibold border-l border-gray-800`}>{a.totalTroops}</td>
                     <td className={`${num} font-semibold`}>{a.totalLevels}</td>
+                    <td className={`${num} font-semibold`}>{a.totalHp ?? 0}</td>
                     <td className={`${num} font-semibold border-l border-gray-800`}>{a.totalTroopLost}</td>
                     <td className={`${num} font-semibold`}>{a.totalLevelsLost}</td>
+                    <td className={`${num} font-semibold`}>{a.totalHpLost ?? 0}</td>
                     <td className={`${num} font-semibold border-l border-gray-800`}>{a.totalKills}</td>
                     <td className={`${num} font-semibold`}>{a.totalKillLevels}</td>
+                    <td className={`${num} font-semibold`}>{a.totalKillHp ?? 0}</td>
                   </tr>
                   {a.teams.map(t => (
                     <Fragment key={t.team}>
                       <tr className="border-b border-gray-800">
-                        <td colSpan={8} className="py-1 pr-2">
+                        <td colSpan={11} className="py-1 pr-2">
                           <span className="inline-flex items-center gap-1.5">
                             <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: TEAM_COLORS[t.team as keyof typeof TEAM_COLORS] ?? '#666' }} />
                             <span className="capitalize text-gray-300 font-medium">{t.team}</span>
@@ -117,10 +167,13 @@ export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onS
                           </td>
                           <td className={`${num} border-l border-gray-800`}>{r.introTroopCount}</td>
                           <td className={num}>{r.introLevels}</td>
+                          <td className={num}>{r.introHp ?? 0}</td>
                           <td className={`${num} border-l border-gray-800`}>{r.troopLost}</td>
                           <td className={num}>{r.levelsLost}</td>
+                          <td className={num}>{r.hpLost ?? 0}</td>
                           <td className={`${num} border-l border-gray-800`}>{r.kills}</td>
                           <td className={num}>{r.killLevels}</td>
+                          <td className={num}>{r.killHp ?? 0}</td>
                         </tr>
                       ))}
                     </Fragment>
@@ -143,6 +196,13 @@ export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onS
           <button className={`${btn} bg-gray-700 hover:bg-gray-600 text-white`} onClick={onClose}>
             Done
           </button>
+        </div>
+        <div
+          onMouseDown={startResize}
+          title="Resize"
+          className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
+        >
+          <div className="absolute bottom-1 right-1 h-2.5 w-2.5 border-b-2 border-r-2 border-amber-400/80" />
         </div>
       </div>
     </div>

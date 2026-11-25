@@ -1,6 +1,7 @@
 // src/types/gameProtocol.ts
 
 import { EffectModifier } from '@/types/effects';
+import type { CargoManifestItem } from '@/types/ship';
 
 export const ORGANIZATION_LEVEL: Record<string, number> = {
   'Routed': 0,
@@ -123,6 +124,8 @@ export interface UnitTemplate extends AbilityScores, SavingThrows {
   effects?: EffectModifier[];
   createdAt: string;
   updatedAt: string;
+  /** Authoring owner; null = seeded/system content (admin-only). */
+  ownerId?: string | null;
 }
 
 // --- Unit (Instance on the battlefield) ---
@@ -228,7 +231,8 @@ export type EffectKind =
   | 'block_attacks'
   | 'save_advantage' | 'save_disadvantage'
   | 'forced_stop'
-  | 'ignore_climb' | 'feather_fall';
+  | 'ignore_climb' | 'feather_fall'
+  | 'cargo_debris';
 
 /**
  * A temporary effect instance. Duration counts ACTIVATIONS OF THE CASTER (not the
@@ -328,6 +332,12 @@ export interface GroundEffect {
   casterUnitId?: string | null;
   casterTeam?: string | null;
   casterPlayerId?: string | null;
+  /** `cargo_debris`: contents of one destroyed cargo box. */
+  cargo?: CargoManifestItem[];
+  /** `cargo_debris`: share of the contents that survives as salvage (0.5). */
+  salvageFraction?: number;
+  /** `cargo_debris`: number of original boxes merged into this marker. */
+  barrelCount?: number;
 }
 
 // --- Scenario ---

@@ -39,7 +39,7 @@ interface MenuState {
 
 export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boolean }) {
   const { messages } = useMessages();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
 
   // Every message records both the plain and the full verbose text; the scenario's
@@ -47,10 +47,11 @@ export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boole
   const display = (m: { text: string; verboseText?: string }) => (verboseCombat ? m.verboseText ?? m.text : m.text);
 
   useEffect(() => {
-    // block:'nearest' scrolls only the messages' own overflow container — a plain
-    // scrollIntoView() would also scroll the window/document, dragging the whole
-    // map view up by an amount proportional to the message's position.
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Scroll the messages' own overflow container directly. `scrollIntoView`
+    // walks every scrollable ancestor (including the document) and can drag the
+    // whole map view up, hiding the top bar.
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -90,6 +91,7 @@ export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boole
 
   return (
     <div
+      ref={listRef}
       className="h-full overflow-y-auto p-2 space-y-1 text-sm font-mono overscroll-contain scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent select-none"
       onContextMenu={(e) => openMenu(e, null)}
     >
@@ -109,13 +111,11 @@ export function MessagesPanel({ verboseCombat = false }: { verboseCombat?: boole
           ))}
         </div>
       ))}
-      <div ref={bottomRef} />
-
       {menu && (
         <Floating
           x={menu.x}
           y={menu.y}
-          z={100}
+          z={200}
           interactive
           className="bg-gray-800 border border-gray-600 rounded shadow-lg py-1 w-[130px]"
         >

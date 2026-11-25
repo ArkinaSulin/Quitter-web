@@ -87,9 +87,8 @@ export function HalloweenSiegePresetBar({
     setNotice(null);
     setWarning(null);
     try {
-      const { data: authData } = await supabase.auth.getUser();
       const row = {
-        ...halloweenSiegePresetToRow(plan, trimmed, selectedId ? undefined : authData.user?.id),
+        ...halloweenSiegePresetToRow(plan, trimmed),
         updated_at: new Date().toISOString(),
       };
       const { data, error: saveError } = await supabase

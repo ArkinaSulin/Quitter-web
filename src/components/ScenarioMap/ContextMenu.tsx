@@ -27,6 +27,8 @@ interface ContextMenuProps {
   onChangeFormation: (formation: string) => void;
   onSelectWeapon: (weaponIndex: number) => void;
   onAssignTeam: (team: string) => void;
+  /** GM: assign the attached hero's team from the host menu. */
+  onAssignHeroTeam?: (team: string) => void;
   onToggleHide: () => void;
   /** GM-only: set the unit to rout (no un-rout). */
   onSetRouting?: () => void;
@@ -76,6 +78,7 @@ export function ContextMenu({
   onChangeFormation,
   onSelectWeapon,
   onAssignTeam,
+  onAssignHeroTeam,
   onToggleHide,
   onSetRouting,
   onDeleteUnit,
@@ -184,7 +187,7 @@ export function ContextMenu({
       ref={menuRef}
       x={x}
       y={y}
-      z={50}
+      z={250}
       interactive
       className="bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[180px] max-h-[calc(100vh-16px)] overflow-y-auto text-sm text-white"
     >
@@ -432,6 +435,22 @@ export function ContextMenu({
               {team}
             </div>
           ))}
+          {attachedHero && onAssignHeroTeam && (
+            <>
+              <div className="px-3 py-1 text-gray-400 text-xs">
+                Hero: {attachedHero.unitName} — Assign Team:
+              </div>
+              {teamNames.map(team => (
+                <div
+                  key={`hero-${team}`}
+                  className="px-3 py-1 hover:bg-gray-700 cursor-pointer capitalize"
+                  onClick={() => { onAssignHeroTeam(team); onClose(); }}
+                >
+                  {team}
+                </div>
+              ))}
+            </>
+          )}
           <div className="border-t border-gray-700 my-1" />
           <div className="px-3 py-1 hover:bg-gray-700 cursor-pointer" onClick={() => { onToggleHide(); onClose(); }}>
             {unit.hidden ? 'Unhide' : 'Hide'}

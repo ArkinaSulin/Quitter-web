@@ -1,0 +1,251 @@
+Map cleared — plain board
+Orc Soldier H moved to (2, -3)
+Orc Soldier H moved to (2, -2)
+Orc Soldier H rotated left
+Orc Soldier H moved to (2, 1)
+Orc Soldier K moved to (-1, -3)
+Orc Soldier K moved to (-1, -2)
+Orc Soldier K moved to (-1, -1)
+Orc Soldier K moved to (-1, 1)
+Orc Soldier L moved to (-2, -3)
+Orc Soldier L moved to (-2, -2)
+Orc Soldier L rotated right
+Orc Soldier L moved to (-5, 1)
+Orc Guard O moved to (4, -3)
+Orc Guard O moved to (4, -2)
+Orc Guard O rotated right
+Orc Guard O moved to (1, 1)
+Orc Guard N moved to (-3, -3)
+Orc Guard N moved to (-3, -2)
+Orc Guard N moved to (-3, -1)
+Orc Guard N moved to (-6, 2)
+Orc Soldier J moved to (0, -3)
+Orc Soldier J moved to (0, -2)
+Orc Soldier J rotated left
+Orc Soldier J moved to (0, 1)
+Orc Soldier M moved to (3, -3)
+Orc Soldier M moved to (3, -2)
+Orc Soldier M moved to (3, -1)
+Orc Soldier M moved to (2, 2)
+Orc Soldier I moved to (1, -3)
+Orc Soldier I moved to (1, -2)
+Orc Soldier I rotated right
+Orc Soldier I moved to (-2, 1)
+Undid: Orc Soldier I moved to (-2, 1)
+Undid: Orc Soldier I rotated right
+Undid: Orc Soldier I moved to (1, -2)
+Undid: Orc Soldier I moved to (1, -3)
+Undid: Orc Soldier M moved to (2, 2)
+Undid: Orc Soldier M moved to (3, -1)
+Undid: Orc Soldier M moved to (3, -2)
+Undid: Orc Soldier M moved to (3, -3)
+Undid: Orc Soldier J moved to (0, 1)
+Undid: Orc Soldier J rotated left
+Undid: Orc Soldier J moved to (0, -2)
+Undid: Orc Guard N moved to (-6, 2)
+Undid: Orc Soldier J moved to (0, -3)
+Undid: Orc Guard N moved to (-3, -1)
+Undid: Orc Guard N moved to (-3, -2)
+Undid: Orc Guard N moved to (-3, -3)
+Undid: Orc Guard O moved to (1, 1)
+Undid: Orc Guard O rotated right
+Undid: Orc Guard O moved to (4, -2)
+Undid: Orc Guard O moved to (4, -3)
+Undid: Orc Soldier L moved to (-5, 1)
+Undid: Orc Soldier L rotated right
+Undid: Orc Soldier L moved to (-2, -2)
+Undid: Orc Soldier L moved to (-2, -3)
+Undid: Orc Soldier K moved to (-1, 1)
+Undid: Orc Soldier K moved to (-1, -1)
+Undid: Orc Soldier K moved to (-1, -2)
+Undid: Orc Soldier K moved to (-1, -3)
+Undid: Orc Soldier H moved to (2, 1)
+Undid: Orc Soldier H rotated left
+Undid: Orc Soldier H moved to (2, -2)
+Undid: Orc Soldier H moved to (2, -3)
+Orc Soldier H moved to (2, -3)
+Orc Soldier H moved to (2, -2)
+Orc Soldier H rotated left
+Orc Soldier H moved to (2, 1)
+Orc Soldier K moved to (-1, -3)
+Orc Soldier K moved to (-1, -2)
+Orc Soldier K moved to (-1, -1)
+Orc Soldier K moved to (-1, 1)
+Orc Soldier L moved to (-2, -3)
+Orc Soldier L moved to (-2, -2)
+Orc Soldier L rotated right
+Orc Soldier L moved to (-5, 1)
+Orc Guard O moved to (4, -3)
+Orc Guard O moved to (4, -2)
+Orc Guard O rotated right
+Orc Guard O moved to (1, 1)
+Orc Guard N moved to (-3, -3)
+Orc Guard N moved to (-3, -2)
+Orc Guard N moved to (-3, -1)
+Orc Guard N moved to (-6, 2)
+Orc Soldier J moved to (0, -3)
+Orc Soldier J moved to (0, -2)
+Orc Soldier J rotated right
+Orc Soldier J moved to (-3, 1)
+Orc Soldier M moved to (3, -3)
+Orc Soldier M moved to (3, -2)
+Orc Soldier M moved to (3, -1)
+Orc Soldier M moved to (2, 2)
+Orc Soldier I moved to (1, -3)
+Orc Soldier I moved to (1, -2)
+Orc Soldier I rotated right
+Orc Soldier I moved to (-2, 1)
+Undid: Orc Soldier I moved to (-2, 1)
+Undid: Orc Soldier I rotated right
+Undid: Orc Soldier I moved to (1, -2)
+Undid: Orc Soldier I moved to (1, -3)
+Undid: Orc Soldier M moved to (2, 2)
+Undid: Orc Soldier M moved to (3, -1)
+Undid: Orc Soldier M moved to (3, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier M moved to (3, -3)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier J moved to (-3, 1)
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier J rotated right
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier J moved to (0, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier J moved to (0, -3)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard N moved to (-6, 2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard N moved to (-3, -1)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard N moved to (-3, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard O moved to (1, 1)
+Undid: Orc Guard N moved to (-3, -3)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard O rotated right
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard O moved to (4, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Guard O moved to (4, -3)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier L moved to (-5, 1)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier L rotated right
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier L moved to (-2, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier L moved to (-2, -3)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier K moved to (-1, 1)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier K moved to (-1, -1)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier K moved to (-1, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier H moved to (2, 1)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier H rotated left
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier H moved to (2, -2)
+Cannot undo — another player has moved since, or the action was already undone
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier H moved to (2, -3)
+Cannot undo — another player has moved since, or the action was already undone
+Undid: Orc Soldier K moved to (-1, -3)
+Undid: End Turn — friendly turn begins
+End Turn — friendly turn begins
+Orc Soldier H moved to (2, -3)
+Orc Soldier H moved to (2, -2)
+Orc Soldier H rotated left
+Orc Soldier H moved to (2, 1)
+Orc Soldier K moved to (-1, -3)
+Orc Soldier K moved to (-1, -2)
+Orc Soldier K moved to (-1, -1)
+Orc Soldier K moved to (-1, 1)
+Orc Soldier L moved to (-2, -3)
+Orc Soldier L moved to (-2, -2)
+Orc Soldier L rotated right
+Orc Soldier L moved to (-5, 1)
+Orc Guard O moved to (4, -3)
+Orc Guard O moved to (4, -2)
+Orc Guard O rotated right
+Orc Guard O moved to (1, 1)
+Orc Guard N moved to (-3, -3)
+Orc Guard N moved to (-3, -2)
+Orc Guard N moved to (-3, -1)
+Orc Guard N moved to (-6, 2)
+Orc Soldier J moved to (0, -3)
+Orc Soldier J moved to (0, -2)
+Orc Soldier J rotated right
+Orc Soldier J moved to (-3, 1)
+Orc Soldier M moved to (3, -3)
+Orc Soldier M moved to (3, -2)
+Orc Soldier M moved to (3, -1)
+Orc Soldier M moved to (2, 2)
+Orc Soldier I moved to (1, -3)
+Orc Soldier I moved to (1, -2)
+Orc Soldier I rotated right
+Orc Soldier I moved to (-2, 1)
+End Turn — enemy turn begins
+Human Vet Pike G attacks Orc Soldier L with Polearm (Martial) Wpn
+Human Vet Pike G strikes first
+Human Vet Pike G: 10 attacks, 5 hits, 41 damage (3 troops)
+Orc Soldier L retaliates
+Orc Soldier L: 8 attacks, 6 hits, 1 critical, 40 damage (2 troops)
+Human Vet Pike G attacks Orc Soldier L with Polearm (Martial) Wpn
+Human Vet Pike G strikes first
+Human Vet Pike G: 10 attacks, 7 hits, 67 damage (6 troops)
+Orc Soldier L retaliates
+Orc Soldier L: 8 attacks, 3 hits, 16 damage (1 troops)
+Human Vet Pike F attacks Orc Soldier H with Polearm (Martial) Wpn
+Human Vet Pike F strikes first
+Human Vet Pike F: 10 attacks, 6 hits, 1 critical, 48 damage (4 troops)
+Orc Soldier H retaliates
+Orc Soldier H: 8 attacks, 5 hits, 32 damage (2 troops)
+Human Vet Pike F AGR failed — no attack
+Human Towns Guard C AGR failed — no attack
+Human Towns Guard C AGR failed — no attack
+Human Towns Guard B AGR failed — no attack
+Human Towns Guard B attacks Orc Soldier I with Spear
+Human Towns Guard B strikes first
+Human Towns Guard B: 10 attacks, 5 hits, 1 critical, 30 damage (2 troops)
+Orc Soldier I retaliates
+Orc Soldier I: 8 attacks, 1 hits, 3 damage (0 troops)
+Human Vet Infantry E AGR failed — no attack
+Human Vet Infantry E AGR failed — no attack
+Human Towns Guard A attacks Orc Soldier J with Spear
+Human Towns Guard A strikes first
+Human Towns Guard A: 10 attacks, 4 hits, 23 damage (2 troops)
+Orc Soldier J retaliates
+Orc Soldier J: 8 attacks, 4 hits, 23 damage (2 troops)
+Human Towns Guard A AGR failed — no attack
+Human Vet Infantry D AGR failed — no attack
+Human Vet Infantry D attacks Orc Soldier J with Longsword
+Human Vet Infantry D strikes first
+Human Vet Infantry D: 10 attacks, 1 hits, 1 critical, 11 damage (1 troops)
+Orc Soldier J retaliates
+Orc Soldier J: 10 attacks, 3 hits, 10 damage (0 troops)

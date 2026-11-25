@@ -4,11 +4,13 @@
 // recipient is the Helm hero owner, else the Bridge hero owner, else the DM.
 
 import { useEffect, useState } from 'react';
-import { ShipRuntime, declareSpeed, effectiveMCForSpeed, effectiveTurnDistance, spellSlotCostForHexes } from '@/packages/ships';
+import { ShipRuntime, declareSpeed, effectiveMCForSpeed, effectiveTurnDistance, spellSlotCostForHexes, type ShipDerivedStats } from '@/packages/ships';
 import { DraggablePanel } from '@/components/shared/DraggablePanel';
 
 export interface SpeedDeclarationPanelProps {
   ship: ShipRuntime;
+  /** Runtime stats with effective sail/rudder manning; defaults to the snapshot. */
+  stats?: ShipDerivedStats | null;
   /** Movement already spent this round (re-declare cannot go below it). */
   spentThisTurn?: number;
   minDeclaredSpeed?: number;
@@ -71,12 +73,13 @@ function SignedIntField({
 
 export function SpeedDeclarationPanel({
   ship,
+  stats: runtimeStats,
   spentThisTurn = 0,
   minDeclaredSpeed = 0,
   onClose,
   onDeclare,
 }: SpeedDeclarationPanelProps) {
-  const stats = ship.snapshot?.stats;
+  const stats = runtimeStats ?? ship.snapshot?.stats;
   const previousSpeed = ship.lastSpeed ?? 5;
   const maxAccel = Math.floor(stats?.accel ?? 0);
   const [accelDelta, setAccelDelta] = useState(0);

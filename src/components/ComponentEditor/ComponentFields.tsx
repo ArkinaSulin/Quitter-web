@@ -122,7 +122,7 @@ export function ComponentFields({
 
       {isWeapon && (
         <>
-          <div className="grid grid-cols-[1fr_140px] gap-2">
+          <div className="grid grid-cols-[1fr_140px_120px] gap-2">
             <Cell label="Damage (literal/fallback)">
               <input
                 type="text"
@@ -134,6 +134,9 @@ export function ComponentFields({
             </Cell>
             <Cell label="Reload steps (0 = every step)">
               <NumInput value={value.reloadSteps} min={0} integer onChange={v => patch({ reloadSteps: v })} />
+            </Cell>
+            <Cell label="Max crew targets">
+              <NumInput value={value.maxTargets} min={1} integer onChange={v => patch({ maxTargets: v })} />
             </Cell>
           </div>
           <Cell label="Damage formula (optional)">

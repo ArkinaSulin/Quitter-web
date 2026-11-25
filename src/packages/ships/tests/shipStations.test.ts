@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ShipComponent, ShipWeapon } from '@/types/ship';
-import { ShipBuild, shipStationCards, shipStationStat } from '@/packages/ships';
+import { ShipBuild, needsStationReplacement, shipStationCards, shipStationStat, shipStationStats } from '@/packages/ships';
 
 const COMPONENTS: ShipComponent[] = [
   { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15 },
@@ -14,7 +14,8 @@ const COMPONENTS: ShipComponent[] = [
 
 const WEAPON: ShipWeapon = {
   id: 'wpn-ballista', name: 'Ballista', mass: 1, damage: '2d10', damageFormula: null,
-  minRange: 0, range: 3, maxRange: 10, reloadSteps: 2, magicDimension: 0, shape: 'circle',
+  minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
+    maxTargets: 1, magicDimension: 0, shape: 'circle',
   savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500,
   ammoCost: 1, special: null,
 };
@@ -49,6 +50,43 @@ describe('shipStationCards', () => {
     expect(byKind('weapon').map(c => c.key)).toEqual(['weapon:Fore:0', 'weapon:Fore:1']);
   });
 
+  it('shrinks Sail/Rudder crew requirements with box damage', () => {
+    const build8 = build({
+      sails: 8,
+      rudders: 4,
+      deckLayout: {
+        version: 2,
+        bow: [],
+        stern: [],
+        port: [{ cardKey: 'component:comp-sail' }],
+        body: [[{ cardKey: 'component:comp-rudder' }]],
+        starboard: [],
+      },
+    });
+    const damaged = shipStationCards(build8, { boxState: { 'component:comp-sail': 4 } });
+    expect(damaged.filter(c => c.kind === 'sail').map(c => c.crewRequired)).toEqual([1]);
+    expect(damaged.filter(c => c.kind === 'rudder').map(c => c.crewRequired)).toEqual([2]);
+  });
+
+  it('sets crew requirement to 0 on a destroyed Helm/Bridge card', () => {
+    const withStations = build({
+      armor: { id: 'wood', name: 'wood', massPct: 0, ac: 15, hpMult: 1 },
+      deckLayout: {
+        version: 2,
+        bow: [],
+        stern: [],
+        port: [{ cardKey: 'component:comp-helm' }],
+        body: [[{ cardKey: 'component:comp-bridge' }]],
+        starboard: [],
+      },
+    } as any);
+    const cards = shipStationCards(withStations, {
+      boxState: { 'component:comp-helm': 1, 'component:comp-bridge': 3 },
+    });
+    expect(cards.filter(c => c.kind === 'helm').map(c => c.crewRequired)).toEqual([0]);
+    expect(cards.filter(c => c.kind === 'bridge').map(c => c.crewRequired)).toEqual([0]);
+  });
+
   it('excludes hull, deck, quarters and cargo', () => {
     const names = shipStationCards(build()).map(c => c.name);
     expect(names).not.toContain('Hull');
@@ -63,5 +101,32 @@ describe('shipStationCards', () => {
     expect(shipStationStat('rudder')).toBe('int');
     expect(shipStationStat('sail')).toBe('con');
     expect(shipStationStat('weapon')).toBe('dex');
+  });
+
+  it('gives the Helmsman the higher of Wisdom or Intelligence', () => {
+    expect(shipStationStats('helm')).toEqual(['wis', 'int']);
+    expect(shipStationStats('rudder')).toEqual(['int']);
+    expect(shipStationStats('weapon')).toEqual(['dex']);
+  });
+});
+
+describe('needsStationReplacement', () => {
+  it('pulls only for exactly one free slot', () => {
+    expect(needsStationReplacement(1, 0)).toBe(true);
+    expect(needsStationReplacement(1, 1)).toBe(false);
+    expect(needsStationReplacement(3, 2)).toBe(true);
+    expect(needsStationReplacement(3, 1)).toBe(false);
+    expect(needsStationReplacement(3, 0)).toBe(false);
+    expect(needsStationReplacement(3, 3)).toBe(false);
+  });
+
+  it('never pulls for unlimited or zero-capacity cards', () => {
+    expect(needsStationReplacement(Number.POSITIVE_INFINITY, 0)).toBe(false);
+    expect(needsStationReplacement(0, 0)).toBe(false);
+    expect(needsStationReplacement(-1, 0)).toBe(false);
+  });
+
+  it('treats negative occupant counts as empty', () => {
+    expect(needsStationReplacement(1, -3)).toBe(true);
   });
 });

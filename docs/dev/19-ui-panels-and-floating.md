@@ -44,8 +44,8 @@ always clamped to the **browser** viewport. It owns portal + measured clamp +
 z-index; callers supply only the visual `className` and content.
 
 ```tsx
-<Floating x={clientX} y={clientY} z={80}>{/* tooltip body */}</Floating>
-<Floating x={clientX} y={clientY} z={50} interactive className="…menu…">…</Floating>
+<Floating x={clientX} y={clientY}>{/* tooltip body */}</Floating>
+<Floating x={clientX} y={clientY} z={250} interactive className="…menu…">…</Floating>
 ```
 
 Props: `x`, `y` (viewport coords), `offset` (default 12), `z`, `interactive`
@@ -87,16 +87,52 @@ tooltip/menu as a plain child of a tab.
 
 | UI | `z` | interactive |
 |---|---|---|
-| `UnitTooltip` (map unit) | 50 | no |
-| `MapInfoTooltip` (hex/edge) | 50 | no |
-| `UnitTemplateTooltip` (Unit Selector tab) | 50 | no |
-| `StructureTooltip` (Structure tab) | 80 | no |
-| `EffectTooltip` (Effects tab) | 80 | no |
-| `ContextMenu` (unit right-click) | 50 | yes |
-| `MessagesPanel` menu | 100 | yes |
+| `UnitTooltip` (map unit) | 200 | no |
+| `MapInfoTooltip` (hex/edge) | 200 | no |
+| `UnitTemplateTooltip` (Unit Selector tab) | 200 | no |
+| `ShipTemplateTooltip` (ship pickers) | 200 | no |
+| `StructureTooltip` (Structure tab) | 200 | no |
+| `EffectTooltip` (Effects tab) | 200 | no |
+| `StatValueHint` | 200 | no |
+| `ContextMenu` (unit right-click) | 250 | yes |
+| `ShipContextMenu` (ship right-click) | 250 | yes |
+| `TeamContextMenu` (boarded hero) | 250 | yes |
+| `ShipWindow` card/slot menu | 250 | yes |
+| `MessagesPanel` menu | 200 | yes |
 
 Every context menu (existing or new) opens at the pointer and bottom-aligns when
 it would overflow — no flip, no per-menu clamp. Register it in this table.
+
+### Layer table (one stacking order)
+
+The ship window is a **non-modal** `DraggablePanel`, so everything interactive
+must be able to draw above it. Never pick an ad-hoc `z`; use this table:
+
+| Layer | `z` | Examples |
+|---|---:|---|
+| Ship window | 100 | `ShipWindow` (`DraggablePanel z={100}`) |
+| Other draggable panels | 120 | speed declaration (`DraggablePanel` default) |
+| Dry dock window | 150 | `DryDockWindow` (`DraggablePanel`, resizable, per-client size) |
+| Tooltips / popovers / banners | 200 | unit + hex tooltips, `StatValueHint`, red error banner, reaction toolbar, messages popover |
+| Context menus | 250 | `ContextMenu`, `ShipContextMenu`, `TeamContextMenu`, ship-window card menu |
+| Menu backdrops | 240 | the transparent full-screen click-catcher under the zone/effects menu |
+| Modal overlays | 260 | unit editor, effects, confirmations, free placement, magic cast, siege, stats, ship confirms, cargo/crew dialogs, Ship Editor clone/delete |
+| Nested pickers | 300 | image picker and its preview |
+| Full-screen blockers | 400 | kicked-from-scenario |
+
+The dry dock is a **window** (`DraggablePanel`) at **z 150**, above the ship
+window and other panels but below tooltips/menus so the editor's own tooltips
+stay readable. It is not a full-screen blocker; the table is paused by
+`dry_dock_open`, not by an overlay. `DraggablePanel` also takes `closeLabel`,
+`bodyClassName` and `initialSize`; a stored size is clamped to the current
+viewport on load and on window resize, so each client can resize independently
+without overflowing a smaller screen. Resizable panels have **two** lower
+handles: bottom-right (grows right/down) and bottom-left (right edge fixed,
+grows left/down).
+
+**Rule:** a context menu must sit above every panel, and every modal must sit
+above the ship window. Add new UI at 150 / 200 / 250 / 260 / 400 rather than
+inventing another value.
 
 ## 3. Tooltip lifecycle (the other one rule)
 
@@ -130,13 +166,33 @@ with a hard-coded height.
 
 Transient, non-anchored notifications use the shared `Toast` component
 (`src/components/Toast.tsx`) via `src/hooks/useScenarioToast.ts` (per-scenario
-broadcast `toasts:{scenarioId}`, event `scenario-toast`). `Toast` is a centered
-`fixed` panel, so it is **not** a `Floating` anchored pop-up. Use this path for
-one-off celebration/alert messages that should reach every player; use
-`addMessage` only when the text also belongs in the Messages log.
+broadcast `toasts:{scenarioId}`, event `scenario-toast`). It is a **fixed**
+panel at the **bottom-centre of the map** (`bottom-20`, above the reaction
+toolbar) so it never covers the top bar, and it stays until dismissed with its
+**×** button or replaced by the next toast — there is no auto-hide timer. Use
+this path for table-wide notices; use `addMessage` for routine confirmations that
+belong in the Messages log. This path is reserved for the **Halloween Siege
+completion** notice; every normal ship/action confirmation goes to Messages.
+
+The top bar reports its rendered height (`TopBar` `onHeightChange` +
+`ResizeObserver`); `ScenarioMap` positions the left panel at
+`topBarHeight + 8`, so the panel drops automatically when narrow screens wrap
+the bar buttons instead of being covered.
 
 ## Invariants / gotchas
 
+- **Every saveable library editor uses the shared unsaved-changes guard.**
+  `useUnsavedChanges` + `UnsavedChangesModal` own the dirty prompt and
+  `beforeunload`; selection/tab/New/Clone/Main Menu go through `requestAction`,
+  and Save takes the pending action only after a successful save. Applies to
+  Ship Editor, Unit Editor, Component Workshop (components/weapons/armors),
+  Structure Editor, Effect Editor and Weapon Editor. `MapEditor` autosaves and
+  therefore has no dirty prompt.
+- **Never `scrollIntoView` from a panel/overlay list.** It walks every scrollable
+  ancestor, including the document, and can scroll the map top bar out of view.
+  Scroll the owning container directly (`el.scrollTo({ top: el.scrollHeight })`
+  or an offset inside it) instead. This applies to `MessagesPanel`,
+  `UndoDebugPanel`, and the Halloween Siege wave list.
 - Panel/tab content is clipped by `PanelsContainer` (`overflow-hidden`) — any
   non-`Floating` pop-up inside it WILL be cropped.
 - The map root (`ScenarioMap`) is `relative w-full h-screen overflow-hidden` at

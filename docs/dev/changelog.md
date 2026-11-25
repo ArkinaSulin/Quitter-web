@@ -1,5 +1,879 @@
 # QuiTTER Changelog
 
+## Signed ship skill modifiers (2026-11-25)
+**Files:** src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ShipRenderer/{ShipLayout,CrewRoster,CrewAdjustDialog}.tsx, src/components/ScenarioMap/{ShipWindow,ScenarioMap}.tsx, docs/dev/changelog.md, AGENTS.md
+
+- Negative ship skill modifiers now render with one sign (`Captaincy -1`, not
+  `Captaincy +-1`) in hero/crew hover, Crew Adjust, card hovers and the Best in
+  ship skill board. Added the shared `signedBonus` helper; dodge and repair
+  verbose bonuses use it too.
+- No migration.
+
+## Captaincy display, command-bonus action cost, space-only acceleration (2026-11-25)
+**Files:** src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx,ShipTooltip.tsx}, src/components/ShipRenderer/{ShipLayout.tsx,CrewRoster.tsx,CrewAdjustDialog.tsx}, docs/dev/{21-ship-runtime,changelog}.md, AGENTS.md
+
+- **Captaincy shows the real value**: `Int + PB − 5` on hero hover, crew hover
+  (crew keep CrewSkill: `Int + PB + 2 − 5`), Crew Adjust, the Bridge card hover,
+  the Best in ship skill row and the Bridge Command button. Added the shared
+  `captaincyBonus` helper.
+- **Command bonus also costs one captain action** in addition to the Bridge card
+  step. With no action left, the award opens the shared negative-action approval
+  dialog instead of silently failing.
+- **Ship hover tooltip**: Acceleration now appears only in wildspace; atmosphere
+  shows HP, MC and Atmosphere speed.
+- No migration.
+
+## Ship hover tooltip on the scenario map (2026-11-24)
+**Files:** src/hooks/useHexGrid.ts, src/components/ScenarioMap/{ShipTooltip.tsx,ScenarioMap.tsx}, docs/dev/{21-ship-runtime,changelog}.md, AGENTS.md
+
+- Hovering a ship image shows a compact tooltip: **ship name**, `HP current/max`,
+  **effective acceleration**, **effective MC** (after rudder trim) and the mode’s
+  speed — **Declared speed** in wildspace, **Atmosphere speed** in atmosphere.
+- Uses the same rotated hull hit box as dragging/right-click; unit tokens win
+  when they overlap. Hidden ships and fogged ships (for players) are skipped.
+- No migration.
+
+## Ship skill checks say what they do and use DC (2026-11-24)
+**Files:** src/packages/ships/lib/shipVerbose.ts, src/packages/ships/tests/shipVerbose.test.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21-ship-runtime,changelog}.md, AGENTS.md
+
+- Sail maxing, sail trimming, repair’s component check and the ram contest now
+  name the action in the **plain message** (`Sail maxing +1 speed`, `Sail
+  trimming`, `Repair — …`, `ram contest`), not just in verbose mode.
+- Skill-check verbose detail uses **`vs DC`**, never `vs AC`. Added
+  `formatShipCheckDetail`; attack rolls keep `formatShipAttackDetail` (`vs AC`).
+- Sail and trim command/undo descriptions also name the action and result.
+- No migration.
+
+## Repair uses deck targeting instead of a picker (2026-11-24)
+**Files:** src/components/ScenarioMap/ShipWindow.tsx, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{21-ship-runtime,changelog}.md, AGENTS.md
+
+- The Hull **Repair** button now enters a deck targeting mode like the Bridge
+  Command bonus: damaged cards get a highlighted **Repair** overlay (restore one
+  ton), and the Hull card offers **Repair HP** only. Click Repair again to cancel.
+- Negative-action approval still uses the shared confirmation dialog when the
+  hull has no card steps left or a hull hero has no action.
+- The old repair picker modal is removed. No migration.
+
+## Scenario Statistics: HP columns + resizable window (2026-11-24)
+**Files:** src/packages/battle/lib/battleStats.ts, src/packages/battle/tests/battleStats.test.ts, src/components/ScenarioMap/ScenarioStatsModal.tsx, src/components/ScenarioMap/TopBar.tsx, docs/dev/{08-combat,changelog}.md, docs/players/{player-manual.md,screenshots/README.md}, AGENTS.md
+
+- Every Scenario Statistics group is now **Troop / Lv / HP**: Starting, Lost and
+  Kills each show total unit HP alongside troops and levels, per unit and in the
+  alliance rollups.
+- `introHp` snapshots at the same moment as `introTroopCount` (end of the unit’s
+  own alliance turn; fallback to PLACE HP, then max HP). `hpLost` is gross logged
+  HP loss (healing never reduces it). `killHp` is HP damage credited through the
+  existing killer payload, so HP-only chip damage counts without changing troops.
+- `formatStatsText` (“Share to all players”) includes the HP values.
+- The modal has a **bottom-right resize handle**, clamped to the viewport, with
+  the table scrolling inside. It starts at 940×560 (or the viewport size).
+- No migration.
+
+## Spelljammer skills: Helmsman max(Wis, Int), Int captaincy, DC 20 trim (2026-11-24)
+**Files:** src/packages/ships/lib/{shipStats,shipStations,cardSteps,shipRuntime}.ts, src/packages/ships/tests/{cardSteps,shipStats,shipStations}.test.ts, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, src/components/ShipRenderer/{ShipLayout,ShipComponentCard,CrewRoster,CrewAdjustDialog}.tsx, src/hooks/useGameEngine.ts, docs/dev/{21-ship-runtime,outstanding}.md, AGENTS.md
+
+- **Helmsman = higher of Wisdom or Intelligence.** Helm control, ramming, the
+  floating-cargo barrel dodge, Auto/fill crew priority and the **Best in ship
+  skill** Helmsmanship row now use `max(Wis, Int)`. Crew hover summaries show the
+  same value. Repair, weaponry, sail maxing and sail trimming are unchanged.
+- **Intelligence captaincy is implemented** as the Bridge **Command bonus**
+  button. The captain (hero on a fully crewed functional Bridge) awards
+  `Int + PB − 5` — possibly negative — to one card; click the button, then click
+  the target card. The card shows a thick gold `+N`/`−N` badge at its middle top.
+  One award costs one Bridge card step (5 per turn in atmosphere, one per ship
+  step in wildspace). A card holds one pending bonus; it is consumed by that
+  card's next d20 roll (weapon attack, sail max/trim, repair DC 15 component
+  check, ram on the Ram card, barrel dodge on the Helm card) and expires at end
+  of turn. Non-roll outputs are untouched.
+  **Justification/example:** a captain with Int 14 and PB +2 awards `+1`; an Int
+  8 captain awards `−1`, so the badge and roll can be a penalty.
+- **Sail trimming DC corrected** from `26 − MC` to `20 − effective MC`, where
+  effective MC includes any rudder trim already applied this turn.
+- **Sail maxing / rudder trim are once per turn** in both modes (previously
+  compared against the wildspace ship step). `mcReduction` now lasts until end of
+  turn instead of resetting every step.
+- Verbose reports keep showing the d20/4d8 faces and now include the applied
+  command bonus on every affected check.
+- **Charisma captaincy** (encourage crew auto-load up to Cha times per turn,
+  likely with a check/limit) is documented as future work only.
+- No migration.
+
+## Station names in undo/redo messages (2026-11-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md, AGENTS.md
+
+- Hero station moves, Fill station and Empty station still post no live Messages
+  entry, but their command/undo descriptions now name the station:
+  `hero moved to Sail on Gunboat E`, `Gunboat E: filled Cargo`,
+  `Gunboat E: emptied Helm`.
+- Weapons include their deck region when the same weapon name appears more than
+  once: `Ballista light (Port)`. If a region has several identical weapons, an
+  ordinal is added: `Ballista light (Port 2)`.
+- No migration.
+
+## Silent free station actions (2026-11-24)
+**Files:** src/hooks/useGameEngine.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/changelog.md, AGENTS.md
+
+- **Hero station moves, Fill station and Empty station are silent.** They are
+  free bookkeeping actions with no useful table-facing content, so they no longer
+  add a Messages entry. The command log still records them for undo/replay.
+- `execute` gained an optional `silent` flag that suppresses only the chat
+  message; server writes, realtime, and undo are unchanged.
+- No migration.
+
+## Scenario banner reserved for Halloween Siege (2026-11-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{19,changelog}.md, AGENTS.md
+
+- Removed the bottom banner/toast from sail maxing, rudder trim, repair, ram,
+  manual weapon load and crew auto-load. Those actions now appear only in the
+  Messages log; warnings such as “already succeeded” or “no card steps left” also
+  use `addMessage`.
+- Ram now posts a normal hit/miss message; its verbose roll details are unchanged.
+- The scenario toast banner remains reserved for the **Halloween Siege wave
+  completion** notice.
+- No migration.
+
+## Campaign ships scroll with the selector and show image/mass (2026-11-24)
+**Files:** src/components/ScenarioMap/ShipSelector.tsx, docs/dev/changelog.md, AGENTS.md
+
+- Campaign ships remain first in the Ship Selector but now live inside the same
+  scroll container as the library ships, so they are no longer pinned while the
+  list scrolls.
+- Each campaign family card now uses the **latest version's ship image** and shows
+  its **total mass**, matching the library ship cards, while keeping the campaign
+  name, serial, version count and scenario label.
+- No migration.
+
+## Repair dice + DC 15 component check and ship-check verbose rolls (2026-11-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **Repair verbose dice.** The `4d8` HP roll now records its faces and repair
+  bonus. Restoring a damaged component is a **DC 15 repair check** (`d20 + repair
+  bonus`); failure still consumes the kit/card step but restores no ton. Verbose
+  output shows both rolls, e.g.
+  `Gun Boat E repaired +27 HP {4d8: 3,5,2,6} +8 and {D20+8 vs DC 15: 17} restored 1 ton of Mangonel (Catapult) (-1 repair kit)`.
+- **Other ship checks show dice.** Sail maxing and rudder trim verbose lines now
+  include the `D20` face/bonus/DC. Ram verbose includes the `D20` and the
+  `mass d speed` damage faces. Floating-barrel dodge notes show the helm `D20`
+  and collision damage faces.
+- No migration.
+
+## No-crew max-target roll + damaged cargo capacity display (2026-11-24)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx,DryDockWindow.tsx}, src/components/ShipEditor/ShipEditor.tsx, src/components/ShipRenderer/CargoManifest.tsx, src/packages/ships/{lib/cargoDamage.ts,tests/cargoDamage.test.ts}, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **No crew → no max-target roll.** A penetrating ship hit only rolls
+  `1..max_targets` when the struck card has living occupants; otherwise the
+  verbose crew-target line is omitted entirely.
+- **Effective cargo capacity display.** Cargo now shows
+  `used / effective (design)t` when Cargo-card damage has reduced the hold, e.g.
+  `3 / 9 (12)t`. Scenario Ship Window uses the live box state; dry dock uses the
+  viewed version's damage; the library Ship Editor remains full capacity.
+  Cargo simulation and performance-mass math still use the design capacity.
+- **Cargo hit probability confirmed.** With 6 tons of food in a 12-ton hold the
+  successive chances are 6/12, 5/11, 4/10 because boxes are sampled without
+  replacement; an empty box consumes the hit (current behaviour retained).
+- No migration.
+
+## Reordered verbose ship-fire report (2026-11-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/packages/ships/{lib/shipVerbose.ts,tests/shipVerbose.test.ts}, docs/dev/{21,changelog}.md, AGENTS.md
+
+- Verbose ship-fire messages now read top-down: hit header, attack roll, damage
+  roll, boxes destroyed, card destroyed, crew roll/hits/kills, then cargo.
+- The crew line is `{1d3: 3} → 3 crew hit (names) 3 killed` instead of the old
+  “crew targets … → hit” suffix. Component lines use “boxes destroyed;” and the
+  card-destruction line uses “- crew and heroes removed;”.
+- Plain messages are unchanged.
+- No migration.
+
+## Barrel contents in the right-click menu; no effect reordering (2026-11-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{10,changelog}.md, AGENTS.md
+
+- Right-clicking a floating-cargo hex now shows **Floating cargo** with
+  `50% of [merged items]` instead of the stored “Floating cargo barrel” name.
+  The per-hex Manage-all list uses the same label.
+- Removed the **Manage all…** header button from the right-click Effects menu;
+  the full per-hex list remains available with Shift + double-click.
+- Removed the **Move up / Move down** effect-order buttons from the right-click
+  Effects menu. Drawing order is automatic and players no longer need to manage
+  it.
+- No migration.
+
+## Merged floating-cargo barrels with seeded cluster marker (2026-11-24)
+**Files:** src/types/gameProtocol.ts, src/packages/ships/{lib/cargoDamage.ts,tests/cargoDamage.test.ts}, src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts,MapInfoTooltip.tsx}, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **One logical debris barrel per hex.** Cargo boxes destroyed in the same hex now
+  merge into one `cargo_debris` zone: same-name/same-category contents sum and
+  `barrelCount` records how many original boxes were merged. Legacy multiple
+  zones at one hex are coalesced when a new hit lands and when rendered.
+- **Up to three barrel markers.** A merged count of 1/2/3+ draws one, two or three
+  small barrels (3 as a triangle). Each barrel has a different rotation derived
+  deterministically from the hex coordinate, so the same hex always looks the
+  same. The old count badge is removed.
+- **One collision per hex.** The merged barrel still triggers one Helm dodge;
+  failure destroys it. Tooltips show `50% of [merged items]` without a barrel
+  count.
+- **Justification/example:** two ore boxes and one furniture box destroyed in the
+  same hex become one barrel containing the summed ore and furniture; the marker
+  shows three barrels in a seeded triangle. No migration.
+
+## Shared unsaved-changes guard for every library editor (2026-11-24)
+**Files:** src/hooks/useUnsavedChanges.ts, src/components/shared/UnsavedChangesModal.tsx, src/components/{ComponentEditor/ComponentEditor.tsx,StructureEditor/StructureEditor.tsx,EffectEditor/EffectEditor.tsx,WeaponEditor/WeaponEditor.tsx}, docs/dev/{19,changelog}.md, AGENTS.md
+
+- **Weapon/Component Workshop is dirty-protected.** Switching tabs, selecting
+  another component/weapon/armor, New/Clone, or Main Menu with unsaved edits now
+  opens Save / Discard / Cancel. Save continues to the queued action only on
+  success; the browser also warns on tab close/reload.
+- **Unified across the remaining editors.** Structure Editor, Effect Editor and
+  Weapon Editor now use the same shared `useUnsavedChanges` hook and
+  `UnsavedChangesModal`. Ship Editor and Unit Editor keep their existing
+  behaviour and dialog style.
+- **Justification:** every saveable library editor should behave the same when
+  leaving a draft; previously only Ship/Unit protected unsaved work, so a
+  component or effect could be lost by clicking another row.
+- No migration.
+
+## 90° firing sectors + destroyed-card occupant cleanup (2026-11-24)
+**Files:** src/packages/ships/{lib/shipCombat.ts,lib/shipStations.ts,tests/shipCombat.test.ts,tests/shipStations.test.ts}, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **Four ~90° firing sectors.** `shipTargetArc` now resolves the target’s centre
+  bearing around the ship and assigns bow (±45°), starboard (45°–135°), stern
+  (135°–225°) or port (225°–315°), matching the dial. Hex boundaries are assigned
+  by centre angle.
+- **Destroyed cards clear occupants.** Weapon or ram damage that removes a card’s
+  last box returns its NPC crew to reserve, clears hero station keys (heroes fall
+  back to Deck/Cargo), clears positions, sets the card’s crew slots to 0, rejects
+  Fill station and blocks hero movement onto it. Cleanup rides the same command,
+  so undo restores occupants.
+- **Justification/example:** a destroyed Bridge no longer acts as a captaincy
+  station just because crew are still listed there; a destroyed Helm cannot be
+  refilled and a hero cannot be dragged onto it. Firing arcs now match the
+  four-quarter dial instead of 120°/120°/60°/60° hex-direction sectors.
+- No migration.
+
+## Larger ship-window hero tokens (2026-11-24)
+**Files:** src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{21,changelog}.md, AGENTS.md
+
+- Ship-window hero tokens are now **20% larger** (`min(card width, card height)
+  × 1.2`) so they read more clearly against the cards. The hitbox follows the
+  larger token, and the 200%-zoom × DPR backing canvas keeps it crisp. No
+  migration.
+
+## Cargo barrels, crisp hero tokens, firing-area preview (2026-11-24)
+**Files:** src/components/ScenarioMap/{useCanvasDraw.ts,MapInfoTooltip.tsx,ScenarioMap.tsx}, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **Floating cargo is drawn as a barrel** (body, lid, hoops) instead of a crate;
+  messages/tooltips say “barrel”. The `cargo_debris` data is unchanged.
+- **Hero tokens are rendered at the maximum deck resolution.** Canvas backing
+  size is `token size × 200% max deck zoom × devicePixelRatio`, so the token is
+  crisp at max zoom; CSS scales it down as the deck zooms out. No size change.
+- **Weapon free-fire preview.** While a weapon is selected, the map overlay
+  highlights the legal firing area using current facing/arcs: white for normal,
+  amber for the disadvantage band, and nothing below minimum range, outside the
+  arc, or beyond maximum range.
+- No migration.
+
+## Destroyed Bridge/Helm access, non-shrinking deck, arc dial (2026-11-24)
+**Files:** src/packages/ships/{lib/shipAccess.ts,tests/shipAccess.test.ts}, src/components/ShipRenderer/{ShipLayout.tsx,ShipComponentCard.tsx,WeaponArcIcon.tsx}, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **Destroyed Bridge/Helm lose their role powers.** `shipAccess` now considers only
+  functional station cards: a destroyed Bridge cannot make a captain or grant
+  reveal-all/manage-all, and a destroyed Helm cannot make a helmsman, reveal all
+  cards, or act as the command fallback. A hero standing on the wreck sees only
+  that card. Movement was already gated by the functional-helm checks.
+- **Deck rotation no longer shrinks.** The runtime deck rotates in 60° steps
+  around its centre with counter-rotated cards; the previous fit-down scale was
+  removed so cards keep their normal size. The rotated footprint is viewed with
+  pan/zoom.
+- **Weapon firing-arc dial follows facing.** `WeaponArcDial` gains a `rotation`
+  prop; `ShipLayout` passes `facingStep × 60`, so the sectors point the same way
+  as the map ship while the card itself stays upright. The editor dial stays
+  north-up.
+- **Tests:** destroyed Bridge/Helm access and destroyed-Helm command fallback.
+- No migration.
+
+## Ship no-op moves, serial labels, facing-rotated deck (2026-11-24)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx}, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **Same-hex drops are no-ops.** Dragging a ship back onto its current hex now
+  returns immediately: no `SHIP` command, no “moved” message, no crate dodge.
+- **Serial-bearing ship labels.** Every ship message in `ScenarioMap` now uses
+  `name + alphaLabel(serialNumber)` — e.g. **Gunboat E** — matching the ship
+  window title and unit/hero naming.
+- **Deck follows facing.** The runtime ship window passes `ship.facing` to
+  `ShipLayout`; the deck region arrangement rotates in 60° steps while each card
+  and region label is counter-rotated to remain upright/axis-aligned. The Ship
+  Editor/dry-dock schematic remains north-up. The rotated footprint is scaled to
+  fit, with the existing pan/zoom for inspection.
+- **Justification/example:** a south-facing Gunboat E previously showed a
+  north-up Bow-at-top deck, which made the facing ambiguous. The deck now turns
+  with the ship, but card text never rotates; dragging the same ship back onto
+  its own hex no longer logs a false move.
+- No migration.
+
+## Stop panel lists scrolling the whole map (2026-11-24)
+**Files:** src/components/ScenarioMap/{MessagesPanel.tsx,UndoDebugPanel.tsx,HalloweenSiegeWindow.tsx}, docs/dev/{19,changelog}.md, AGENTS.md
+
+- Moving a hero between ship cards posts a routine message. `MessagesPanel` used
+  `scrollIntoView`, which walks every scrollable ancestor and could scroll the
+  document up by the top-bar height, making the banner disappear until an F11
+  fullscreen toggle reset the viewport.
+- `MessagesPanel` and `UndoDebugPanel` now scroll their own list containers with
+  `el.scrollTo({ top: el.scrollHeight })`; they never touch the document.
+- `HalloweenSiegeWindow` now scrolls its wave container to the selected wave
+  within the list instead of `scrollIntoView`; the wave refs are wired up.
+- Added the no-`scrollIntoView` rule to `docs/dev/19-ui-panels-and-floating.md`.
+- No migration.
+
+## Hero tooltip shows actions instead of raw stats (2026-11-24)
+**Files:** src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{21,changelog}.md, AGENTS.md
+
+- The ship-window hero token tooltip replaces the STR/DEX/CON/INT/WIS/CHA line
+  with **Actions: unused/total** (red at 0), using the scenario's
+  `hero_actions_per_turn` setting. The six skill bonuses remain underneath, so
+  the tooltip is still useful when the token's action badge is hard to read.
+- No migration.
+
+## All-hero Best in ship skill + canonical skill order (2026-11-24)
+**Files:** src/components/ScenarioMap/ShipWindow.tsx, src/components/ShipRenderer/{ShipLayout.tsx,CrewRoster.tsx,CrewAdjustDialog.tsx}, docs/dev/{21,changelog}.md, AGENTS.md
+
+- **Every living boarded hero counts.** Best in ship skill previously included
+  only heroes in reserve/Deck/Cargo, so a hero's skill vanished as soon as they
+  moved to a real station. It now uses every living boarded hero plus every living
+  crew member.
+- **Captaincy added to hover summaries.** Hero and NPC crew mouseovers and the
+  Crew Adjust “Ship handling” block now show Captaincy (INT), which was already in
+  Best in ship skill.
+- **One canonical order everywhere.** Repair (STR), Weapon (DEX), Sail maxing
+  (CON), Captaincy (INT), Sail trimming (INT), Helm (WIS). Best in ship skill is
+  vertical in that order; the 2-column hover/dialog grids are ordered
+  Repair/Captaincy, Weapon/Sail trimming, Sail maxing/Helm so left-column
+  top-down then right-column top-down reads in the same sequence. Crew cost and
+  Proficiency/CrewSkill moved to their own rows.
+- No migration.
+
+## Verbose ship-fire dice breakdown (2026-11-24)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/packages/ships/{lib/shipVerbose.ts,index.ts,tests/shipVerbose.test.ts}, docs/dev/{21,changelog}.md, AGENTS.md
+
+- Ship weapon shots now always record a verbose message alongside the plain one.
+  Verbose mode shows the `D20` attack roll (both faces and the chosen lower roll
+  on disadvantage), the damage formula's individual faces and total, the
+  `max_targets` roll with the capped crew count and affected names, plus
+  component tons, cargo lost, and floating-crate count.
+- The plain message is unchanged. Unit targets use the same attack/damage
+  breakdown; `max_targets` remains ship-only.
+- Uses `rollDamageDetailed` and the existing unit-verbose `{D20+6 vs AC 15: 17}` /
+  `{2d10: 9,7,7}` house style.
+- No migration.
+
+## Ship weapon component/crew damage, cargo loss and floating crates (2026-11-24)
+**Files:** src/types/{ship.ts,gameProtocol.ts}, src/packages/ships/{lib/shipCombat.ts,lib/shipMappers.ts,lib/componentMappers.ts,lib/shipCrewDamage.ts,lib/cargoDamage.ts,index.ts,tests/shipCombat.test.ts,tests/shipCrewDamage.test.ts,tests/cargoDamage.test.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/ScenarioMap/{ScenarioMap.tsx,useCanvasDraw.ts,MapInfoTooltip.tsx}, supabase/migrations/180_ship_weapon_max_targets.sql, docs/dev/{02,16,21,changelog}.md, AGENTS.md
+
+- **Component tons:** a penetrating ship hit now destroys
+  `floor(damage / 10)` tons on the struck card (15 → 1, 21 → 2, 49 → 4), capped
+  at the card's remaining boxes. A deflected hit still does nothing.
+- **Crew targets:** independent of component tons, roll `1..max_targets` and
+  wound `min(roll, living occupants)` distinct crew/heroes on the struck card;
+  each takes the full shot damage. NPC crew at 0 HP die and leave the station;
+  heroes lose unit HP. Effective sails/rudders update automatically.
+- **`max_targets`:** new `ship_weapons.max_targets` (NOT NULL, default 1, check
+  `>= 1`), mapped through the Component Workshop. Migration 180 seeds Mangonel
+  rows to 3; Ballista remains 1. **Apply 180 in Supabase.**
+- **Cargo:** pack into `effectiveCapacity = max(0, capacity − destroyed Cargo
+  boxes)`; full one-ton groups first (1 general ton, 10 repair kits, 200
+  food/water days), leftovers last. Each cargo ton rolls one box from the
+  shrinking pool; destroyed contents leave the manifest and are named in the hit
+  message.
+- **Floating crates:** every non-empty destroyed box leaves a `cargo_debris`
+  ground zone at the hit hex. Hover shows `50% of [items]`; percentage rounding is
+  deliberately undefined because category units vary. The DM can remove a crate
+  from the hex-effects list; recovery is manual.
+- **Crate collision:** entering a crate hex rolls Helm dodge
+  `d20 + best helm Dex` vs DC 15; failure deals
+  `current ship mass d current ship speed` and destroys every crate in that hex;
+  the crate never stops the ship. One check per crate hex on the path.
+- **Justification/example:** the example volley (10/15/21/49 vs DT 15) discards
+  the 10, destroys 1 Bridge ton + wounds one crew for 15, destroys 2 Sail tons +
+  can kill a crew (removing more sails from the effective count), and destroys 4
+  Cargo tons while naming the lost cargo and leaving its 50% crates.
+- No schema change for crates (jsonb); migration 180 only for `max_targets`.
+
+## Cargo header fits the Ship Window; compact cargo rows (2026-11-23)
+**Files:** src/components/ShipRenderer/{CargoManifest.tsx,CrewRoster.tsx}, docs/dev/{16,21,changelog}.md
+
+- **Two-line cargo title.** The header now renders **Cargo** / **manifest** on two
+  lines, with the capacity badge and Add cargo button vertically centred on the
+  same row. In the Ship Window's fixed 210px left panel this stops the fraction
+  and button from being squeezed.
+- **Compact cargo rows.** The Category column is removed from the list; the
+  category is still chosen in the Add/Edit dialog and appears in the name's hover
+  title. **Qty** now shows only the number; its unit is in the dialog and the Qty
+  hover title. The freed width goes to the name column.
+- **Crew Level header.** The header and rows now share the same grid gap, and the
+  **Level** label is nudged slightly left so it sits over the level values.
+- No migration.
+
+## Unified crew/cargo add buttons (2026-11-23)
+**Files:** src/components/ShipRenderer/{CrewRoster.tsx,CargoManifest.tsx}, src/components/ShipEditor/ShipEditor.tsx, src/components/ScenarioMap/ShipWindow.tsx, docs/dev/{16,21,changelog}.md
+
+- **One Add crew button.** The shared crew frame now puts **+ Add crew** on the
+  top right in the same green/yellow style as the other add buttons, and the
+  full-width add row is gone. The Ship Editor no longer renders its own duplicate
+  button, so editor, dry dock, and Ship Window share one control. In a read-only
+  preview the button is visible but disabled.
+- **Auto/Clear moved to the footer.** The Ship Window's **Auto** and **Clear**
+  buttons now sit in a footer row at the bottom of the reserve frame, freeing the
+  header for Add crew. Dead-group Revive/Discard stay on their rows.
+- **Cargo header.** The shared cargo frame now has **+ Add cargo** on the top
+  right and places the **used / total capacity** fraction between the **Cargo
+  manifest** title and the button. The full-width add row is removed. The
+  over-capacity warning is inline in the load badge, so it cannot collide with
+  the button. Read-only previews show the button disabled.
+- **Justification:** the editor had two Add crew controls and the cargo frame had
+  a row-level Add button, while the other create actions sit top right. One
+  predictable header action per frame keeps the roster/cargo panels consistent
+  across the editor, dry dock, and in-game window.
+- No migration.
+
+## Shared sail/rudder manning, damage-scaled hardware, effective speed (2026-11-23)
+**Files:** src/packages/ships/{lib/shipStats.ts,lib/shipStations.ts,lib/shipCombat.ts,lib/shipManning.ts,index.ts,tests/shipStats.test.ts,tests/shipStations.test.ts,tests/shipCombat.test.ts,tests/shipManning.test.ts}, src/components/ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx,SpeedDeclarationPanel.tsx}, src/components/ShipRenderer/ShipLayout.tsx, docs/dev/{16,21,changelog}.md, AGENTS.md
+
+- **One shared sail/rudder crew pool.** Minimum crew is now one helm plus
+  `max(1, ceil((sails + 2 × rudders) / 4))`: one crew mans 4 sails or 2 rudders,
+  and spare capacity covers the other group. Two sails + one rudder need one
+  crew, not two; the old per-card minimums are gone. `computeComponentCrew` and
+  `computeFullCrew` use the same pool.
+- **Card capacity uses ceiling.** `shipStationCards` and the Sail aggregate use
+  `max(1, ceil(survivingSails / 4))` (was `floor`), so every surviving sail can be
+  covered when enough crew are assigned. Rudder cards keep
+  `max(1, ceil(survivingRudders / 2))`.
+- **Auto assign follows split duty.** It fills the combined demand only, prefers
+  a side with no crew (Sail first), then the Rudder, then either. Card slots stay
+  the manual maximum, and the hero-vacancy pull remains exactly-one-slot.
+- **Destroyed boxes shrink the hardware.** `survivingSailRudder` turns box
+  damage into surviving counts: a Sail box is one sail; combined Rudder cards use
+  `ceil(survivingTons / 1.5)` so a rudder is not destroyed until its full mass is
+  gone. **Justification:** most things in D&D are not destroyed until HP 0, so
+  10.5 t minus 1 t = 9.5/1.5 = 6.33 → **7** rudders, minus 2 t = 8.5/1.5 = 5.67
+  → **6**; the requirement drops only at 7.5/1.5 = **5**. Sail/Rudder card crew
+  slots shrink with those counts.
+- **Effective stats drive movement.** New `shipManning.ts` derives
+  `effectiveShipStats` (design snapshot plus current manning) and
+  `effectiveSailRudderCounts`. Acceleration **and** MC are recalculated from the
+  effective counts, and ScenarioMap (drag overlay, moves, turns, rudder checks,
+  speed declaration) plus SpeedDeclarationPanel use them. The Ship Window shows
+  an **Undermanned** note with effective/surviving sails and rudders.
+- No migration.
+
+## Station crew capacity and the exactly-one-vacancy pull rule (2026-11-22)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, src/packages/ships/{lib/shipStations.ts,tests/shipStations.test.ts}, docs/dev/{21,changelog}.md
+
+- **Helm/Command bridge capacity now matches the card.** `shipCardHeroCapacity`
+  multiplied the component crew by the ship-wide helm/bridge count, so a one-slot
+  Helm card on a two-helm ship accepted two occupants. It now uses the card's own
+  crew requirement, exactly like `shipStationCards` and the crew circles.
+- **Auto-pull only for exactly one empty slot.** Moving a hero out of a card now
+  pulls one reserve crew only when a living, unassigned crew member exists **and**
+  the vacated card has exactly one empty slot (`needsStationReplacement`). Full
+  cards and cards with two or more free slots never auto-pull.
+- **Hero entry trims excess crew.** Moving a hero into a card removes as many
+  crew as needed to fit (instead of at most one), and rejects the move when the
+  hero cannot fit — repairing any station over-filled before this fix.
+- **Justification:** the Helm showed one slot but the move code believed it had
+  two, which produced the hero-plus-crew and two-crew states. Matching the card's
+  visible capacity and gating the auto-pull on a single vacancy makes the roster
+  behaviour predictable on every card type.
+- **Example:** one-slot Helm → hero in: hero only; hero out: one crew; hero in:
+  the crew is displaced. A three-slot weapon with one crew and one hero (one
+  vacancy) pulls one replacement; with two vacancies it pulls none.
+- No migration.
+
+## Browse campaign versions in the dry dock (2026-11-22)
+**Files:** src/components/ScenarioMap/DryDockWindow.tsx, src/components/ShipEditor/ShipEditor.tsx, src/packages/ships/{lib/campaignShips.ts,tests/campaignShips.test.ts}, docs/dev/{21,changelog}.md, docs/players/campaign-ships.md
+
+- The dry-dock version navigator now **loads each version’s stored design into
+  the middle and right panels**. The current version stays editable; any other
+  version opens in **read-only preview** (save bar hidden, fields and pickers
+  disabled) with the window subtitle naming the previewed version.
+- The left panel in preview shows the version details and a **diff/cost against
+  the previous version** (its `parent_id`): labour + equipment only, crew/cargo
+  excluded, using the existing refit summary. The root shows “First version — no
+  earlier version to compare.” Switch back to the current version with the same
+  dropdown/arrows.
+- Leaving a dirty current version asks **“Discard unsaved refit changes?”** before
+  switching; after Save as new version the view jumps to the new current version.
+- New pure helper `campaignPreviousVersion(version, rows)` (+tests).
+- **Justification:** versions are only useful if you can inspect their design;
+  previously the navigator changed labels while the builder always showed the
+  current ship. Read-only preview avoids any risk of editing a frozen version.
+- **Example:** select “Gun! II” → the builder shows its old loadout read-only and
+  the left panel lists the changes and cost from “Gun!”; select “Gun!” (the root)
+  → “First version — no earlier version to compare.”
+- No migration.
+
+## Toasts and top-bar-aware panel; DM auto-takes the dry-dock lease (2026-11-22)
+**Files:** src/components/Toast.tsx, src/components/ScenarioMap/{TopBar.tsx,ScenarioMap.tsx}, src/components/Lobby.tsx, docs/dev/{19,21,changelog}.md
+
+- The scenario toast moved from the top-centre to the **bottom-centre of the map**
+  (above the reaction toolbar), so it no longer covers the top bar, and it now
+  has a **×** close button. Toasts no longer auto-hide; they stay until dismissed
+  or replaced. The Lobby toast follows the same rules.
+- `TopBar` reports its rendered height through a `ResizeObserver`; the game left
+  panel is positioned at `topBarHeight + 8` instead of a fixed `top-14`. When
+  narrow screens wrap the bar buttons, the panel drops below the taller bar
+  rather than being covered.
+- The DM now **takes the dry-dock editor lease automatically** when the dock opens
+  (or reloads) and the lease is free, so the builder starts editable. If another
+  participant holds it, nothing changes.
+- **Justification:** a toast should not mask persistent controls, fixed offsets
+  break when the header wraps, and requiring the DM to click their own name for
+  the obvious editor was pure friction.
+- **Example:** narrow the window until the top bar wraps → the left panel moves
+  down; open a dry dock → the DM is already the editor; a long sail summary stays
+  until its × is clicked.
+- No migration.
+
+## Dry-dock success messages go to the Messages log (2026-11-22)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{21,changelog}.md
+
+- “Save refit”, “Save as new version” and “Make/Convert Campaign Ship” now post
+  their success line to the **Messages** panel (`addMessage`) instead of a
+  centered scenario toast.
+- **Justification:** these are routine confirmations, and the centered toast
+  covered the top banner bar. Toasts stay for exceptional/table-wide events such
+  as the Halloween Siege completion.
+- **Example:** after **Create version**, “GunGun is now the active campaign
+  version.” appears in the Messages tab, and the top banner stays readable.
+- No migration.
+
+## Fix ambiguous numeral in fork_campaign_version (2026-11-22, migration 179)
+**Files:** supabase/migrations/179_fork_numeral_ambiguity.sql, docs/dev/{02,changelog}.md
+
+- “Save as new version” failed with `column reference "numeral" is ambiguous`.
+  The PL/pgSQL variable `numeral` in `fork_campaign_version` had the same name as
+  `ship_campaign.numeral`, so the recursive CTE that finds the family's highest
+  numeral could not resolve the bare name.
+- The variable is renamed to `new_numeral` and the CTE column to
+  `family_numeral`; behaviour is unchanged (max family numeral + 1, or 1 when the
+  version was renamed).
+- **Justification:** PostgreSQL reports ambiguity whenever a column and a
+  PL/pgSQL variable share a name in a query; renaming removes the trap permanently
+  instead of relying on `#variable_conflict` inside one function.
+- **Example:** “Gun!” → **Create version** now commits “Gun! II” instead of
+  failing with the ambiguity error.
+- **Apply migration 179 in Supabase.**
+
+## Dry dock keeps the left panel; both bottom resize handles (2026-11-22)
+**Files:** src/components/shared/DraggablePanel.tsx, src/components/ScenarioMap/{ScenarioMap.tsx,DryDockWindow.tsx}, docs/dev/{19,21,changelog}.md, docs/players/campaign-ships.md
+
+- The game’s left panel (Map / Unit Selector / Messages / …) is no longer
+  unmounted during a dry dock. It was hidden by `!controlsLocked`, and
+  `controlsLocked` includes the dry-dock pause; the panel is now hidden only for
+  replay / DM-gone. Messages, participants, teams and the room stay usable while
+  the table is paused.
+- **Token placement stays paused**: the Unit Selector, Ship Selector and campaign
+  ship drags return early with “The table is paused while the dry dock is open.”
+  Everything else in the panel remains usable.
+- The dry dock’s default window position now respects the panel side: it opens to
+  the right of a left-docked panel (or left of a right-docked one), sized to the
+  remaining viewport. A saved size still wins and the window stays fully movable.
+- `DraggablePanel` gained a **bottom-left resize handle** (right edge fixed) next
+  to the existing bottom-right one, so both the dry dock and the ship window can
+  be resized from either lower corner. Size persistence is shared.
+- **Justification:** the dry dock pauses the table, not the conversation; the DM
+  and players still need the Messages panel. Hiding the whole panel was a bug
+  from reusing `controlsLocked` for both “locked” and “hidden”.
+- **Example:** open the dry dock → the Messages tab remains visible beside the
+  window; dragging a unit from the Unit Selector is refused with the pause notice.
+- No migration.
+
+## Dry dock is a window; no local hide state (2026-11-22)
+**Files:** src/components/shared/DraggablePanel.tsx, src/components/ScenarioMap/{DryDockWindow.tsx,ScenarioMap.tsx}, src/components/ShipEditor/ShipEditor.tsx, src/components/ImagePickerModal.tsx, src/hooks/useCampaignShips.ts, docs/dev/{19,21,changelog}.md
+
+- The dry dock is now a movable, resizable **window** (`DraggablePanel`, z 150)
+  instead of a full-screen overlay. It has a title bar with **End dry dock** in
+  the top-right, per-client size persistence (`quitter.dryDock.size`), and a
+  viewport-clamped restore/resize so a big-monitor layout still fits a smaller
+  screen.
+- `DraggablePanel` gained `closeLabel`, `bodyClassName` and `initialSize`; its
+  restored size is clamped on mount and re-clamped on window resize.
+- **Removed the local hide/Reshare state.** The window is visible for the whole
+  session; only the DM closes it. The footer **Cancel** and the title-bar close
+  both end the shared session (players see “The DM ends the dry dock”). This
+  fixes the broken state where Cancel hid the window but left the table locked
+  with no dry-dock UI.
+- `dry_dock_revision` is no longer bumped (column retained for compatibility).
+- **“Save as new version” errors are shown in the prompt.** The fork RPC's
+  message (slot taken, not the carrier, not the owner, missing migration) is
+  displayed inline instead of only landing in the Messages log behind the window.
+- Nested editor layers were raised to survive the windowed dock: the Ship
+  Editor's card menu (250) and clone/delete/unsaved modals (260), and the shared
+  image picker (300) now sit above the dry-dock window.
+- **Justification:** a paused table must never be able to lose its only control
+  surface. A per-client window also lets each player fit the editor to their own
+  screen.
+- **Example:** a player on a 1366×768 laptop can resize the dry dock to fit; the
+  DM closes it with **End dry dock** and the table unlocks for everyone.
+- No migration.
+
+## Campaign version numbering is server-authoritative (2026-11-22, migration 178)
+**Files:** supabase/migrations/178_campaign_numbering.sql, src/packages/ships/{lib/campaignShips.ts,tests/campaignShips.test.ts}, src/hooks/useCampaignShips.ts, src/components/ScenarioMap/{ScenarioMap.tsx,DryDockWindow.tsx}, src/components/CampaignShipManager/CampaignShipManager.tsx, docs/dev/{02,21,changelog}.md, docs/players/campaign-ships.md
+
+- Fixed the bug where a second refit reused the previous numeral (“John Doe II”
+  twice): the dry dock was handed the **current version** instead of the family,
+  so the next-numeral calculation ran on an empty list. It now receives the whole
+  family (`campaignFamilyOf`), and `campaignNextNumeral` seeds from the parent so
+  a partial list can never go backwards.
+- **The server assigns the numeral.** `fork_campaign_version` derives
+  `max(family numeral) + 1` (or 1 when the version was renamed) and builds the
+  display name itself (`roman_numeral`), so the client can no longer desync the
+  name. The prompt’s number is only a preview.
+- **Family labels are scenario-free**: the root’s base name is the family label
+  (“John Doe”), while each version still appends its scenario (“John Doe II —
+  test 100”) in lists.
+- Added an owner-only **Renumber** repair in the Campaign Ship Manager that
+  renumbers a family 1..N by creation order and refreshes carrier names; use it
+  to clean up families created before this fix.
+- **Justification:** names are display only, but a duplicate numeral made two
+  different versions indistinguishable. Deriving the numeral from the family on
+  the server removes the whole class of drift and makes the existing repair
+  possible.
+- **Example:** “John Doe” → refit → “John Doe II” → refit → “John Doe III”
+  (previously both refits produced “John Doe II”).
+- **Apply migration 178 in Supabase.**
+
+## Structure instances keep their template (2026-11-22)
+**Files:** src/types/structure.ts, src/packages/movement/lib/mapStructures.ts, src/packages/movement/tests/mapStructures.test.ts, src/components/MapEditor/MapEditor.tsx, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{18,changelog}.md
+
+- Every placed structure now stores a full `template` snapshot in its instance.
+  The Map Editor brush and the in-scenario Structure brush write it at placement;
+  assigning a reusable map copies it into `scenarios.map_data.structures`.
+- Runtime lookups build the template map with
+  `structureTemplatesWithSnapshots(structures, library)`: placed snapshots
+  override the shared library, so a map is self-contained. Editing or deleting a
+  structure template can no longer change or break structures already placed on
+  another DM's map.
+- Instances placed before this change have no snapshot and keep falling back to
+  the live library (legacy behaviour).
+- **Justification:** creator-locked deletion (migration 177) stopped other DMs
+  from deleting a template, but a creator could still delete their own template
+  while another DM's scenario used it, leaving dangling `templateId`s. Structures
+  are now snapshotted like ships and effects, so ownership and reference
+  integrity are independent.
+- **Example:** Ark places a gate on test 100 and deletes the gate template from
+  the Structure Workshop. The gate on test 100 keeps its HP, AC, door and climb
+  rules; a fresh map has no gate to place until a template is authored again.
+- No migration (jsonb payload only).
+
+## Creator-locked editor content (2026-11-22, migration 177)
+**Files:** supabase/migrations/177_content_ownership.sql, src/packages/infra/{index.ts,lib/contentOwnership.ts,tests/contentOwnership.test.ts}, src/hooks/useContentOwnership.ts, src/components/shared/ContentOwnership.tsx, src/components/{UnitEditor.tsx,WeaponEditorModal.tsx,WeaponEditor/WeaponEditor.tsx,EffectEditor/EffectEditor.tsx,StructureEditor/StructureEditor.tsx,ShipEditor/ShipEditor.tsx,ComponentEditor/ComponentEditor.tsx,MapEditor/MapEditor.tsx,ScenarioMap/HalloweenSiegePresetBar.tsx}, src/packages/{infra/lib/templateMappers.ts,infra/lib/weaponMappers.ts,effects/lib/effectTemplates.ts,movement/lib/structureTemplates.ts,world/lib/{mapEntities,halloweenSiegePresets}.ts,ships/lib/{shipMappers,componentMappers,cargoManifest}.ts}, src/types/{gameProtocol,ship,structure}.ts, docs/dev/{02,16,22,README,changelog}.md
+
+- Every authoring table now records `owner_id`: unit templates + races/mounts/
+  weapons/armors/types, ship templates + component/weapon/armor/cargo catalogs,
+  maps, effect templates, structure templates and siege presets.
+- **Only the creator or an admin may update/delete** a row. Rows with
+  `owner_id NULL` (legacy and seeded/system content) are **admin-only**. The rule
+  is enforced by a row trigger, so the existing capability RLS policies are
+  unchanged; inserts always take `auth.uid()` and ownership cannot transfer.
+- **Scenario tokens are exempt**: owning a ship or unit does not restrict moving,
+  damaging, boarding, refitting or deleting it on a map.
+- Editor UI: every list has an owner filter defaulting to **All content** (so DMs
+  can reuse existing work), owner chips on rows, a read-only notice with
+  **Clone to edit** for other DMs' content, and an admin-only **Owner deleted**
+  filter for orphaned content. The Unit Editor weapon picker shows owner chips
+  too, and the Map Editor gained a **Clone** action so another DM's map can be
+  copied into an owned one. Deleting a component/weapon that another DM's ship
+  template uses is blocked with a “clone instead” message (admins may override).
+- Normalised the unused `created_by` columns on `maps`,
+  `map_effect_templates`, `map_structure_templates` and siege presets to
+  `owner_id`.
+- **Justification:** one DM could silently rewrite another DM's unit, weapon,
+  ship or map. Creator locking keeps the library shared and readable while
+  making authorship explicit; admins retain curation of legacy/seed rows.
+- **Example:** Sam opens the Unit Editor (filter: All content), selects Ark's
+  “Elf”, sees `Read-only — created by Ark`, clicks **Clone to edit**, and edits
+  “Elf (River)”. Ark's row is untouched.
+- **177 applied.**
+
+## Campaign ships replace persistent player ships (2026-11-22, migration 176)
+**Files:** supabase/migrations/176_campaign_ships.sql, src/packages/ships/{index.ts,lib/campaignShips.ts,lib/shipRuntime.ts,tests/campaignShips.test.ts}, src/hooks/useCampaignShips.ts, src/components/ScenarioMap/{ScenarioMap.tsx,ShipSelector.tsx,LeftPanel.tsx,ShipContextMenu.tsx,DryDockWindow.tsx,DryDockInvoice.tsx,CampaignDropModal.tsx}, src/components/ShipEditor/ShipEditor.tsx, src/components/CampaignShipManager/CampaignShipManager.tsx, app/campaign-ships/page.tsx, src/components/Lobby.tsx, src/packages/infra/lib/commandLog.ts, src/hooks/useGameEngine.ts, docs/dev/{02,16,21,changelog}.md, docs/players/campaign-ships.md
+
+- **A `ship_campaign` row is a version.** `parent_id` links it to the version it
+  was derived from; rows with no parent are the family roots and carry the family
+  name. `name` (base), `numeral` (1 = no suffix), `scenario_id` and
+  `scenario_label` are columns, so a rename never changes identity.
+- **Scenario copies do not pollute the version list.** Only the instance flagged
+  `ship_spelljammer.campaign_carrier` mirrors its runtime into the campaign row;
+  every other placement is a `ship_spelljammer` copy. Plain template ships still
+  place as before.
+- **Deployment popup:** version + **Full** (100% hull and crew, boxes cleared,
+  min HP reset) or **Latest** (mirrored damage) + “make this a new campaign ship”.
+  Yes creates a child version inside the same placement command (`CAMPAIGN`
+  sub-step) so undo deletes it while it is still an orphan; No creates only an
+  instance. This replaces the old automatic per-map version rows.
+- **Per-scenario slot:** a version may have one un-superseded child per scenario
+  (`occupies_slot` + partial unique index). Evolving the existing version frees
+  the slot, as in the Jenny A / Jenny B example. Deleting a frozen version
+  splices its children into its parent and is refused on a collision; deleting a
+  root promotes its oldest child.
+- **Real-time mirror:** a database trigger copies HP, worst HP, box damage, crew
+  state, cargo and the design snapshot from the carrier instance only. Undo and
+  redo go through the same trigger, so the version never drifts.
+- **Dry dock:** Save refit (in place), Save as new version (asks for the name,
+  freezes the old row, sealed so it cannot be undone), Cancel. Total mass locked.
+  Walking the version chain with a dropdown and ‹ › buttons. **Invoices are not
+  stored**; the left panel is a live change summary with labour + equipment cost
+  and excludes crew and cargo.
+- **Ownership:** the declaring DM owns the family (`owner_id`); writes are
+  owner-only, reads stay available so every player can see a shared dry dock.
+  Non-owners do not see it in the selector.
+- **Campaign Ship Manager** (`/campaign-ships`, DM lobby button): family rename,
+  derived Active / Frozen / Orphaned status, and version deletion.
+- **Migration:** drops `ship_player` and `ship_player_versions` (test data not
+  migrated), adds `ship_campaign`, `ship_spelljammer.campaign_id` /
+  `campaign_carrier`, the carrier/slot indexes and triggers, the scenario-label
+  bake trigger, and the declare/convert/rename/fork/delete RPCs. `release_idle_player_ships`
+  is removed with the deployment lease; the “ship stops being a player ship after
+  reload” bug disappears with it.
+- **Justification:** a deployment lease must never own ship identity. Versions are
+  explicit user decisions (declaring, converting, or Save as new version), and a
+  name is display only.
+- **Example:** “Jenny - test 100” is copied twice into test 101; both are scenario
+  copies. The DM converts Jenny A → version “Jenny - test 101”, refits it → “Jenny
+  II - test 101” (Jenny A freezes and becomes deletable), which releases the
+  per-scenario slot so Jenny B can convert too.
+- **Apply migration 176 in Supabase.**
+
+## Ship-window hero team menu + one UI stacking order (2026-11-21)
+**Files:** src/components/ScenarioMap/{TeamContextMenu.tsx,ScenarioMap.tsx,ShipWindow.tsx,ContextMenu.tsx,ShipContextMenu.tsx,Floating.tsx,UnitTooltip.tsx,UnitTemplateTooltip.tsx,ShipTemplateTooltip.tsx,MapInfoTooltip.tsx,EffectsPanel.tsx,StructurePaintPanel.tsx,MessagesPanel.tsx,AddEffectModal.tsx,ConfirmModal.tsx,EffectFormModal.tsx,FreePlacementAirModal.tsx,FreePlacementModal.tsx,HalloweenSiegeWindow.tsx,MagicCastModal.tsx,ScenarioStatsModal.tsx,UnitEditorModal.tsx,DryDockWindow.tsx}, src/components/shared/StatValueHint.tsx, src/components/ShipRenderer/{CargoManifestDialog.tsx,CrewAdjustDialog.tsx,CrewRoster.tsx}, docs/dev/19-ui-panels-and-floating.md, docs/dev/changelog.md
+
+- The boarded-hero right-click menu is now a normal context menu
+  (`TeamContextMenu`) with the same surface/rows/shell as the scenario-map
+  `ContextMenu`, including outside-`pointerdown` and Escape close. It stays
+  team-only: it lists the five teams and assigns via the TEAM command.
+- Fixed the stacking order around the non-modal ship window. `ShipWindow` is
+  pinned at **z 100**; other `DraggablePanel`s keep **120**, so the speed
+  declaration now opens above the ship window. `Floating`'s default is **200**
+  (tooltips/popovers/banners), context menus are **250**, menu backdrops **240**,
+  modal overlays **260**, and full-screen blockers (dry dock, kicked overlay)
+  **400**. Previously context menus sat at 50 and modals at 50–80, i.e. all
+  *behind* the ship window.
+- Ship cargo/crew dialogs moved from 200 to 260 so they clear the ship window.
+- **Justification:** a context menu that renders under the window it was opened
+  from is unusable, and the DM team menu was previously a bespoke panel.
+- **Example:** right-click a boarded hero → normal team menu above the ship
+  window; open speed declaration with the ship window open → it draws on top.
+- Documented the layer table in `docs/dev/19-ui-panels-and-floating.md`.
+- No migration.
+
+## Ship-window hero right-click opens the team menu (2026-11-21)
+**Files:** src/components/ShipRenderer/ShipLayout.tsx, docs/dev/changelog.md
+
+- Boarded-hero tokens now **ignore non-primary pointer buttons** in `startDrag`
+  (`event.button !== 0`). Previously a right-click called `preventDefault()` and
+  started a drag, so the pointer-up moved the hero and the browser `contextmenu`
+  event never reached the team menu.
+- The context-menu handler is attached to both the hero wrapper and its pointer
+  hitbox, so a right-click directly on the hitbox also opens the team menu and
+  does not fall through to the card/slot menu.
+- Left-click/touch/pen dragging is unchanged.
+- **Justification:** the DM team menu is right-click-driven; a right-click that
+  moved the hero was destructive and made the menu unreachable.
+- **Example:** right-click a boarded hero token → the team list opens; the hero
+  stays on its card.
+- No migration.
+
+## Atmosphere ship start + free-placement level chooser (2026-11-21)
+**Files:** src/components/ScenarioMap/{ScenarioMap,useMoveActions,FreePlacementModal,FreePlacementAirModal}.tsx, src/hooks/{useSupabaseSync,useGameEngine}.ts, src/packages/ships/{lib/shipRuntime.ts,tests/shipRuntime.test.ts}, src/packages/movement/{index.ts,lib/freePlacement.ts,tests/freePlacement.test.ts,tests/mapStructures.test.ts}, docs/dev/{18-map-structures,21-ship-runtime,changelog}.md
+
+- **Ships start airborne in atmosphere.** A ship dragged from the Ship Selector
+  starts at `max(10, structure top)`; wildspace stays at 0. A ship dropped on a
+  20-ft tower starts at 20 ft, not 10 ft and not 0 ft.
+- **Free placement asks for the level when there is a real choice.** Unit
+  Selector drops, Free Move and turn 0 open the `FreePlacementModal` when more
+  than one valid home exists. With one valid home it places directly. Normal
+  paid moves keep the existing Climb/Pass and boarding prompts.
+- **Chooser options:** structure top; door level only for an **open/broken
+  door**; ground; **Board {ship}** for a hero; **Attach/Ride** a friendly host
+  unit; **Air altitude** for flyers. Occupied slots are omitted, so a roof and
+  an inside slot can both be offered independently.
+- **Heroes:** a new Unit Selector hero may board any ship or attach/ride any
+  unit; the hero keeps its own team (no automatic host adoption). An existing
+  free-move hero uses the current same-alliance attach rule. Free boarding skips
+  adjacency and same-elevation checks; normal paid boarding keeps them. Dragging
+  an already attached hero off keeps the existing detach behavior.
+- **Attached-hero team control:** the DM can right-click a boarded hero token in
+  the ship window to pick a team, or use the host unit's context menu for a
+  unit-attached hero. Both use the same team list as a normal unit’s **Assign
+  Team**.
+- **Justification:** the previous “always default to the structure top” rule was
+  fast but wrong when a dog-legged structure offered both a roof and a door, or
+  when a hero could either board a ship or stand on the ground. Spelljammers
+  also should not start embedded in terrain; atmosphere placement is now
+  airborne.
+- **Example:** drop a Shrike in atmosphere → 10 ft (30 ft on a 20-ft tower).
+  Free-move a unit onto a 20-ft tower with an open door → the chooser offers
+  **Structure top 20 ft** and **Door level 0 ft**. Free-move a hero onto a ship
+  hex → **Board Shrike** or **Ground 0 ft**. Free-move a hero onto a friendly
+  unit → **Attach** and, when size/mount rules allow, **Ride**.
+- No migration.
+
+## Atmosphere uses the one base MC in the move preview (2026-11-21)
+**Files:** src/packages/ships/{lib/shipMoveCost.ts,tests/shipMoveCost.test.ts}, src/components/ScenarioMap/{ScenarioMap,ShipWindow}.tsx, docs/dev/{21-ship-runtime,changelog}.md
+
+- Added `shipMC(stats, speed, mode)` and
+  `shipTurnDistance(stats, speed, mode, mcReduction)` as the single gameplay MC
+  source. **Atmosphere** uses `ceil(stats.mcRaw)` (one base MC, no speed band);
+  **wildspace** keeps the three speed bands.
+- Replaced every atmosphere MC consumer: drag preview, move gate, rotate gate,
+  ship back-readout green threshold, ship-window MC row, and rudder-trim DC.
+  Wildspace and the speed-declaration panel keep the banded values.
+- **Justification:** atmosphere speed is fixed, so applying the wildspace band
+  modifier made the preview require a different number of straight hexes than
+  the one-MC rule. The move/rotate gates, ship-window MC and rudder DC shared
+  the same banded value, so the display and movement could not expose the
+  mismatch until compared with the base MC.
+- **Example:** raw MC 2.4, atmosphere speed 9 → MC 3; turn after 3 straight hexes
+  (2 with one rudder trim). Wildspace at declared 9 → MC 4; turn after 4 (3 with
+  trim). The drag preview now allows the atmosphere turn and the ship-window MC
+  row shows the same 3.
+- No migration.
+
+## Dry-dock refit invoicing + Min HP Attained (2026-11-21, migration 175)
+**Files:** supabase/migrations/175_dry_dock_refit.sql, src/packages/ships/{lib/shipRefit.ts,lib/shipRepair.ts,lib/shipRuntime.ts,lib/playerShips.ts,lib/cargoManifest.ts,lib/shipMappers.ts,index.ts,tests/shipRefit.test.ts,tests/shipRepair.test.ts,tests/shipMappers.test.ts}, src/hooks/{usePlayerShips.ts,useShipTemplates.ts}, src/components/ShipEditor/ShipEditor.tsx, src/components/ScenarioMap/{DryDockWindow.tsx,DryDockInvoice.tsx,ScenarioMap.tsx,ShipSelector.tsx}, src/components/ComponentEditor/ComponentEditor.tsx, docs/dev/{02,16,21,changelog}.md
+
+- **Dry dock is the Ship Editor in `dryDock` mode**, full screen and shared with
+  every player. The table is paused while the session is open. The left column
+  is the itemized invoice; total ship mass is locked and everything else is
+  editable.
+- **Designs live in the player-ship version history.** Save writes the design
+  before and after plus the invoice; the shared `ship_templates` row is never
+  rewritten. Redeploying a player ship now uses its latest version snapshot.
+- **Min HP Attained** records the worst HP before a dock visit. Field repair
+  kits patch that damage, so the dock bills patch removal separately from the
+  real repair. A successful Save resets the value to the new maximum.
+- **Invoice:** 100 gp/ton removal, 100 gp/ton addition, 50 gp/patched HP,
+  100 gp/damaged HP, equipment at cost per ton (itemized), one week of an added
+  crew member's weekly cost, and cargo at the new `ship_cargo` unit price. No
+  refunds. All destroyed boxes clear when the repair line is non-zero.
+- **Armor pricing:** `ship_armors.cost_per_ton` is authored in the Component
+  Workshop's new **Armors** tab. Components/weapons derive cost per ton from
+  their unit price and mass, so existing prices are unchanged.
+- **Cargo price catalog:** new `ship_cargo` table (name, category, unit,
+  unit mass, unit cost). It is populated later; missing lines are shown as
+  unpriced at 0 gp.
+- **Access:** authenticated players may read the armor/component/weapon/cargo
+  catalogs so the dock works. Library templates and catalog writes keep their
+  existing gates.
+- **Sharing:** `dry_dock_revision` lets the DM **Reshare** a locally closed
+  window. Players can Hide; the DM can End the session.
+- **Justification:** a repair kit is an emergency patch, not replacement
+  material. Billing only missing HP let patched damage hide until the next
+  fight. The separate Min HP value makes the dock strip the patch and repair the
+  real damage while keeping the invoice transparent.
+- **Example:** remove 3 sails (3t) and install 2 rudders (3t) → 300 + 300 labour
+  + 2,000 rudder = **2,600 gp**. Add a 1t/100 gp ballista inside spare capacity →
+  100 labour + 100 equipment = **200 gp**.
+- **Apply migration 175 in Supabase.**
+
 ## Rename player-ship tables to ship_* convention (2026-11-19, migration 174)
 **Files:** supabase/migrations/174_ship_player_rename.sql, src/hooks/usePlayerShips.ts, src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{02,21,changelog}.md
 

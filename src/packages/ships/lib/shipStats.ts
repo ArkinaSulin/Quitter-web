@@ -187,6 +187,37 @@ export function heroCheckBonus(actor: CheckActor, stat: CheckStat): number {
   return abilityModifier(actor[stat]) + proficiencyBonus(actor.level);
 }
 
+/** Signed display for a modifier: `+3`, `−2`, `0` (never `+-2`). */
+export function signedBonus(value: number): string {
+  const n = Math.round(Number.isFinite(value) ? value : 0);
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+/**
+ * Intelligence captaincy: `Int + PB − 5` (docs/dev/21). It may be negative and
+ * is the bonus awarded by the Bridge Command button. Generic crew keep their
+ * CrewSkill +2, matching every other crew ship check (crew never captain).
+ */
+export function captaincyBonus(actor: CheckActor, crew = false): number {
+  return heroCheckBonus(actor, 'int') + (crew ? CREW_SKILL_BONUS : 0) - 5;
+}
+
+/**
+ * Best modifier across a group of stats. The Spelljammer Helmsman check uses the
+ * higher of Wisdom or Intelligence (docs/dev/21), so a check may name more than
+ * one stat. Crew keep the +2 CrewSkill; heroes do not.
+ */
+export function bestCheckBonus(
+  actor: CheckActor,
+  stats: CheckStat[],
+  crew = false,
+): number {
+  if (stats.length === 0) return 0;
+  return Math.max(...stats.map(stat => (
+    crew ? crewCheckBonus(actor, stat) : heroCheckBonus(actor, stat)
+  )));
+}
+
 /** Generic crew HP default: 10 + 7 per level above 1 (3 + 7 × level). */
 export function computeCrewHp(level: number): number {
   const lvl = Math.max(1, Math.floor(Number.isFinite(level) ? level : 1));
@@ -221,35 +252,40 @@ export function computeOptionalComponentCrew(build: ShipBuild): number {
 }
 
 /**
+ * Combined sail + rudder crew requirement. One crew mans 4 sail-units or 2
+ * rudders; a crew with spare capacity can cover a combination, so the two groups
+ * share one pool. Two sails + one rudder therefore need one crew, not two.
+ */
+export function computeSailRudderCrew(sails: number, rudders: number): number {
+  const s = Math.max(0, sails);
+  const r = Math.max(0, rudders);
+  if (s <= 0 && r <= 0) return 0;
+  return Math.max(1, Math.ceil((s + r * 2) / 4));
+}
+
+/**
  * Σ built-in component + optional component crew requirements.
  * Weapon handling crew is deliberately excluded: it is not needed for
  * spelljamming. Each component group is rounded up separately.
  */
 export function computeComponentCrew(build: ShipBuild): number {
   const c = build.components;
-  // Sails: 1 crew per 4 sails (min 1); rudders: 1 per 2 (min 1). Any leftover
-  // sail crew rolls into the rudder requirement.
-  const sailCrew = build.sails > 0 ? Math.max(1, Math.floor(build.sails / 4)) : 0;
-  const rudderCrew = build.rudders > 0 ? Math.max(1, Math.ceil(build.rudders / 2)) : 0;
   return (
     Math.ceil(build.helm * componentByName(c, COMPONENT_NAMES.helm).crew) +
     Math.ceil(build.commandBridge * componentByName(c, COMPONENT_NAMES.commandBridge).crew) +
-    sailCrew +
-    rudderCrew +
+    computeSailRudderCrew(build.sails, build.rudders) +
     computeOptionalComponentCrew(build)
   );
 }
 
 /**
- * Minimum crew to operate the ship: one helm, plus the sail and rudder crews.
- * Command bridge, optional components and weapon handling crew are excluded.
+ * Minimum crew to operate the ship: one helm, plus the combined sail/rudder
+ * pool. Command bridge, optional components and weapon handling crew are excluded.
  */
 export function computeMinCrew(build: ShipBuild): number {
   const c = build.components;
   const helmCrew = build.helm > 0 ? Math.ceil(componentByName(c, COMPONENT_NAMES.helm).crew) : 0;
-  const sailCrew = build.sails > 0 ? Math.max(1, Math.floor(build.sails / 4)) : 0;
-  const rudderCrew = build.rudders > 0 ? Math.max(1, Math.ceil(build.rudders / 2)) : 0;
-  return helmCrew + sailCrew + rudderCrew;
+  return helmCrew + computeSailRudderCrew(build.sails, build.rudders);
 }
 
 /**
@@ -412,18 +448,26 @@ export function performanceMassOf(build: ShipBuild): number {
 }
 
 /** Acceleration = (sails + rudders) / performanceMass × 15 (counts). */
+export function accelFor(sails: number, rudders: number, performanceMass: number): number {
+  const mass = Math.max(1, performanceMass);
+  return round1(((Math.max(0, sails) + Math.max(0, rudders)) / mass) * ACCEL_SCALE);
+}
+
 export function computeAccel(build: ShipBuild): number {
-  const mass = performanceMassOf(build);
-  return round1(((build.sails + build.rudders) / mass) * ACCEL_SCALE);
+  return accelFor(build.sails, build.rudders, performanceMassOf(build));
 }
 
 /** Raw MC: x = rudders × 10 / performanceMass; x < 1 → 1/x + 2, else 4 − x. */
-export function computeMCRaw(build: ShipBuild): number {
-  const mass = performanceMassOf(build);
-  const x = (Math.max(0, build.rudders) * MC_RUDDER_SCALE) / mass;
+export function mcRawFor(rudders: number, performanceMass: number): number {
+  const mass = Math.max(1, performanceMass);
+  const x = (Math.max(0, rudders) * MC_RUDDER_SCALE) / mass;
   if (x <= 0) return Number.POSITIVE_INFINITY;
   const mc = x < 1 ? 1 / x + 2 : 4 - x;
   return Math.max(0, round1(mc));
+}
+
+export function computeMCRaw(build: ShipBuild): number {
+  return mcRawFor(build.rudders, performanceMassOf(build));
 }
 
 /** Speed band modifier added to MC. */
@@ -447,13 +491,89 @@ export interface MCBand {
   mc: number;
 }
 
+/** The three speed bands for a raw MC (infinite = no rudder control). */
+export function mcBandsFor(mcRaw: number): MCBand[] {
+  const effective = (speed: number) => (
+    Number.isFinite(mcRaw)
+      ? Math.max(0, round1(mcRaw + mcSpeedModifier(speed)))
+      : Number.POSITIVE_INFINITY
+  );
+  return [
+    { label: 'Speed 0–2', speedMin: 0, speedMax: 2, mc: effective(0) },
+    { label: 'Speed 3–7', speedMin: 3, speedMax: 7, mc: effective(3) },
+    { label: 'Speed 8–12', speedMin: 8, speedMax: 12, mc: effective(8) },
+  ];
+}
+
 /** The three speed bands from the overhaul rules. */
 export function computeMCBands(build: ShipBuild): MCBand[] {
-  return [
-    { label: 'Speed 0–2', speedMin: 0, speedMax: 2, mc: computeEffectiveMC(build, 0) },
-    { label: 'Speed 3–7', speedMin: 3, speedMax: 7, mc: computeEffectiveMC(build, 3) },
-    { label: 'Speed 8–12', speedMin: 8, speedMax: 12, mc: computeEffectiveMC(build, 8) },
-  ];
+  return mcBandsFor(computeMCRaw(build));
+}
+
+/**
+ * Effective rudder count from surviving rudder tonnage: a rudder is not
+ * destroyed until its full mass is gone, so the count uses ceiling.
+ * 10.5 t with one ton destroyed → 9.5 / 1.5 = 6.33 → 7.
+ */
+export function effectiveRuddersFromTons(designRudders: number, rudderMass: number, survivingTons: number): number {
+  const count = Math.max(0, designRudders);
+  if (count <= 0) return 0;
+  const mass = Math.max(0.01, rudderMass);
+  return Math.max(0, Math.min(count, Math.ceil(Math.max(0, survivingTons) / mass)));
+}
+
+/**
+ * Crew capacity allocation across sails and rudders: one crew = 4 sail-units or
+ * 2 rudder-units. Spare sail capacity covers rudder at 2 sail-units per rudder;
+ * spare rudder capacity covers sail at 2 sails per rudder. Results are whole
+ * units, capped at the surviving design counts.
+ */
+export function effectiveSailRudderCounts(
+  designSails: number,
+  designRudders: number,
+  sailCrew: number,
+  rudderCrew: number,
+): { sails: number; rudders: number } {
+  const sails = Math.max(0, Math.floor(designSails));
+  const rudders = Math.max(0, Math.floor(designRudders));
+  const sailCapacity = Math.max(0, Math.floor(sailCrew)) * 4;
+  const rudderCapacity = Math.max(0, Math.floor(rudderCrew)) * 2;
+
+  let effectiveSails = Math.min(sails, sailCapacity);
+  let effectiveRudders = Math.min(rudders, rudderCapacity);
+
+  const spareSailUnits = sailCapacity - effectiveSails;
+  const spareRudderUnits = rudderCapacity - effectiveRudders;
+
+  effectiveRudders += Math.min(
+    rudders - effectiveRudders,
+    Math.floor(spareSailUnits / 2),
+  );
+  effectiveSails += Math.min(
+    sails - effectiveSails,
+    spareRudderUnits * 2,
+  );
+
+  return { sails: effectiveSails, rudders: effectiveRudders };
+}
+
+/**
+ * Copy of the derived stats with acceleration and MC recalculated for the
+ * effective sail/rudder counts (the stored snapshot stays design data).
+ */
+export function withEffectiveSailsRudders(
+  stats: ShipDerivedStats,
+  sails: number,
+  rudders: number,
+): ShipDerivedStats {
+  const performanceMass = Math.max(1, stats.performanceMass);
+  const mcRaw = mcRawFor(rudders, performanceMass);
+  return {
+    ...stats,
+    accel: accelFor(sails, rudders, performanceMass),
+    mcRaw,
+    mcBands: mcBandsFor(mcRaw),
+  };
 }
 
 /** Command bonus from command bridges (+5 each). */

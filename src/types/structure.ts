@@ -67,11 +67,19 @@ export interface StructureTemplate {
   modifiers: EffectModifier[];
   createdAt: string;
   updatedAt: string;
+  ownerId?: string | null;
 }
 
 /** A placed structure: template id + optional runtime overrides. */
 export interface StructureInstance {
   templateId: string;
+  /**
+   * Snapshot of the template taken when the structure was placed. It makes the
+   * map self-contained: later template edits/deletes cannot change or break an
+   * already placed structure. Older instances have no snapshot and fall back to
+   * the shared library.
+   */
+  template?: StructureTemplate;
   /** Current structure HP (defaults to template maxHp). */
   hp?: number;
   /** Per-instance MAX HP override (defaults to the template's maxHp). */

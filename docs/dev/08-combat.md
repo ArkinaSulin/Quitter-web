@@ -503,18 +503,24 @@ nothing).
 
 The modal groups by **alliance** (Friendly → Enemy → Neutral, Neutral hidden when
 empty) then by **team** (color chip; teams with no units hidden). The numbers are
-laid out in **three troop/lv groups** — **Starting**, **Lost**, **Kills**:
+laid out in **three troop/lv/HP groups** — **Starting**, **Lost**, **Kills**:
 
 - **Alliance summary** — `deployed · survived` (survived = status *Effective*
-  only), then `Σ starting troops / Σ starting lv` (`Σ introTroops / Σ
-  (introTroops × Lv)`), `Σ lost troops / Σ lost lv`, `Σ kill troops / Σ kill lv`.
-- **Per unit** — name, status, then the same three pairs: **starting**
-  (`introTroops` / `introLevels = introTroops × Lv`), **lost** (`troopLost` /
-  `levelsLost = troopLost × Lv`), **kills** (`kills` / `killLevels`).
+  only), then `Σ starting troops / Σ starting lv / Σ starting HP` (`Σ
+  introTroops / Σ (introTroops × Lv) / Σ introHp`), `Σ lost troops / Σ lost lv /
+  Σ lost HP`, `Σ kill troops / Σ kill lv / Σ kill HP`.
+- **Per unit** — name, status, then the same three triples: **starting**
+  (`introTroops` / `introLevels = introTroops × Lv` / `introHp`), **lost**
+  (`troopLost` / `levelsLost = troopLost × Lv` / `hpLost`), **kills** (`kills` /
+  `killLevels` / `killHp`).
 
-`introTroopCount` is the unit's troop count at the **end of its own alliance
-turn** (a mid-game reinforcement snapshots on its alliance's next turn end;
-fallback to the count at PLACE, then `maxTroopCount`) — not a global Turn-1
-snapshot. `troopLost` / `levelsLost` are **gross** cumulative losses from the
-log (healing never reduces them). `formatStatsText` mirrors the grouped layout
-for the "Share to all players" post.
+`introTroopCount` (and `introHp`, the unit's total HP at that moment) is the
+unit's value at the **end of its own alliance turn** (a mid-game reinforcement
+snapshots on its alliance's next turn end; fallback to the value at PLACE, then
+`maxTroopCount` / `maxUnitHp`) — not a global Turn-1 snapshot.
+`troopLost` / `levelsLost` / `hpLost` are **gross** cumulative losses from the
+log (healing never reduces them). `killHp` is HP damage attributed through the
+same killer payload; attacks that only chip HP add lost/kill HP without changing
+the troop columns. `formatStatsText` mirrors the grouped layout for the "Share to
+all players" post. The modal has a bottom-right resize handle (clamped to the
+viewport); the table scrolls inside it.

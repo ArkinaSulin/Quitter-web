@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseStructures, structuresToWalls, isEdgeStructureKey, isHexStructureKey, structureCounts,
+  structureTemplatesWithSnapshots,
   structureBlocksOrg, zoneBlocksOrg, structureRangeBonus, structureIsOpen,
   structureStepClimb, structureHexBlocked, structureAuraFlags, structureZones,
   structureClimbProfile,
   structureDoorState, structureDoorHex, canToggleStructureDoor, doorPassThroughHexes,
+  structureSurfaceAt, groundFloorAt,
   orgGatesForEntry, describeOrgGateBlock, entryBreakFormation, standingMaxOrg, floatingUnits,
 } from '@/packages/movement/lib/mapStructures';
 import { meleeWallAc, rangedWallAc, edgeRef } from '@/packages/movement/lib/walls';
@@ -73,6 +75,43 @@ describe('parseStructures', () => {
     });
     expect(s['5,5'].elevation).toBe(25);
     expect(s['6,6'].elevation).toBe(0);
+  });
+
+  it('keeps a valid template snapshot and ignores a broken one', () => {
+    const snapshot = template({ id: 'snap', name: 'Snapshot Wall' });
+    const s = parseStructures({
+      '0,0,0': { templateId: 'snap', template: snapshot },
+      '1,0,0': { templateId: 'snap', template: { name: 'no id' } },
+    });
+    expect(s['0,0,0'].template?.name).toBe('Snapshot Wall');
+    expect(s['1,0,0'].template).toBeUndefined();
+  });
+});
+
+describe('structureTemplatesWithSnapshots', () => {
+  it('overlays placed snapshots so a deleted library id still resolves', () => {
+    const library = { other: template({ id: 'other', name: 'Library Wall' }) };
+    const snap = template({ id: 'gone', name: 'Snapshot Wall', maxHp: 99 });
+    const merged = structureTemplatesWithSnapshots(
+      { '0,0,0': { templateId: 'gone', template: snap } },
+      library,
+    );
+    expect(merged.gone.name).toBe('Snapshot Wall');
+    expect(merged.gone.maxHp).toBe(99);
+    expect(merged.other.name).toBe('Library Wall');
+  });
+
+  it('prefers the snapshot over a changed library row', () => {
+    const merged = structureTemplatesWithSnapshots(
+      { '0,0,0': { templateId: 't1', template: template({ maxHp: 10, name: 'Old' }) } },
+      { t1: template({ maxHp: 30, name: 'New' }) },
+    );
+    expect(merged.t1.maxHp).toBe(10);
+    expect(merged.t1.name).toBe('Old');
+  });
+
+  it('returns the library when there is nothing placed', () => {
+    expect(structureTemplatesWithSnapshots(undefined, { t1: template() }).t1.id).toBe('t1');
   });
 });
 
@@ -379,6 +418,23 @@ describe('structureZones (hex structures → ground zones)', () => {
 
   it('returns [] with no structures', () => {
     expect(structureZones(null, {})).toEqual([]);
+  });
+});
+
+describe('free-placement surface vs normal ground floor', () => {
+  const tower = template({ id: 'tower', anchor: 'hex', elevation: 20, doorHp: 30, maxHp: 100 });
+  const templates = { tower };
+  const closed = { '0,0': { templateId: 'tower' } };
+  const open = { '0,0': { templateId: 'tower', open: true } };
+
+  it('free placement uses the structure top, even with an open door', () => {
+    expect(structureSurfaceAt({ q: 0, r: 0 }, closed, templates)).toBe(20);
+    expect(structureSurfaceAt({ q: 0, r: 0 }, open, templates)).toBe(20);
+  });
+
+  it('normal ground movement still uses the door floor', () => {
+    expect(groundFloorAt({ q: 0, r: 0 }, closed, templates)).toBe(20);
+    expect(groundFloorAt({ q: 0, r: 0 }, open, templates)).toBe(0);
   });
 });
 

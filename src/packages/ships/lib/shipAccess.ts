@@ -50,6 +50,21 @@ export interface ShipHelmOwner {
   team: string | null;
 }
 
+/** True when the card still has at least one box; missing hit-card data is functional. */
+function functionalStationCards(
+  ship: ShipRuntime,
+  cards: ReturnType<typeof shipStationCards>,
+): ReturnType<typeof shipStationCards> {
+  const build = ship.snapshot?.build;
+  if (!build) return cards;
+  const hits = new Map(shipHitCards(build).map(card => [card.key, card.tons]));
+  return cards.filter(card => {
+    const tons = hits.get(card.key) ?? 0;
+    if (tons <= 0) return true;
+    return Number(ship.boxState?.[card.key] ?? 0) < tons;
+  });
+}
+
 /**
  * Canonical helm ownership (docs/dev/21 §7): the first functional helm card with
  * a hero wins; otherwise the first functional helm card with crew uses the ship's
@@ -58,15 +73,10 @@ export interface ShipHelmOwner {
 export function shipHelmOwner(ship: ShipRuntime, units: Unit[]): ShipHelmOwner {
   const build = ship.snapshot?.build;
   if (!build) return { hero: null, crewCount: 0, team: null };
-  const hits = new Map(shipHitCards(build).map(card => [card.key, card.tons]));
-  const helmCards = shipStationCards(build).filter(card => {
-    if (card.kind !== 'helm') return false;
-    const tons = hits.get(card.key) ?? 0;
-    const destroyed = Number(ship.boxState?.[card.key] ?? 0);
-    // Missing hit-card data (legacy snapshots without a deck layout) cannot
-    // prove destruction, so the helm stays functional.
-    return !(tons > 0 && destroyed >= tons);
-  });
+  const helmCards = functionalStationCards(
+    ship,
+    shipStationCards(build, { boxState: ship.boxState }).filter(card => card.kind === 'helm'),
+  );
   const read = (key: string) => {
     const station = ship.stations?.[key];
     const heroId = station?.heroIds?.[0] ?? station?.heroId;
@@ -83,11 +93,14 @@ export function shipHelmOwner(ship: ShipRuntime, units: Unit[]): ShipHelmOwner {
   };
 }
 
-/** The captain: a hero on a Bridge while every bridge card is fully crewed. */
+/** The captain: a hero on a Bridge while every functional bridge card is fully crewed. */
 export function shipCaptainHero(ship: ShipRuntime, units: Unit[]): Unit | null {
   const build = ship.snapshot?.build;
   if (!build) return null;
-  const bridgeCards = shipStationCards(build).filter(card => card.kind === 'bridge');
+  const bridgeCards = functionalStationCards(
+    ship,
+    shipStationCards(build, { boxState: ship.boxState }).filter(card => card.kind === 'bridge'),
+  );
   if (bridgeCards.length === 0) return null;
   const present = shipPresentByCard(ship);
   const bridgeFull = bridgeCards.every(card => (present[card.key] ?? 0) >= card.crewRequired);
@@ -104,7 +117,10 @@ export function shipHelmsmanHero(ship: ShipRuntime, units: Unit[]): Unit | null 
   const build = ship.snapshot?.build;
   if (!build) return null;
   const helmKeys = new Set(
-    shipStationCards(build).filter(card => card.kind === 'helm').map(card => card.key),
+    functionalStationCards(
+      ship,
+      shipStationCards(build, { boxState: ship.boxState }).filter(card => card.kind === 'helm'),
+    ).map(card => card.key),
   );
   if (helmKeys.size === 0) return null;
   return units.find(u =>
@@ -143,7 +159,7 @@ export function shipHasPilot(ship: ShipRuntime, units: Unit[]): boolean {
   const build = ship.snapshot?.build;
   if (!build) return false;
   const hits = new Map(shipHitCards(build).map(card => [card.key, card.tons]));
-  const helmCards = shipStationCards(build).filter(card => card.kind === 'helm');
+  const helmCards = shipStationCards(build, { boxState: ship.boxState }).filter(card => card.kind === 'helm');
   return helmCards.some(card => {
     const tons = hits.get(card.key) ?? 0;
     const destroyed = tons > 0 && Number(ship.boxState?.[card.key] ?? 0) >= tons;
@@ -194,9 +210,12 @@ export function shipViewerAccess(
     return isGM ? { ...EMPTY_ACCESS, revealAllCards: true, manageAllCards: true } : EMPTY_ACCESS;
   }
 
-  const stationCards = shipStationCards(build);
+  const stationCards = shipStationCards(build, { boxState: ship.boxState });
   const present = shipPresentByCard(ship);
-  const bridgeCards = stationCards.filter(card => card.kind === 'bridge');
+  const bridgeCards = functionalStationCards(
+    ship,
+    stationCards.filter(card => card.kind === 'bridge'),
+  );
   const bridgeFull = bridgeCards.length > 0
     && bridgeCards.every(card => (present[card.key] ?? 0) >= card.crewRequired);
 
@@ -208,7 +227,10 @@ export function shipViewerAccess(
 
   const bridgeKeys = new Set(bridgeCards.map(card => card.key));
   const helmKeys = new Set(
-    stationCards.filter(card => card.kind === 'helm').map(card => card.key),
+    functionalStationCards(
+      ship,
+      stationCards.filter(card => card.kind === 'helm'),
+    ).map(card => card.key),
   );
   const myCaptain = bridgeFull && myHeroes.some(u => u.shipStationKey && bridgeKeys.has(u.shipStationKey));
   const myHelmsman = myHeroes.some(u => u.shipStationKey && helmKeys.has(u.shipStationKey));

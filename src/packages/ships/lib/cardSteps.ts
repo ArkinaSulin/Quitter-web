@@ -12,6 +12,11 @@ export interface ShipCardStepEntry {
   step?: number;
   /** Card steps spent this turn (0..5). */
   stepsUsed?: number;
+  /**
+   * Pending Intelligence captaincy bonus for this card's next d20 card roll
+   * (docs/dev/21). A card holds at most one pending bonus; it may be negative.
+   */
+  commandBonus?: number;
 }
 
 export type ShipCardStepState = Record<string, ShipCardStepEntry>;
@@ -78,10 +83,82 @@ export function spendCardSteps(
   const used = cardStepsUsed(cardState, cardKey, turn);
   const spend = Math.max(0, Math.floor(count));
   const next = Math.min(SHIP_CARD_STEPS_PER_TURN, used + spend);
+  const entry = cardState?.[cardKey];
+  const commandBonus = entry?.turn === turn ? entry.commandBonus : undefined;
   return {
     ...(cardState ?? {}),
-    [cardKey]: { turn, step, stepsUsed: next },
+    [cardKey]: {
+      turn,
+      step,
+      stepsUsed: next,
+      ...(commandBonus !== undefined ? { commandBonus } : {}),
+    },
   };
+}
+
+/** Pending Intelligence captaincy bonus on a card, or undefined when none. */
+export function cardCommandBonus(
+  cardState: ShipCardStepState | null | undefined,
+  cardKey: string,
+  turn: number,
+): number | undefined {
+  const entry = cardState?.[cardKey];
+  if (!entry || entry.turn !== turn || entry.commandBonus === undefined) return undefined;
+  return Math.round(entry.commandBonus);
+}
+
+/** Place the captain's pending bonus on a card. Only one pending bonus per card. */
+export function setCardCommandBonus(
+  cardState: ShipCardStepState | null | undefined,
+  cardKey: string,
+  turn: number,
+  step: number,
+  bonus: number,
+): ShipCardStepState {
+  const entry = cardState?.[cardKey];
+  const sameTurn = entry?.turn === turn;
+  return {
+    ...(cardState ?? {}),
+    [cardKey]: {
+      turn,
+      step: sameTurn ? (entry?.step ?? step) : step,
+      stepsUsed: sameTurn ? clampSteps(entry?.stepsUsed) : 0,
+      commandBonus: Math.round(bonus),
+    },
+  };
+}
+
+/** Remove a card's pending command bonus (it was consumed by a d20 roll). */
+export function clearCardCommandBonus(
+  cardState: ShipCardStepState | null | undefined,
+  cardKey: string,
+  turn: number,
+): ShipCardStepState {
+  const entry = cardState?.[cardKey];
+  if (!entry || entry.turn !== turn || entry.commandBonus === undefined) {
+    return cardState ?? {};
+  }
+  const { commandBonus: _unused, ...rest } = entry;
+  return { ...(cardState ?? {}), [cardKey]: rest };
+}
+
+/** Drop every pending command bonus (end of turn). */
+export function clearCommandBonuses(
+  cardState: ShipCardStepState | null | undefined,
+): ShipCardStepState {
+  if (!cardState) return {};
+  let changed = false;
+  const out: ShipCardStepState = {};
+  for (const [key, entry] of Object.entries(cardState)) {
+    if (entry.commandBonus !== undefined) {
+      changed = true;
+      const { commandBonus: _unused, ...rest } = entry;
+      out[key] = rest;
+    } else {
+      out[key] = entry;
+    }
+  }
+  return changed ? out : cardState;
 }
 
 /** Sanitize stored card_state JSON. */
@@ -91,10 +168,14 @@ export function normalizeCardStepState(raw: unknown): ShipCardStepState {
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const entry = value as Record<string, unknown>;
+    const commandBonus = entry.commandBonus === undefined
+      ? undefined
+      : Math.round(Number(entry.commandBonus) || 0);
     out[key] = {
       turn: Math.max(0, Math.floor(Number(entry.turn) || 0)),
       step: Math.max(0, Math.floor(Number(entry.step) || 0)),
       stepsUsed: clampSteps(entry.stepsUsed),
+      ...(commandBonus !== undefined ? { commandBonus } : {}),
     };
   }
   return out;

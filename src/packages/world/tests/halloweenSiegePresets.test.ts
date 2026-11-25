@@ -111,11 +111,10 @@ describe('Halloween Siege presets', () => {
   });
 
   it('maps a plan to a trimmed snake_case row', () => {
-    expect(halloweenSiegePresetToRow(plan, '  Spooky  ', 'user-1')).toEqual({
+    expect(halloweenSiegePresetToRow(plan, '  Spooky  ')).toEqual({
       name: 'Spooky',
       turns_per_wave: 2,
       waves: plan.waves,
-      created_by: 'user-1',
     });
   });
 });

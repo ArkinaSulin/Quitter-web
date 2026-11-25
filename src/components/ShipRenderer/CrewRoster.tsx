@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { ShipCrew } from '@/types/ship';
-import { CREW_SKILL_BONUS, crewCheckBonus, proficiencyBonus } from '@/packages/ships';
+import { CREW_SKILL_BONUS, bestCheckBonus, captaincyBonus, crewCheckBonus, proficiencyBonus, signedBonus } from '@/packages/ships';
 import { BoundedTooltip } from '@/components/shared/BoundedTooltip';
 import { CrewAdjustDialog, CrewDraft, defaultCrewDraft } from './CrewAdjustDialog';
 
@@ -139,9 +139,9 @@ export function CrewRoster({
   };
 
   const stationName = (key: string) => stations?.find(s => s.key === key)?.name ?? key;
-  const rowClass = 'flex items-center gap-2 px-2 py-1 text-[11px]';
-  const grid = 'grid grid-cols-[18px_minmax(0,1fr)_26px_14px_26px]';
-  const deadGrid = 'grid grid-cols-[18px_minmax(0,1fr)_26px_14px_84px]';
+  const rowClass = 'flex items-center px-2 py-1 text-[11px]';
+  const grid = 'grid grid-cols-[18px_minmax(0,1fr)_26px_14px_26px] gap-1';
+  const deadGrid = 'grid grid-cols-[18px_minmax(0,1fr)_26px_14px_84px] gap-1';
 
   const tooltipFor = (group: CrewGroup) => {
     const crew = group.crew;
@@ -164,13 +164,14 @@ export function CrewRoster({
         <div className="text-gray-300">STR {crew.str} DEX {crew.dex} CON {crew.con} INT {crew.int} WIS {crew.wis} CHA {crew.cha}</div>
         <div className="text-gray-400">Proficiency +{proficiencyBonus(crew.level)} - CrewSkill +{CREW_SKILL_BONUS}</div>
         <div className="grid grid-cols-2 gap-x-3 text-gray-300">
-          <span>Weapon: +{crewCheckBonus(crew, 'dex')}</span>
-          <span>Helm: +{crewCheckBonus(crew, 'wis')}</span>
-          <span>Sail speed: +{crewCheckBonus(crew, 'con')}</span>
-          <span>Sail trim: +{crewCheckBonus(crew, 'int')}</span>
-          <span>Repair: +{crewCheckBonus(crew, 'str')}</span>
-          <span className="text-gray-500">{crew.cost} Gp/week</span>
+          <span>Repair: {signedBonus(crewCheckBonus(crew, 'str'))}</span>
+          <span>Captaincy: {signedBonus(captaincyBonus(crew, true))}</span>
+          <span>Weapon: {signedBonus(crewCheckBonus(crew, 'dex'))}</span>
+          <span>Sail trimming: {signedBonus(crewCheckBonus(crew, 'int'))}</span>
+          <span>Sail maxing: {signedBonus(crewCheckBonus(crew, 'con'))}</span>
+          <span>Helm: {signedBonus(bestCheckBonus(crew, ['wis', 'int'], true))}</span>
         </div>
+        <div className="text-gray-500">{crew.cost} Gp/week</div>
       </div>
     );
   };
@@ -180,33 +181,19 @@ export function CrewRoster({
       <div className="border-b border-gray-800 px-2 py-1">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] uppercase tracking-wide text-gray-500">Crew reserve</span>
-          <div className="flex items-center gap-1">
-            {canAuto && onAuto && (
-              <button
-                type="button"
-                onClick={onAuto}
-                className={`rounded border px-1.5 py-0.5 text-[10px] ${
-                  autoArmed
-                    ? 'border-amber-300 bg-amber-600/50 text-amber-50'
-                    : 'border-amber-600 text-amber-200 hover:bg-amber-700/30'
-                }`}
-              >
-                {autoArmed ? 'Fill' : 'Auto'}
-              </button>
-            )}
-            {canAuto && onClear && (
-              <button
-                type="button"
-                onClick={onClear}
-                className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-gray-800"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          {(canEdit || readOnly) && (
+            <button
+              type="button"
+              onClick={openAdd}
+              disabled={!canEdit}
+              className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + Add crew
+            </button>
+          )}
         </div>
-        <div className={`mt-0.5 ${grid} gap-1 text-[9px] uppercase tracking-wide text-gray-500`}>
-          <span /><span>Name</span><span>Level</span><span /><span />
+        <div className={`mt-0.5 ${grid} text-[9px] uppercase tracking-wide text-gray-500`}>
+          <span /><span>Name</span><span className="-ml-0.5">Level</span><span /><span />
         </div>
       </div>
 
@@ -273,16 +260,34 @@ export function CrewRoster({
           </div>
         ))}
 
-        {canEdit && (
-          <button
-            type="button"
-            onClick={openAdd}
-            className="flex w-full items-center justify-center gap-1 px-2 py-1.5 text-[11px] text-emerald-300 hover:bg-gray-800"
-          >
-            + Add crew
-          </button>
-        )}
       </div>
+
+      {canAuto && (onAuto || onClear) && (
+        <div className="flex items-center justify-end gap-1 border-t border-gray-800 px-2 py-1">
+          {onAuto && (
+            <button
+              type="button"
+              onClick={onAuto}
+              className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                autoArmed
+                  ? 'border-amber-300 bg-amber-600/50 text-amber-50'
+                  : 'border-amber-600 text-amber-200 hover:bg-amber-700/30'
+              }`}
+            >
+              {autoArmed ? 'Fill' : 'Auto'}
+            </button>
+          )}
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-gray-800"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {hover && (
         <BoundedTooltip boundsRef={rootRef} x={hover.x} y={hover.y} width={230}>
@@ -330,7 +335,7 @@ function ReviveDialog({
 }) {
   const [hp, setHp] = useState(maxHp);
   return (
-    <div className="fixed inset-0 z-[200] grid place-items-center bg-black/70" onMouseDown={onCancel}>
+    <div className="fixed inset-0 z-[260] grid place-items-center bg-black/70" onMouseDown={onCancel}>
       <div className="w-64 rounded-lg border border-gray-600 bg-gray-900 p-3" onMouseDown={e => e.stopPropagation()}>
         <div className="mb-2 text-xs text-gray-200">{title}</div>
         <label className="flex items-center gap-2 text-[11px] text-gray-400">

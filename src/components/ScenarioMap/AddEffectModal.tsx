@@ -88,7 +88,7 @@ export function AddEffectModal({
   });
 
   return (
-    <div className="absolute inset-0 z-[70] bg-black/50 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="absolute inset-0 z-[260] bg-black/50 flex items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-5 w-[460px] text-white space-y-3" onMouseDown={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <p className="font-semibold text-yellow-300">Effects — {unit.unitName}</p>

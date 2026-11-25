@@ -62,7 +62,7 @@ export function CargoManifestDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] grid place-items-center bg-black/70" onMouseDown={onCancel}>
+    <div className="fixed inset-0 z-[260] grid place-items-center bg-black/70" onMouseDown={onCancel}>
       <div className="w-[420px] max-w-[96vw] rounded-xl border border-gray-600 bg-gray-900 p-4" onMouseDown={e => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-amber-300">{allowRemove ? 'Edit cargo' : 'Add cargo'}</h2>

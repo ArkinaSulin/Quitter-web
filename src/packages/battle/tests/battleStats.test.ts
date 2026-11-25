@@ -139,10 +139,10 @@ describe('battleStats', () => {
 
   const ALLIANCES: Record<string, AllianceGroup> = { blue: 'friendly', black: 'enemy', violet: 'friendly' };
 
-  const place = (seq: number, id: string, team: string, troops: number) =>
+  const place = (seq: number, id: string, team: string, troops: number, hp = 200) =>
     row({
       action_type: 'PLACE', seq,
-      sub_steps: [{ type: 'PLACE', description: '', unitId: id, changes: [], payload: { id, team, hex: hex(0, 0), currentTroopCount: troops } } as never],
+      sub_steps: [{ type: 'PLACE', description: '', unitId: id, changes: [], payload: { id, team, hex: hex(0, 0), currentTroopCount: troops, currentUnitHp: hp } } as never],
     });
 
   const turn = (seq: number, from: AllianceGroup | null, to: AllianceGroup) =>
@@ -154,11 +154,11 @@ describe('battleStats', () => {
       ] } as never],
     });
 
-  const damage = (seq: number, unitId: string, from: number, to: number, payload?: { killerUnitId: string; victimLevel: number }) =>
+  const damage = (seq: number, unitId: string, from: number, to: number, payload?: { killerUnitId: string; victimLevel: number }, hp: { from: number; to: number } = { from: 200, to: 150 }) =>
     row({
       action_type: 'ATTACK', seq,
       sub_steps: [{ type: 'DAMAGE', description: '', unitId, changes: [
-        { field: 'currentUnitHp', from: 200, to: 150 },
+        { field: 'currentUnitHp', from: hp.from, to: hp.to },
         { field: 'currentTroopCount', from, to },
       ], ...(payload ? { payload } : {}) } as never],
     });
@@ -206,6 +206,7 @@ describe('battleStats', () => {
     const a = unit({ id: 'a', team: 'blue', currentTroopCount: 10, currentUnitHp: 120 });
     const r = allRows(buildStats(rows, [a], ALLIANCES))[0];
     expect(r.introTroopCount).toBe(15);
+    expect(r.introHp).toBe(150); // HP snapshotted with the troops
     expect(r.troopLost).toBe(10); // gross: 5 + 5
   });
 
@@ -250,6 +251,35 @@ describe('battleStats', () => {
     expect(friendly.totalLevelsLost).toBe(24);
     expect(friendly.totalKills).toBe(3); // a killed 3 of b
     expect(friendly.totalKillLevels).toBe(15); // 3 x level 5
+  });
+
+  it('tracks starting HP, gross HP lost and kill HP', () => {
+    const rows = [
+      place(1, 'a', 'blue', 20, 200),
+      place(2, 'b', 'black', 20, 200),
+      damage(3, 'b', 20, 15, { killerUnitId: 'a', victimLevel: 5 }, { from: 200, to: 140 }), // a deals 60
+      damage(4, 'a', 20, 18, { killerUnitId: 'b', victimLevel: 3 }, { from: 200, to: 170 }), // b deals 30
+      damage(5, 'a', 18, 18, undefined, { from: 170, to: 120 }),                              // 50 HP, no kill credit
+    ];
+    const a = unit({ id: 'a', team: 'blue', level: 4, currentTroopCount: 18, currentUnitHp: 120 });
+    const b = unit({ id: 'b', team: 'black', level: 5, currentTroopCount: 15, currentUnitHp: 140 });
+    const stats = buildStats(rows, [a, b], ALLIANCES);
+    const ra = allRows(stats).find(r => r.unitId === 'a')!;
+    const rb = allRows(stats).find(r => r.unitId === 'b')!;
+    expect(ra.introHp).toBe(200);
+    expect(ra.hpLost).toBe(80); // 30 + 50
+    expect(ra.killHp).toBe(60); // payload-attributed only
+    expect(rb.hpLost).toBe(60);
+    expect(rb.killHp).toBe(30);
+    const friendly = stats.alliances.find(x => x.alliance === 'friendly')!;
+    expect(friendly.totalHp).toBe(200);
+    expect(friendly.totalHpLost).toBe(80);
+    expect(friendly.totalKillHp).toBe(60);
+    expect(stats.totals.hpLost).toBe(140);
+    expect(stats.totals.killHp).toBe(90);
+    const text = formatStatsText(stats);
+    expect(text).toContain('200 HP');
+    expect(text).toContain('kill');
   });
 
   it('hides empty teams and an empty Neutral alliance (Friendly/Enemy always shown)', () => {

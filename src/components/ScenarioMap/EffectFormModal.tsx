@@ -59,7 +59,7 @@ export function EffectFormModal({
   const setMod = (i: number, next: EffectModifier) => patch({ modifiers: value.modifiers.map((m, idx) => (idx === i ? next : m)) });
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={onCancel}>
+    <div className="absolute inset-0 z-[260] flex items-center justify-center bg-black/40" onMouseDown={onCancel}>
       <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 w-[480px] max-h-[85vh] overflow-y-auto" onMouseDown={e => e.stopPropagation()}>
         <p className="text-white font-semibold mb-3">{title}</p>
 

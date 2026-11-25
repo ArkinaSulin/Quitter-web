@@ -54,6 +54,14 @@ through the command log. See `21-ship-runtime.md`.
   cards and disembark).
 - Station actions shipped: sail speed ±1, rudder MC trim, hull repair, and ram.
   Crew defaults/CrewSkill updated (migration 165). Ship-layout wheel zoom added.
+- Intelligence captaincy shipped as the Bridge **Command bonus** control
+  (`Int + PB − 5`, may be negative, one Bridge card step per award, one pending
+  bonus per card, consumed by that card's next d20 roll). The **Helmsman** check
+  (control, ramming, barrel dodge, Best in ship skill) now uses the higher of Wis
+  or Int; sail trimming is DC `20 − effective MC`.
+- **Later:** Charisma captaincy — encourage the crew to auto-load weapons up to
+  Cha times per turn, likely with a skill check/limit; intentionally separate
+  from the current automatic crew loading.
 - Ship-layout pure zoom/pan, pointer-anchored wheel zoom, correct ghost placement,
   and the shared crew roster/adjust/revive/discard UI are shipped.
 - Crew roster grouping (ignore HP), tactical summary Mass/Crew lines, Best-in-

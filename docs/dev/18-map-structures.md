@@ -28,7 +28,17 @@ map), exactly like weapons/effects split authored vs placed.
 | | Storage | Shape |
 |---|---|---|
 | **Template** | `map_structure_templates` table | `StructureTemplate` (`src/types/structure.ts`) |
-| **Instance** | `maps.structures` jsonb (library); `scenarios.map_data.structures` snapshot | `{ templateId, hp?, maxHp?, dt?, doorHp?, outside? }` |
+| **Instance** | `maps.structures` jsonb (library); `scenarios.map_data.structures` snapshot | `{ templateId, template?, hp?, maxHp?, dt?, doorHp?, outside? }` |
+
+**Every placed instance carries a `template` snapshot.** It is written at
+placement time (Map Editor brush and the in-scenario Structure brush) and copied
+into the scenario when a reusable map is assigned. The runtime template map is
+built with `structureTemplatesWithSnapshots(structures, library)`, which overlays
+those snapshots on the shared library, so a map keeps the rules a structure was
+placed with even if the library template is later edited or deleted. Instances
+placed before this change have no snapshot and fall back to the live library.
+Re-place a structure (or use the instance editor for durability/AC/climb
+overrides) when you want it to pick up new template rules.
 
 Instances are keyed by anchor: `"q,r,dir"` for edges, `"q,r"` for hexes
 (`src/packages/movement/lib/mapStructures.ts`). A placed instance may override the
@@ -143,6 +153,15 @@ when the climb actually crosses the edge.
 
 A grounded unit's elevation changes **only across an adjacent edge**. The drag-drop
 branches on the **surface difference** (`handleUnitMove`):
+
+> **Free-placement exception.** Unit Selector drops, Free Move and turn 0 open
+> the **level chooser** when a hex has more than one valid home: structure top,
+> door level (only an open/broken door), ground, a ship deck, or a friendly host
+> unit (attach/ride). With one valid level it places directly. The chooser skips
+> the Climb/Pass prompt and clears the level’s occupancy check; normal paid moves
+> keep the edge-only rules below (including the door choice and climb cost).
+> Flyers also get an **Air altitude** option. An occupied top does not block the
+> inside/door slot, and vice versa.
 
 - **`dest > origin`** → the climb action (`handleClimbMove`, `steps × mp_*` MP, may hang
   midway). The per-10-ft value comes from the **crossed edge structure** when one is on

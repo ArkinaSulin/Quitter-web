@@ -241,7 +241,13 @@ as applied in the notes — check the live DB before relying on it).
 | 171 | Persistent player ships: `player_ships`, `player_ship_versions`, shared serial counter, ship links + dry-dock lease RPCs (renamed by 174) | applied |
 | 172 | Claim an ordinary placed ship as a player ship (`convert_ship_to_player`) + initial v1 version | applied |
 | 173 | Claim with confirmation name (`convert_ship_to_player(p_ship_id, p_name)`) | pending |
-| 174 | Rename `player_ships` → `ship_player` and `player_ship_versions` → `ship_player_versions`; RPC bodies + policies/indexes updated | pending |
+| 174 | Rename `player_ships` → `ship_player` and `player_ship_versions` → `ship_player_versions`; RPC bodies + policies/indexes updated | applied |
+| 175 | Dry-dock refit: `ship_armors.cost_per_ton`, `min_hp_attained` (player/instance/version), version `snapshot_before`/`invoice`/`total_cost`, `ship_spelljammer.dry_dock_revision`, `ship_cargo` price catalog, public catalog read policies | applied |
+| 176 | Campaign ships: drop `ship_player*`, create `ship_campaign` versions, `ship_spelljammer.campaign_id`/`campaign_carrier`, per-scenario slot index, carrier mirror + promotion triggers, scenario-label bake trigger, declare/convert/rename/fork/delete RPCs, `CAMPAIGN` sub-step | applied |
+| 177 | Content ownership: `owner_id` on the authoring tables, `is_admin_user`/`owns_content`/`enforce_content_owner` trigger (creator-locked edits, NULL = admin-only), normalises the old `created_by` columns | applied |
+| 178 | Campaign numbering: server-authoritative `fork_campaign_version` (family max + 1, rename resets to 1), `roman_numeral`, owner-only `renumber_campaign_family` repair | applied |
+| 179 | Fix ambiguous `numeral` in `fork_campaign_version` (rename the PL/pgSQL variable and CTE column) | pending |
+| 180 | Ship weapon `max_targets` (default 1, `>= 1`; Mangonel rows seeded to 3) | pending |
 
 ### Verify what's actually applied
 

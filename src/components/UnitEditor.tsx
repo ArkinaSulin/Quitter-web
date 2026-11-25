@@ -11,10 +11,12 @@ import { parseWeapons, stringifyWeapons, Weapon as WeaponType, formatWeaponDispl
 import { WeaponEditorModal } from '@/components/WeaponEditorModal';
 import { TokenPreview } from '@/components/TokenRenderer/TokenPreview';
 import { Team } from '@/packages/units';
-import { mapTemplate, mapTemplateToRow } from '@/packages/infra';
+import { mapTemplate, mapTemplateToRow, type OwnershipFilter } from '@/packages/infra';
 import { raceIconFromName } from '@/packages/infra';
 import { EffectModifierFields } from '@/components/EffectEditor/EffectModifierFields';
 import { StatValueHint } from '@/components/shared/StatValueHint';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { OwnerChip, OwnerFilterSelect, OwnerLockNotice } from '@/components/shared/ContentOwnership';
 
 const SIZE_LABELS: Record<number, string> = {
   75: 'Small',
@@ -80,8 +82,10 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
   );
 }
 
-export default function UnitEditor({ readOnly = false }: { readOnly?: boolean }) {
+export default function UnitEditor({ readOnly: capabilityReadOnly = false }: { readOnly?: boolean }) {
   const router = useRouter();
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
   const [templates, setTemplates] = useState<UnitTemplate[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [unitSearchTerm, setUnitSearchTerm] = useState('');
@@ -103,6 +107,9 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
   const [sizeCategories, setSizeCategories] = useState<SizeCategory[]>([]);
 
   const [formData, setFormData] = useState<UnitTemplate | null>(null);
+  const isNewDraft = !formData || !formData.id || selectedId === 'new';
+  const ownershipLocked = !capabilityReadOnly && !isNewDraft && !!formData && !ownership.canEdit(formData.ownerId);
+  const readOnly = capabilityReadOnly || ownershipLocked;
   const [previewTeam, setPreviewTeam] = useState<Team>('blue');
 
   const [testCasualtyPercent, setTestCasualtyPercent] = useState<number>(0);
@@ -636,7 +643,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
   };
 
   const handleClone = () => {
-    if (readOnly) return;
+    if (capabilityReadOnly) return;
     requestAction(() => {
       if (!formData) return;
       setCloneName(`${formData.unitName} (Clone)`);
@@ -816,7 +823,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
   };
 
   const handleSaveAs = () => {
-    if (readOnly) return;
+    if (capabilityReadOnly) return;
     if (!formData) return;
     setCloneName(`${formData.unitName} (Copy)`);
     setCloneError('');
@@ -893,7 +900,7 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
         <h1 className="text-2xl font-bold text-white">Unit Editor</h1>
         <div className="flex items-center gap-3">
-          {readOnly && (
+          {capabilityReadOnly && (
             <span className="px-3 py-1 rounded bg-gray-700 border border-gray-600 text-xs text-gray-300">
               Read-only view — editing requires a DM or admin
             </span>
@@ -933,6 +940,14 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
               </>
             )}
           </div>
+          <div className="mb-3">
+            <OwnerFilterSelect
+              ownership={ownership}
+              value={ownerFilter}
+              onChange={setOwnerFilter}
+              className="w-full"
+            />
+          </div>
           <div className="mb-4">
             <input
               type="text"
@@ -943,8 +958,10 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
             />
           </div>
           <div className="flex-1 overflow-y-auto space-y-1">
-            {templates
-              .filter(t => t.unitName.toLowerCase().includes(unitSearchTerm.toLowerCase()))
+            {ownership.filter(
+              templates.filter(t => t.unitName.toLowerCase().includes(unitSearchTerm.toLowerCase())),
+              ownerFilter,
+            )
               .map(template => {
               const isSelected = template.id === selectedId;
               return (
@@ -961,6 +978,9 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
                   <div className="text-xs text-gray-400">
                     Cost: {template.equipCostGp || 0}gp · {template.raceName || 'No Race'}
                   </div>
+                  <div className="mt-0.5">
+                    <OwnerChip ownership={ownership} ownerId={template.ownerId} />
+                  </div>
                 </div>
               );
             })}
@@ -970,6 +990,15 @@ export default function UnitEditor({ readOnly = false }: { readOnly?: boolean })
         <div className="flex-1 min-w-0 flex flex-col bg-[#0d0d1a]">
           {formData ? (
             <>
+              {ownershipLocked && (
+                <div className="px-6 pt-3">
+                  <OwnerLockNotice
+                    ownership={ownership}
+                    ownerId={formData.ownerId}
+                    onClone={handleClone}
+                  />
+                </div>
+              )}
               <div className="flex-1 overflow-y-auto p-6">
                 <fieldset disabled={readOnly} className="max-w-3xl space-y-4">
                   {/* Identity — full width */}

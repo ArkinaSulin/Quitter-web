@@ -64,6 +64,7 @@ export function mapTemplate(row: any): UnitTemplate {
     effects: parseModifiers(row.effects),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: row.owner_id || null,
   };
 }
 

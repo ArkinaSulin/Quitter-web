@@ -27,6 +27,7 @@ import {
   componentById,
   componentByName,
   computeCargoCapacity,
+  cargoCapacityAfterDamage,
   computeCrewHp,
   computeCrewWeeklyCost,
   computeHullCost,
@@ -48,7 +49,12 @@ import {
   mapShipTemplateToRow,
   mapShipWeaponRow,
   mapWeaponRows,
+  type ShipBuild,
+  type ShipDerivedStats,
 } from '@/packages/ships';
+import type { OwnershipFilter } from '@/packages/infra';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { OwnerChip, OwnerFilterSelect } from '@/components/shared/ContentOwnership';
 import { CrewRoster } from '@/components/ShipRenderer/CrewRoster';
 import { CargoManifest, CargoLoadBadge } from '@/components/ShipRenderer/CargoManifest';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
@@ -180,8 +186,52 @@ function groupCrew(crews: ShipCrew[]) {
   return { named, unnamed, unnamedCost, first, uniform };
 }
 
-export default function ShipEditor({ readOnly = false }: { readOnly?: boolean }) {
+export interface ShipEditorPanelContext {
+  template: ShipTemplate;
+  build: ShipBuild;
+  stats: ShipDerivedStats;
+  isDirty: boolean;
+}
+
+export interface ShipEditorProps {
+  readOnly?: boolean;
+  /**
+   * `library` is Archfar's Shipyard (template list + save/clone/delete).
+   * `dryDock` edits one player-ship design; the library list is replaced by the
+   * caller's panel (the dry-dock invoice) and Save is delegated.
+   */
+  mode?: 'library' | 'dryDock';
+  initialTemplate?: ShipTemplate | null;
+  /** Fields the caller forbids editing (dry dock locks total mass). */
+  lockedFields?: (keyof ShipTemplate)[];
+  renderLeftPanel?: (context: ShipEditorPanelContext) => React.ReactNode;
+  onSaveOverride?: (template: ShipTemplate) => Promise<boolean>;
+  /** Dry dock: commit the design as a new campaign version (sealed, not undoable). */
+  onSaveAsNewVersionOverride?: (template: ShipTemplate) => Promise<boolean>;
+  /** Dry dock: close the window locally instead of the unsaved-changes prompt. */
+  onCancelOverride?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  /** Read-only preview of a historical version; hides the save bar. */
+  previewMode?: boolean;
+  /** Runtime box damage used to show the effective cargo hold in dry dock. */
+  damageBoxState?: Record<string, unknown> | null;
+}
+
+export default function ShipEditor({
+  readOnly: capabilityReadOnly = false,
+  mode = 'library',
+  initialTemplate = null,
+  lockedFields = [],
+  renderLeftPanel,
+  onSaveOverride,
+  onSaveAsNewVersionOverride,
+  onCancelOverride,
+  onDirtyChange,
+  previewMode = false,
+  damageBoxState = null,
+}: ShipEditorProps) {
   const router = useRouter();
+  const dryDockMode = mode === 'dryDock';
   const [templates, setTemplates] = useState<ShipTemplate[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -196,7 +246,15 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const [components, setComponents] = useState<ShipComponent[]>([]);
   const [weaponsCatalog, setWeaponsCatalog] = useState<ShipWeapon[]>([]);
 
-  const [formData, setFormData] = useState<ShipTemplate | null>(null);
+  const [formData, setFormData] = useState<ShipTemplate | null>(
+    () => (mode === 'dryDock' ? (initialTemplate ? { ...initialTemplate } : null) : null),
+  );
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
+  const ownershipLocked = !dryDockMode
+    && !!formData?.id
+    && !ownership.canEdit(formData.ownerId);
+  const readOnly = capabilityReadOnly || previewMode || ownershipLocked;
 
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloneName, setCloneName] = useState('');
@@ -228,6 +286,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     ? buildShipFromTemplate(formData, armors, components, weaponsCatalog)
     : null;
   const cargoCapacity = formData && build ? computeCargoCapacity(build) : 0;
+  const effectiveCargoCapacity = build
+    ? cargoCapacityAfterDamage(build, damageBoxState).effectiveCapacity
+    : 0;
   const cargoManifest = formData?.manifest ?? [];
   const manifestMass = cargoManifestMass(cargoManifest);
   const foodWaterDays = supplyDays(cargoManifest, formData?.crews.length ?? 0);
@@ -238,6 +299,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   const stats = build ? computeShipBuild({ ...build, performanceMass }) : null;
 
   const isDirty = !!formData && JSON.stringify(formData) !== savedSnapshotRef.current;
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const requestAction = (action: () => void) => {
     if (isDirty) {
@@ -268,8 +333,9 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   const updateFormData = useCallback((field: keyof ShipTemplate, value: any) => {
     if (readOnly) return;
+    if (lockedFields.includes(field)) return;
     setFormData(prev => (prev ? { ...prev, [field]: value } : prev));
-  }, [readOnly]);
+  }, [readOnly, lockedFields]);
 
   const dropCardKey = (key: string) => {
     if (!formData) return;
@@ -396,14 +462,6 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     setCardMenu(null);
   };
 
-  const openAddCrew = () => {
-    if (readOnly) return;
-    setEditingCrewIndex(null);
-    setCrewDraft(defaultCrewDraft());
-    setCrewDraftTouched({ hp: false, cost: false });
-    setShowCrewModal(true);
-  };
-
   const openEditCrew = (index: number) => {
     if (readOnly) return;
     const c = formData?.crews[index];
@@ -469,6 +527,24 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Dry dock edits one frozen design from the scenario snapshot, so it
+        // only needs the part catalogs (players are not shipyard readers).
+        if (dryDockMode) {
+          const [armorsRes, componentsRes, weaponsRes] = await Promise.all([
+            supabase.from('ship_armors').select('*').order('id'),
+            supabase.from('ship_components').select('*').order('id'),
+            supabase.from('ship_weapons').select('*').order('id'),
+          ]);
+          if (armorsRes.error) throw armorsRes.error;
+          if (componentsRes.error) throw componentsRes.error;
+          if (weaponsRes.error) throw weaponsRes.error;
+          setArmors((armorsRes.data || []).map(mapShipArmorRow));
+          setComponents((componentsRes.data || []).map(mapShipComponentRow));
+          setWeaponsCatalog((weaponsRes.data || []).map(mapShipWeaponRow));
+          setTemplates([]);
+          setLoading(false);
+          return;
+        }
         // Flat queries + client-side join merge: avoids depending on PostgREST resolving
         // the ship_template_* relationships (a schema-cache hiccup would otherwise blank
         // the whole list).
@@ -525,9 +601,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       }
     };
     fetchData();
-  }, []);
+  }, [dryDockMode]);
 
   useEffect(() => {
+    if (dryDockMode) return;
     if (selectedId === 'new') return;
     if (selectedId) {
       const found = templates.find(t => t.id === selectedId);
@@ -543,6 +620,19 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
       setFormData(null);
     }
   }, [selectedId, templates]);
+
+  // Dry-dock mode starts from the supplied design and has no library selection.
+  useEffect(() => {
+    if (!dryDockMode) return;
+    const start = initialTemplate ? { ...initialTemplate } : null;
+    setFormData(start);
+    savedSnapshotRef.current = start ? JSON.stringify(start) : '';
+    setSelectedId(start?.id ?? null);
+    setError(null);
+    setSuccess(null);
+    // The caller keys this component by ship id; the initial design is a mount input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dryDockMode]);
 
   useEffect(() => {
     setSimulatedCargo(cargoManifestMass(formData?.manifest));
@@ -615,7 +705,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
   };
 
   const handleClone = () => {
-    if (readOnly) return;
+    if (capabilityReadOnly) return;
     requestAction(() => {
       if (!formData) return;
       setCloneName(`${formData.name} (Clone)`);
@@ -727,6 +817,39 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     }
   };
 
+  const handleSaveAsNewVersion = async (): Promise<boolean> => {
+    if (readOnly || !dryDockMode) return false;
+    if (!formData) {
+      setError('No ship selected to save');
+      return false;
+    }
+    if (!onSaveAsNewVersionOverride) {
+      setError('Dry-dock version save is not connected.');
+      return false;
+    }
+    try {
+      const synced = withSyncedDeck(formData);
+      const ok = await onSaveAsNewVersionOverride(synced);
+      if (ok) {
+        setFormData(synced);
+        savedSnapshotRef.current = JSON.stringify(synced);
+        setError(null);
+      }
+      return ok;
+    } catch (err: any) {
+      setError(err?.message || 'The refit could not be committed.');
+      return false;
+    }
+  };
+
+  const handleDryDockCancel = () => {
+    if (onCancelOverride) {
+      onCancelOverride();
+      return;
+    }
+    handleUnsavedCancel();
+  };
+
   const handleSave = async (): Promise<boolean> => {
     if (readOnly) return false;
     if (!formData) {
@@ -736,6 +859,26 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
     if (!formData.name.trim()) {
       setError('Ship name is required');
       return false;
+    }
+    if (dryDockMode) {
+      if (!onSaveOverride) {
+        setError('Dry-dock Save is not connected.');
+        return false;
+      }
+      try {
+        const synced = withSyncedDeck(formData);
+        const ok = await onSaveOverride(synced);
+        if (ok) {
+          setFormData(synced);
+          savedSnapshotRef.current = JSON.stringify(synced);
+          setError(null);
+          flashSuccess('Refit saved.');
+        }
+        return ok;
+      } catch (err: any) {
+        setError(err?.message || 'The refit could not be saved.');
+        return false;
+      }
     }
     if (isNameTaken(formData.name.trim(), formData.id)) {
       setError('A ship with this name already exists');
@@ -801,8 +944,8 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
   if (loading) {
     return (
-      <div className="w-full h-screen bg-[#0d0d1a] text-white flex items-center justify-center">
-        Loading Archfar's Shipyard...
+      <div className={`flex w-full ${dryDockMode ? 'h-full' : 'h-screen'} bg-[#0d0d1a] text-white items-center justify-center`}>
+        {dryDockMode ? 'Loading dry dock…' : "Loading Archfar's Shipyard..."}
       </div>
     );
   }
@@ -840,9 +983,11 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
 
   return (
-    <div className="flex flex-col h-screen bg-[#0d0d1a] text-white">
+    <div className={`flex flex-col ${dryDockMode ? 'h-full' : 'h-screen'} bg-[#0d0d1a] text-white`}>
       <div className="relative flex items-center justify-between px-6 py-3 border-b border-gray-700 bg-[#0d0d1a]">
-        <h1 className="shrink-0 text-2xl font-bold text-white">Archfar's Shipyard</h1>
+        {!dryDockMode && (
+          <h1 className="shrink-0 text-2xl font-bold text-white">Archfar's Shipyard</h1>
+        )}
         <div
           className="pointer-events-none absolute left-1/2 top-1/2 z-20 w-[min(44rem,46vw)] -translate-x-1/2 -translate-y-1/2"
           aria-live="polite"
@@ -887,75 +1032,98 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          {readOnly && (
+          {capabilityReadOnly && (
             <span className="px-3 py-1 rounded bg-gray-700 border border-gray-600 text-xs text-gray-300">
-              Read-only view — building requires an admin
+              {dryDockMode ? 'Read-only — take the editor in the invoice panel' : 'Read-only view — building requires an admin'}
             </span>
           )}
-          <button
-            onClick={() => requestAction(() => router.push('/'))}
-            className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-          >
-            Main Menu
-          </button>
+          {!dryDockMode && (
+            <button
+              onClick={() => requestAction(() => router.push('/'))}
+              className="px-4 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
+            >
+              Main Menu
+            </button>
+          )}
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left — template picker */}
-        <div className="w-1/4 max-w-[256px] flex-shrink-0 p-4 border-r border-gray-700 flex flex-col bg-[#0d0d1a]">
-          <div className="flex gap-2 mb-4">
-            {!readOnly && (
-              <>
-                <button
-                  onClick={handleNew}
-                  className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
-                >
-                  New
-                </button>
-              </>
-            )}
-          </div>
-          <div className="mb-4">
-            <input
-              type="text"
-              placeholder="Search ships..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
-            />
-          </div>
-          <div className="flex-1 overflow-y-auto space-y-1">
-            {templates
-              .filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()))
-              .map(template => {
-                const isSelected = template.id === selectedId;
-                return (
-                  <div
-                    key={template.id}
-                    onClick={() => requestAction(() => setSelectedId(template.id))}
-                    className={`px-3 py-2 rounded cursor-pointer transition border ${
-                      isSelected
-                        ? 'bg-yellow-500/20 border-yellow-400'
-                        : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
-                    }`}
+        {/* Left — template picker (library) or invoice (dry dock) */}
+        <div className="w-1/4 max-w-[300px] flex-shrink-0 border-r border-gray-700 flex flex-col bg-[#0d0d1a]">
+          {dryDockMode ? (
+            <div className="flex-1 min-h-0 overflow-hidden p-3">
+              {formData && build && stats && renderLeftPanel
+                ? renderLeftPanel({ template: formData, build, stats, isDirty })
+                : <div className="text-sm text-gray-500">Preparing dry dock…</div>}
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col p-4">
+              <div className="flex gap-2 mb-4">
+                {!readOnly && (
+                  <button
+                    onClick={handleNew}
+                    className="flex-1 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition"
                   >
-                    <div className="font-medium truncate">{template.name}</div>
-                    {template.role?.trim() && (
-                      <div className="text-sm text-gray-300 truncate">{template.role}</div>
-                    )}
-                    <div className="text-xs text-gray-500">
-                      {template.totalMass}t · {armorName(template.armorId)}
-                    </div>
-                  </div>
-                );
-              })}
-            {templates.length === 0 && (
-              <div className="text-sm text-gray-500 text-center py-4">
-                No ships found. Create one with "New".
+                    New
+                  </button>
+                )}
               </div>
-            )}
-          </div>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  placeholder="Search ships..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400"
+                />
+              </div>
+              <div className="mb-3">
+                <OwnerFilterSelect
+                  ownership={ownership}
+                  value={ownerFilter}
+                  onChange={setOwnerFilter}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-1">
+                {ownership.filter(
+                  templates.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase())),
+                  ownerFilter,
+                )
+                  .map(template => {
+                    const isSelected = template.id === selectedId;
+                    return (
+                      <div
+                        key={template.id}
+                        onClick={() => requestAction(() => setSelectedId(template.id))}
+                        className={`px-3 py-2 rounded cursor-pointer transition border ${
+                          isSelected
+                            ? 'bg-yellow-500/20 border-yellow-400'
+                            : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                        }`}
+                      >
+                        <div className="font-medium truncate">{template.name}</div>
+                        {template.role?.trim() && (
+                          <div className="text-sm text-gray-300 truncate">{template.role}</div>
+                        )}
+                        <div className="text-xs text-gray-500">
+                          {template.totalMass}t · {armorName(template.armorId)}
+                        </div>
+                        <div className="mt-0.5">
+                          <OwnerChip ownership={ownership} ownerId={template.ownerId} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                {templates.length === 0 && (
+                  <div className="text-sm text-gray-500 text-center py-4">
+                    No ships found. Create one with "New".
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
                 {/* Middle — builder */}
@@ -983,11 +1151,15 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                         className="w-full bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-yellow-400"
                       />
                     </Cell>
-                    <Cell label="Total mass (ton)" widthClass="w-32">
+                    <Cell
+                      label={lockedFields.includes('totalMass') ? 'Total mass (fixed)' : 'Total mass (ton)'}
+                      widthClass="w-32"
+                    >
                       <NumInput
                         value={formData.totalMass}
                         min={1}
                         max={500}
+                        disabled={lockedFields.includes('totalMass')}
                         onChange={(v) => updateFormData('totalMass', Math.max(1, Math.floor(v)))}
                       />
                     </Cell>
@@ -1026,7 +1198,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
                       </div>
                       <div className="grid grid-cols-4 gap-2 mt-2">
                         <StatCell label="Cargo">
-                          <CargoLoadBadge mass={manifestMass} capacity={cargoCapacity} />
+                          <CargoLoadBadge mass={manifestMass} capacity={effectiveCargoCapacity} designCapacity={cargoCapacity} />
                         </StatCell>
                         <StatCell label="Crew (min / full)">{stats.minCrew} / {stats.fullCrew}</StatCell>
                         <StatCell label="Food & water">
@@ -1436,28 +1608,53 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               </div>
 
               {/* Sticky Save bar */}
-              {!readOnly && (
+              {!capabilityReadOnly && !previewMode && (
                 <div className="flex-none px-6 py-3 border-t border-gray-700 bg-[#0d0d1a] flex gap-3">
                   <button
                     onClick={handleSave}
+                    disabled={readOnly}
                     className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isNew ? 'Create' : 'Save'}
+                    {dryDockMode ? 'Save refit' : isNew ? 'Create' : 'Save'}
                   </button>
-                  <button
-                    onClick={handleClone}
-                    disabled={!formData}
-                    className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Clone
-                  </button>
-                  {!isNew && (
-                    <button
-                      onClick={handleDelete}
-                      className="px-6 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition"
-                    >
-                      Delete
-                    </button>
+                  {dryDockMode ? (
+                    <>
+                      <button
+                        onClick={handleSaveAsNewVersion}
+                        disabled={readOnly}
+                        title="Commit this design as a new campaign version. Refits cannot be undone."
+                        className="px-6 py-2 bg-amber-800 border-2 border-amber-400 text-white rounded hover:bg-amber-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Save as new version
+                      </button>
+                      {onCancelOverride && (
+                        <button
+                          onClick={handleDryDockCancel}
+                          className="px-6 py-2 bg-gray-700 border-2 border-gray-500 text-white rounded hover:bg-gray-600 transition"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={handleClone}
+                        disabled={!formData}
+                        className="px-6 py-2 bg-green-800 border-2 border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Clone
+                      </button>
+                      {!isNew && (
+                        <button
+                          onClick={handleDelete}
+                          disabled={readOnly}
+                          className="px-6 py-2 bg-red-800 border-2 border-red-400 text-white rounded hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1529,18 +1726,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               </div>
 
               <div className="max-h-[38%] shrink-0 overflow-y-auto rounded border border-gray-700 bg-gray-800 p-2.5">
-                <div className="flex items-center justify-between mb-2">
+                <div className="mb-2 flex items-center justify-between">
                   <label className="block text-[10px] text-gray-400">
                     Ship roster ({formData.crews.length}) · Min {stats.minCrew} / Full {stats.fullCrew} · Food &amp; water {foodWaterDays == null ? '—' : `${foodWaterDays} days`}
                   </label>
-                  <button
-                    type="button"
-                    onClick={openAddCrew}
-                    disabled={readOnly}
-                    className="px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    + Add crew
-                  </button>
                 </div>
 
                 <div className="flex flex-wrap gap-1 mb-2" title="Crew roster">
@@ -1563,8 +1752,10 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
               <div className="shrink-0">
                 <CargoManifest
                   items={formData.manifest}
-                  capacity={cargoCapacity}
+                  capacity={effectiveCargoCapacity}
+                  designCapacity={cargoCapacity}
                   canEdit={!readOnly}
+                  readOnly={readOnly}
                   foodWaterDays={foodWaterDays}
                   people={formData.crews.length}
                   onChange={items => updateFormData('manifest', items)}
@@ -1581,7 +1772,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
 {/* Clone / Save As modal */}
       {showCloneModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[260]">
           <div className="bg-gray-800 p-6 rounded-lg w-96 border border-gray-700">
             <h2 className="text-xl font-bold mb-4 text-white">
               {formData && templates.some(t => t.id === formData.id) ? 'Clone Ship' : 'Save As'}
@@ -1617,7 +1808,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
       {/* Unsaved changes modal */}
       {showUnsavedModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[260]">
           <div className="bg-gray-800 p-6 rounded-lg w-[420px] border border-gray-700">
             <h2 className="text-xl font-bold mb-3 text-white">Unsaved Changes</h2>
             <p className="text-sm text-gray-300 mb-4">
@@ -1649,7 +1840,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
       {/* Add optional components modal */}
       {showComponentsModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[260]">
           <div className="bg-gray-800 p-5 rounded-lg w-[560px] max-h-[80vh] border border-gray-700 flex flex-col">
             <h2 className="text-lg font-bold mb-3 text-white">Add components</h2>
             <div className="flex-1 overflow-y-auto space-y-1">
@@ -1704,12 +1895,12 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
         return (
           <>
             <div
-              className="fixed inset-0 z-40"
+              className="fixed inset-0 z-[240]"
               onClick={() => setCardMenu(null)}
               onContextMenu={(e) => { e.preventDefault(); setCardMenu(null); }}
             />
             <div
-              className="fixed z-50 w-56 max-h-[80vh] overflow-y-auto rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
+              className="fixed z-[250] w-56 max-h-[80vh] overflow-y-auto rounded border border-gray-600 bg-gray-800 p-1 shadow-xl"
               style={{
                 left: Math.min(cardMenu.x, window.innerWidth - 240),
                 top: Math.min(cardMenu.y, window.innerHeight - 480),
@@ -1795,7 +1986,7 @@ export default function ShipEditor({ readOnly = false }: { readOnly?: boolean })
 
       {/* Add / Edit Crew modal */}
       {showCrewModal && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[260]">
           <div className="bg-gray-800 p-5 rounded-lg w-[630px] max-w-[95vw] border border-gray-700">
             <h2 className="text-lg font-bold mb-3 text-white">{editingCrewIndex !== null ? 'Edit Crew' : 'Add Crew'}</h2>
             <div className="space-y-2">

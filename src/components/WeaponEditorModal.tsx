@@ -13,6 +13,9 @@ import { supabase } from '@/packages/infra/supabase';
 import { Weapon, blankWeapon, validateWeapon } from '@/packages/units';
 import { LibraryWeapon, mapWeaponRow } from '@/packages/infra';
 import { WeaponFields } from '@/components/WeaponEditor/WeaponFields';
+import type { OwnershipFilter } from '@/packages/infra';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { OwnerChip, OwnerFilterSelect } from '@/components/shared/ContentOwnership';
 
 interface WeaponEditorModalProps {
   /** The weapon being edited, or null for a fresh Add. */
@@ -34,6 +37,8 @@ function normalize(w: Weapon): Weapon {
 }
 
 export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEditorModalProps) {
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
   const [weapon, setWeapon] = useState<Weapon>(initial ?? blankWeapon());
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -63,7 +68,10 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
     onSave(normalize(weapon));
   };
 
-  const suggestions = library.filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const suggestions = ownership.filter(
+    library.filter(w => w.name.toLowerCase().includes(searchTerm.toLowerCase())),
+    ownerFilter,
+  );
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
@@ -82,6 +90,14 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-yellow-400 mb-2"
             />
+            <div className="mb-2">
+              <OwnerFilterSelect
+                ownership={ownership}
+                value={ownerFilter}
+                onChange={setOwnerFilter}
+                className="w-full"
+              />
+            </div>
             <div className="flex-1 overflow-y-auto space-y-1 pr-1">
               {libraryError ? (
                 <div className="text-sm text-red-400 text-center py-4">{libraryError}</div>
@@ -94,10 +110,13 @@ export function WeaponEditorModal({ initial, title, onSave, onClose }: WeaponEdi
                     // `lib` is already a mapped Weapon — do NOT re-run mapWeaponRow
                     // (it reads snake_case and would wipe every field to defaults).
                     onClick={() => { setWeapon({ ...lib }); setError(''); }}
-                    className="w-full text-left px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 transition text-sm flex items-center justify-between"
+                    className="w-full text-left px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 transition text-sm flex items-center justify-between gap-2"
                   >
                     <span className="truncate">{lib.name}</span>
-                    <span className="text-xs text-gray-400 ml-2">{lib.damageDice}</span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <OwnerChip ownership={ownership} ownerId={lib.ownerId} />
+                      <span className="text-xs text-gray-400">{lib.damageDice}</span>
+                    </span>
                   </button>
                 ))
               )}

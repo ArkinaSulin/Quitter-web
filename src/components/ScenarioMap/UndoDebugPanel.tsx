@@ -16,7 +16,7 @@ interface UndoDebugPanelProps {
 
 export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
   const [rows, setRows] = useState<CommandLogRow[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     const { data, error } = await supabase
@@ -63,9 +63,11 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
     };
   }, [scenarioId, refresh]);
 
-  // Keep the most recent row visible next to the newest message.
+  // Keep the most recent row visible by scrolling the list itself (never the
+  // document / top bar).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [rows]);
 
   // Highlight index = the last active (non-deleted) command.
@@ -91,7 +93,7 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
             <span>Status</span>
             <span>Chained</span>
           </div>
-          <div className="max-h-[50vh] overflow-y-auto border border-gray-700 rounded-b bg-gray-900/40 divide-y divide-gray-800">
+          <div ref={listRef} className="max-h-[50vh] overflow-y-auto overscroll-contain border border-gray-700 rounded-b bg-gray-900/40 divide-y divide-gray-800">
             {rows.map((r, i) => (
               <div
                 key={r.id}
@@ -105,7 +107,6 @@ export function UndoDebugPanel({ scenarioId }: UndoDebugPanelProps) {
                 <span className="text-gray-400">{r.chained ? 'Y' : 'N'}</span>
               </div>
             ))}
-            <div ref={bottomRef} />
           </div>
         </div>
       )}

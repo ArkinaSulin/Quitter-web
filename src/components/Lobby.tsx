@@ -589,6 +589,19 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
                 {canUseComponentEditor ? 'Ship Component Workshop' : 'Ship Component Library'}
               </button>
             )}
+            {(role === 'dm' || role === 'admin') && (
+              <button
+                onClick={() => router.push('/campaign-ships')}
+                className="w-full py-2 border rounded hover:brightness-125 transition"
+                style={{
+                  borderColor: '#2f6f8a',
+                  background: 'repeating-linear-gradient(45deg, #0d2c36 0, #0d2c36 10px, #07161b 10px, #07161b 20px)',
+                  color: '#d6f1f5',
+                }}
+              >
+                Campaign Ship Manager
+              </button>
+            )}
           {/* Delete Scenario — always the very last action button */}
           <div className="flex-1" />
           {selectedScenario && selectedScenario.deleteRequestedBy && (() => {
@@ -825,7 +838,7 @@ export default function Lobby({ onJoinScenario, onNewScenario, onReplayScenario 
 
   return (
     <div className="flex flex-col h-screen bg-[#0d0d1a] text-white">
-      {toast && <Toast message={toast} duration={5000} onClose={() => setToast(null)} />}
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       {renderHeader()}
 
       {currentUser && loading ? (

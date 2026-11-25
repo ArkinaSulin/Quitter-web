@@ -20,13 +20,18 @@ import {
   ensureDeckSlot,
   findCardSlot,
   heroCheckBonus,
+  bestCheckBonus,
+  captaincyBonus,
+  signedBonus,
   regionSlotAt,
   regionSlotCount,
   swapCards,
   weaponById,
   weaponTons,
+  survivingSailRudder,
 } from '@/packages/ships';
 import { ShipDeckLayout, ShipDeckRegion, ShipDeckSlot } from '@/types/ship';
+import { getSetting } from '@/packages/infra';
 import { ShipComponentCard, ShipComponentCardData } from './ShipComponentCard';
 import { BoundedTooltip } from '@/components/shared/BoundedTooltip';
 
@@ -59,7 +64,22 @@ function HeroTokenCanvas({
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const [tick, setTick] = useState(0);
+  const [devicePixelRatio, setDevicePixelRatio] = useState(() => (
+    typeof window === 'undefined' ? 1 : Math.max(1, window.devicePixelRatio || 1)
+  ));
   const imageUrl = unit.customImageUrl || unit.unitTypeIconUrl || unit.raceIconUrl || '';
+  // Max deck zoom is 200%: render at that size (times DPR) so the token is 1:1
+  // and crisp at max zoom, then CSS scales it down as the deck zooms out.
+  const renderScale = 2 * devicePixelRatio;
+  const canvasWidth = Math.max(1, Math.ceil(width * renderScale));
+  const canvasHeight = Math.max(1, Math.ceil(height * renderScale));
+
+  useEffect(() => {
+    const update = () => setDevicePixelRatio(Math.max(1, window.devicePixelRatio || 1));
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     if (!imageUrl) return;
@@ -90,17 +110,19 @@ function HeroTokenCanvas({
     } catch {
       // Ignore transient image/render failures.
     }
-  }, [unit, teamAlliances, tick]);
+  }, [unit, teamAlliances, tick, canvasWidth, canvasHeight]);
 
   return (
     <canvas
       ref={ref}
-      width={128}
-      height={96}
+      width={canvasWidth}
+      height={canvasHeight}
       style={{ width: `${width}px`, height: `${height}px` }}
     />
   );
 }
+
+const HERO_TOKEN_SCALE = 1.2;
 
 function HeroTokenLayer({
   cardKey,
@@ -112,6 +134,7 @@ function HeroTokenLayer({
   onHeroDropToMap,
   onHeroHover,
   onHeroLeave,
+  onHeroContextMenu,
 }: {
   cardKey: string;
   heroes: ShipHeroToken[];
@@ -122,6 +145,7 @@ function HeroTokenLayer({
   onHeroDropToMap?: (heroId: string, clientX: number, clientY: number) => void;
   onHeroHover?: (hero: ShipHeroToken, event: React.MouseEvent) => void;
   onHeroLeave?: () => void;
+  onHeroContextMenu?: (event: React.MouseEvent, hero: ShipHeroToken) => void;
 }) {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -141,12 +165,23 @@ function HeroTokenLayer({
     return () => observer.disconnect();
   }, [deckZoom]);
 
-  const tokenW = Math.max(1, Math.min(size.w, size.h));
+  const tokenW = Math.max(1, Math.min(size.w, size.h) * HERO_TOKEN_SCALE);
   const tokenH = tokenW * 0.75;
   const hitW = tokenW * 0.5;
   const hitH = tokenH * 0.5;
 
+  const openHeroMenu = (event: React.MouseEvent, hero: ShipHeroToken) => {
+    // Non-GM: no team menu — let the right-click fall through to the card menu.
+    if (!onHeroContextMenu) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onHeroContextMenu(event, hero);
+  };
+
   const startDrag = (event: React.PointerEvent, hero: ShipHeroToken) => {
+    // Left-click/pen/touch only. A right-click must reach the context menu;
+    // preventDefault here would start a drag and suppress `contextmenu`.
+    if (event.button !== 0) return;
     if (!onHeroDrop) return;
     event.preventDefault();
     event.stopPropagation();
@@ -194,6 +229,7 @@ function HeroTokenLayer({
             onMouseEnter={e => { e.stopPropagation(); onHeroHover?.(h, e); }}
             onMouseMove={e => { e.stopPropagation(); onHeroHover?.(h, e); }}
             onMouseLeave={e => { e.stopPropagation(); onHeroLeave?.(); }}
+            onContextMenu={e => openHeroMenu(e, h)}
             style={{
               left: `${left}%`,
               top: `${top}%`,
@@ -209,6 +245,7 @@ function HeroTokenLayer({
               className="absolute left-1/2 top-1/2 cursor-grab rounded-full"
               style={{ width: hitW, height: hitH, transform: 'translate(-50%, -50%)', pointerEvents: 'auto' }}
               onPointerDown={e => startDrag(e, h)}
+              onContextMenu={e => openHeroMenu(e, h)}
             />
           </div>
         );
@@ -233,6 +270,7 @@ function HeroTokenLayer({
 export function ShipLayout({
   build,
   stats,
+  facing = 0,
   readOnly = false,
   hideEmpty = false,
   heroesByCard,
@@ -246,6 +284,7 @@ export function ShipLayout({
   hideHeroTokens = false,
   onHeroDrop,
   onHeroDropToMap,
+  onHeroContextMenu,
   onDeckChange,
   onSlotContextMenu,
   onEmptySlotClick,
@@ -254,9 +293,13 @@ export function ShipLayout({
   cardToggles,
   onToggleCard,
   cardChecks,
+  commandBonusByCard,
+  targetOverlay,
 }: {
   build: ShipBuild;
   stats: ShipDerivedStats;
+  /** Runtime ship facing (0-5); the deck rotates while cards stay upright. */
+  facing?: number;
   readOnly?: boolean;
   /** Skip vacant slots (the region boxes stay) — used by the compact runtime window. */
   hideEmpty?: boolean;
@@ -280,6 +323,8 @@ export function ShipLayout({
   onHeroDrop?: (heroId: string, fromCardKey: string, toCardKey: string, xPct: number, yPct: number) => void;
   /** Dropped outside any card: try to disembark onto the scenario map. */
   onHeroDropToMap?: (heroId: string, clientX: number, clientY: number) => void;
+  /** Right-click a boarded hero token (DM team assignment). */
+  onHeroContextMenu?: (event: React.MouseEvent, hero: ShipHeroToken) => void;
   onDeckChange?: (layout: ShipDeckLayout) => void;
   onSlotContextMenu?: (
     event: React.MouseEvent,
@@ -297,6 +342,18 @@ export function ShipLayout({
   visibleCardKeys?: string[];
   /** Best current occupant check per card, for the hover tooltip. */
   cardChecks?: Record<string, { label: string; bonus: number; name: string }>;
+  /** Pending Int captaincy bonus per card key. */
+  commandBonusByCard?: Record<string, number>;
+  /**
+   * Deck targeting mode (Bridge Command bonus / hull repair): eligible cards
+   * take a click overlay instead of a separate picker list.
+   */
+  targetOverlay?: {
+    keys: string[];
+    label: (cardKey: string) => string;
+    title: (card: ShipComponentCardData) => string;
+    onTarget: (cardKey: string) => void;
+  } | null;
 }) {
   const c = build.components;
   const m = stats.massBreakdown;
@@ -322,6 +379,11 @@ export function ShipLayout({
   const [panning, setPanning] = useState(false);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; node: React.ReactNode } | null>(null);
   const deckWidth = Math.max(80, viewportSize.w - 8);
+  const facingStep = ((Math.floor(Number(facing) || 0) % 6) + 6) % 6;
+  const layoutAngle = facingStep * 60;
+  const counterRotate: React.CSSProperties | undefined = layoutAngle !== 0
+    ? { transform: `rotate(${-layoutAngle}deg)` }
+    : undefined;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -473,22 +535,47 @@ export function ShipLayout({
 
   if (build.sails > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.sail);
-    addCountedComponentCards(`component:${comp.id || 'sail'}`, 'Sail', build.sails, comp, {
-      aggregateTons: m.sails,
-      aggregateCrew: Math.max(1, Math.floor(build.sails / 4)),
-      unitTons: Math.round(comp.mass),
-      unitCrew: Math.max(1, Math.floor(build.sails / 4)),
-    });
+    const sailKey = `component:${comp.id || 'sail'}`;
+    const surviving = survivingSailRudder(build, boxState ?? null);
+    const unitTons = Math.max(1, Math.round(comp.mass || 1));
+    if (comp.canCombine) {
+      addComponentCard(
+        sailKey,
+        build.sails > 1 ? `Sail ×${build.sails}` : 'Sail',
+        m.sails,
+        surviving.sails > 0 ? Math.max(1, Math.ceil(surviving.sails / 4)) : 0,
+        comp,
+      );
+    } else {
+      for (let i = 0; i < build.sails; i += 1) {
+        const key = `${sailKey}:${i}`;
+        const destroyed = Math.max(0, Number(boxState?.[key] ?? 0));
+        addComponentCard(key, 'Sail', unitTons, destroyed < unitTons ? 1 : 0, comp);
+      }
+    }
   }
 
   if (build.rudders > 0) {
     const comp = componentByName(c, COMPONENT_NAMES.rudder);
-    addCountedComponentCards(`component:${comp.id || 'rudder'}`, 'Rudder', build.rudders, comp, {
-      aggregateTons: m.rudders,
-      aggregateCrew: Math.max(1, Math.ceil(build.rudders / 2)),
-      unitTons: Math.round(comp.mass),
-      unitCrew: Math.ceil(comp.crew),
-    });
+    const rudderKey = `component:${comp.id || 'rudder'}`;
+    const surviving = survivingSailRudder(build, boxState ?? null);
+    const unitTons = Math.max(1, Math.round(comp.mass || 1.5));
+    const unitCrew = Math.max(1, Math.ceil(comp.crew));
+    if (comp.canCombine) {
+      addComponentCard(
+        rudderKey,
+        build.rudders > 1 ? `Rudder ×${build.rudders}` : 'Rudder',
+        m.rudders,
+        surviving.rudders > 0 ? Math.max(1, Math.ceil(surviving.rudders / 2)) : 0,
+        comp,
+      );
+    } else {
+      for (let i = 0; i < build.rudders; i += 1) {
+        const key = `${rudderKey}:${i}`;
+        const destroyed = Math.max(0, Number(boxState?.[key] ?? 0));
+        addComponentCard(key, 'Rudder', unitTons, destroyed < unitTons ? unitCrew : 0, comp);
+      }
+    }
   }
 
   if (m.cargo > 0) {
@@ -512,6 +599,7 @@ export function ShipLayout({
         note: weapon?.special || undefined,
         kind: 'weapon',
         arcs: placed ? effectiveWeaponArcs(placed.region, build.weaponArcs?.[key]) : [],
+        arcRotation: facingStep * 60,
         reinforced: reinforced(build, key),
       };
     }
@@ -571,19 +659,11 @@ export function ShipLayout({
     if (card.kind === 'weapon') {
       return present >= card.crewRequired ? 'normal' : 'red';
     }
-    if (card.name.startsWith('Rudder')) {
-      const effective = Math.max(0, build.rudders - Math.floor(destroyed / 1.5));
-      if (effective <= 0) return 'red';
-      const required = Math.max(1, Math.ceil(effective / 2));
+    if (card.name.startsWith('Rudder') || card.name.startsWith('Sail')) {
+      // crewRequired already reflects surviving hardware boxes.
+      if (card.crewRequired <= 0) return 'red';
       if (present <= 0) return 'red';
-      return present >= required ? 'normal' : 'yellow';
-    }
-    if (card.name.startsWith('Sail')) {
-      const effective = Math.max(0, build.sails - Math.floor(destroyed));
-      if (effective <= 0) return 'red';
-      const required = Math.max(1, Math.floor(effective / 4));
-      if (present <= 0) return 'red';
-      return present >= required ? 'normal' : 'yellow';
+      return present >= card.crewRequired ? 'normal' : 'yellow';
     }
     // The hull is a repair station, not a crewed operating station.
     if (card.name === 'Hull') return 'normal';
@@ -660,7 +740,10 @@ export function ShipLayout({
         {occupants.length > 0 && (
           <div className="text-gray-400">On card: {occupants.map(o => o.name).join(', ')}</div>
         )}
-        {check && <div className="text-gray-300">{check.label}: +{check.bonus} ({check.name})</div>}
+        {check && <div className="text-gray-300">{check.label}: {signedBonus(check.bonus)} ({check.name})</div>}
+        {commandBonusByCard?.[key] !== undefined && (
+          <div className="text-amber-300">Pending command bonus: {commandBonusByCard[key] > 0 ? '+' : ''}{commandBonusByCard[key]}</div>
+        )}
         {card.note && <div className="text-gray-500">{card.note}</div>}
       </div>
     );
@@ -672,13 +755,19 @@ export function ShipLayout({
       <div className="space-y-0.5">
         <div className="text-[11px] font-semibold text-amber-200">{unit.unitName}</div>
         <div className="text-gray-400">Level {unit.level} - HP {unit.currentUnitHp}/{unit.maxUnitHp}</div>
-        <div className="text-gray-300">STR {unit.str} DEX {unit.dex} CON {unit.con} INT {unit.int} WIS {unit.wis} CHA {unit.cha}</div>
+        <div className="text-gray-300">
+          Actions:{' '}
+          <span className={unit.actionsAvailable <= 0 ? 'text-red-400' : ''}>
+            {unit.actionsAvailable}/{getSetting('hero_actions_per_turn', 5)}
+          </span>
+        </div>
         <div className="grid grid-cols-2 gap-x-3 text-gray-300">
-          <span>Weapon: +{heroCheckBonus(unit, 'dex')}</span>
-          <span>Helm: +{heroCheckBonus(unit, 'wis')}</span>
-          <span>Sail speed: +{heroCheckBonus(unit, 'con')}</span>
-          <span>Sail trim: +{heroCheckBonus(unit, 'int')}</span>
-          <span>Repair: +{heroCheckBonus(unit, 'str')}</span>
+          <span>Repair: {signedBonus(heroCheckBonus(unit, 'str'))}</span>
+          <span>Captaincy: {signedBonus(captaincyBonus(unit))}</span>
+          <span>Weapon: {signedBonus(heroCheckBonus(unit, 'dex'))}</span>
+          <span>Sail trimming: {signedBonus(heroCheckBonus(unit, 'int'))}</span>
+          <span>Sail maxing: {signedBonus(heroCheckBonus(unit, 'con'))}</span>
+          <span>Helm: {signedBonus(bestCheckBonus(unit, ['wis', 'int']))}</span>
         </div>
       </div>
     );
@@ -701,6 +790,9 @@ export function ShipLayout({
       || (cardFunctions?.[card.cardKey]?.length ?? 0) > 0
     );
     const cardSteps = hasCardFunction && card.cardKey ? cardStepsByCard?.[card.cardKey] : undefined;
+    const commandBonus = card.cardKey ? commandBonusByCard?.[card.cardKey] : undefined;
+    const targetable = !!card.cardKey && !!targetOverlay
+      && targetOverlay.keys.includes(card.cardKey);
     return (
       <div
         key={`${region}-${index}`}
@@ -720,12 +812,26 @@ export function ShipLayout({
         }}
         onMouseLeave={() => setTooltip(null)}
         className="relative h-full min-w-0"
+        style={counterRotate}
       >
         <ShipComponentCard
-          data={{ ...card, minimal, destroyedBoxes, cardSteps }}
+          data={{ ...card, minimal, destroyedBoxes, cardSteps, commandBonus }}
           weaponInfo={!minimal && card.cardKey ? weaponInfoByCard?.[card.cardKey] : undefined}
           functions={!minimal && card.cardKey ? cardFunctions?.[card.cardKey] : undefined}
         />
+        {targetable && card.cardKey && targetOverlay && (
+          <button
+            type="button"
+            title={targetOverlay.title(card)}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); targetOverlay.onTarget(card.cardKey!); }}
+            className="absolute inset-0 z-30 rounded-2xl border-2 border-amber-300 bg-amber-400/10 hover:bg-amber-400/25"
+          >
+            <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded border border-amber-300 bg-gray-950/90 px-1 py-0.5 text-[9px] font-semibold text-amber-200">
+              {targetOverlay.label(card.cardKey)}
+            </span>
+          </button>
+        )}
         {!minimal && card.cardKey && cardToggles && card.cardKey in cardToggles && (
           <button
             type="button"
@@ -759,6 +865,7 @@ export function ShipLayout({
             onHeroDropToMap={onHeroDropToMap}
             onHeroHover={(hero, event) => setTooltip({ x: event.clientX, y: event.clientY, node: heroTooltip(hero) })}
             onHeroLeave={() => setTooltip(null)}
+            onHeroContextMenu={onHeroContextMenu}
           />
         ) : null}
       </div>
@@ -819,7 +926,7 @@ export function ShipLayout({
         className={`shrink-0 rounded-2xl bg-gray-900/30 px-1 py-1 ring-2 ring-inset ring-gray-600/80 ${hiddenRegion ? 'invisible' : ''} ${wrapperClass}`}
         style={wrapperStyle}
       >
-        <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500">
+        <div className="mb-1 text-center text-[8px] uppercase tracking-widest text-gray-500" style={counterRotate}>
           {label}
         </div>
         <div
@@ -973,33 +1080,45 @@ export function ShipLayout({
       onMouseDown={onPanDown}
       onAuxClick={e => { if (e.button === 1) e.preventDefault(); }}
     >
-      <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[8px] uppercase tracking-widest text-gray-600">
-        Port
-      </span>
-      <span className="absolute right-1 top-1/2 -translate-y-1/2 rotate-90 text-[8px] uppercase tracking-widest text-gray-600">
-        Starboard
-      </span>
+      {layoutAngle === 0 && (
+        <>
+          <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[8px] uppercase tracking-widest text-gray-600">
+            Port
+          </span>
+          <span className="absolute right-1 top-1/2 -translate-y-1/2 rotate-90 text-[8px] uppercase tracking-widest text-gray-600">
+            Starboard
+          </span>
+        </>
+      )}
 
       <div ref={contentRef} className="space-y-1" style={deckStyle}>
-        {showBow && (
-          <div className="mx-auto shrink-0" style={regionWidth(bowColumns)}>
-            {renderRegion('bow', 'Bow', 'bow')}
+        <div
+          className="space-y-1"
+          style={{
+            transform: `rotate(${layoutAngle}deg)`,
+            transformOrigin: 'center center',
+          }}
+        >
+          {showBow && (
+            <div className="mx-auto shrink-0" style={regionWidth(bowColumns)}>
+              {renderRegion('bow', 'Bow', 'bow')}
+            </div>
+          )}
+
+          <div className="text-center text-[8px] uppercase tracking-widest text-gray-600" style={counterRotate}>360°</div>
+
+          <div className="flex min-w-max justify-center gap-1">
+            {showPort && <div className="shrink-0" style={regionWidth(1)}>{renderRegion('port', 'Port', 'column')}</div>}
+            <div className="shrink-0" style={regionWidth(2)}>{renderRegion('body', 'Body', 'body')}</div>
+            {showStarboard && <div className="shrink-0" style={regionWidth(1)}>{renderRegion('starboard', 'Starboard', 'column')}</div>}
           </div>
-        )}
 
-        <div className="text-center text-[8px] uppercase tracking-widest text-gray-600">360°</div>
-
-        <div className="flex min-w-max justify-center gap-1">
-          {showPort && <div className="shrink-0" style={regionWidth(1)}>{renderRegion('port', 'Port', 'column')}</div>}
-          <div className="shrink-0" style={regionWidth(2)}>{renderRegion('body', 'Body', 'body')}</div>
-          {showStarboard && <div className="shrink-0" style={regionWidth(1)}>{renderRegion('starboard', 'Starboard', 'column')}</div>}
+          {showStern && (
+            <div className="mx-auto shrink-0" style={regionWidth(sternColumns)}>
+              {renderRegion('stern', 'Stern', 'row')}
+            </div>
+          )}
         </div>
-
-        {showStern && (
-          <div className="mx-auto shrink-0" style={regionWidth(sternColumns)}>
-            {renderRegion('stern', 'Stern', 'row')}
-          </div>
-        )}
       </div>
     </div>
     {tooltip && (

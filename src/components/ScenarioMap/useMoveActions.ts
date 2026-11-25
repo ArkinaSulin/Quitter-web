@@ -21,7 +21,7 @@ import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, friendlyAirPassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
-import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10, isClimbingUnit, isHorizontalClimbMove } from '@/packages/movement';
+import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10, isClimbingUnit, isHorizontalClimbMove, type FreePlacementOption } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { ExecuteFn, routeUnit } from './routeUnit';
 import { PendingMove, PendingFormation, PendingHeroAttachConversion, PendingAttachOverBudget } from './SoftEnforcementModals';
@@ -77,7 +77,7 @@ interface MoveActionsDeps {
   moveUnitRecorded: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, attachedHero?: Unit | null, heroMaxMP?: number, description?: string, options?: { chained?: boolean; message?: string; verboseMessage?: string; stopInZoc?: boolean; breakToFormation?: string; elevation?: number; surface?: number }) => Promise<void>;
   moveUnitFree: (unit: Unit, targetHex: Hex, attachedHero?: Unit | null, breakToFormation?: string, elevation?: number) => Promise<void>;
   changeFormation: (unit: Unit, formation: string, formationsMap: Record<string, Formation>, surface?: number) => Promise<void>;
-  attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost?: number) => Promise<void>;
+  attachHero: (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost?: number, isFree?: boolean) => Promise<void>;
   swapHeroPosition: (hero: Unit) => Promise<void>;
   offerReactionsFor: (mover: Unit) => void;
   pruneReactionOffers: () => void;
@@ -94,6 +94,27 @@ interface MoveActionsDeps {
   /** Boarding: the drop target contains a ship. Return true when handled (the
    *  normal move must not also happen). `cost`/`maxMP` are the validated path. */
   onBoardShip?: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, isFree: boolean) => Promise<boolean>;
+  /** Free-placement boarding; skips adjacency and same-elevation checks. */
+  onBoardShipFree?: (unit: Unit, shipId: string) => Promise<void>;
+  /** Resolve the valid levels/hosts at a free-placement hex. */
+  buildFreePlacementOptions?: (args: {
+    hex: Hex;
+    isHero: boolean;
+    canFly: boolean;
+    team: string;
+    excludeUnitId?: string;
+    allowAnyUnit?: boolean;
+    mountId?: string | null;
+    mountName?: string | null;
+    sizeCategory?: number;
+  }) => FreePlacementOption[];
+  /** Open the shared free-placement chooser. */
+  requestFreePlacement?: (request: {
+    title: string;
+    subtitle?: string;
+    options: FreePlacementOption[];
+    onChoose: (option: FreePlacementOption) => void | Promise<void>;
+  }) => void;
 }
 
 export function useMoveActions(deps: MoveActionsDeps) {
@@ -127,6 +148,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
     groundZones,
     pursuitsRef,
     onBoardShip,
+    onBoardShipFree,
+    buildFreePlacementOptions,
+    requestFreePlacement,
   } = deps;
 
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -504,7 +528,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // A drop where more than one structure action is legal asks the player first
     // (Climb / Pass door). Exactly one legal action auto-resolves; a plain ground
     // move (no structure) is unaffected.
-    if (!skipPrompt && entry === 'ground' && !flying && !unit.isCharging && !unit.attachedToUnitId && !unit.climbTo && areHexesAdjacent(unit.hex, targetHex)) {
+    if (!skipPrompt && !freeMove && entry === 'ground' && !flying && !unit.isCharging && !unit.attachedToUnitId && !unit.climbTo && areHexesAdjacent(unit.hex, targetHex)) {
       const inst = structures?.[`${targetHex.q},${targetHex.r}`];
       const t = inst ? structureTemplates?.[inst.templateId] : undefined;
       // The destination top (a hex structure's surface). Ascent (top > origin) is
@@ -573,7 +597,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       addError(`${unit.unitName} cannot climb horizontally along the wall — climb up or down first.`);
       return;
     }
-    if (!flying && !unit.isCharging && !unit.mountId && !unit.mountName && !unit.attachedToUnitId && endSurface > originSurface && areHexesAdjacent(unit.hex, targetHex)) {
+    if (!freeMove && !flying && !unit.isCharging && !unit.mountId && !unit.mountName && !unit.attachedToUnitId && endSurface > originSurface && areHexesAdjacent(unit.hex, targetHex)) {
       await handleClimbMove(unit, targetHex, originSurface);
       return;
     }
@@ -582,7 +606,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // across an adjacent edge). This runs under free-move too (movement is free,
     // but the height-change choice is still part of moving); under free-move only
     // Climb down is offered (never Drop).
-    if (!flying && !unit.isCharging && !unit.attachedToUnitId && !canFly(unit)
+    if (!freeMove && !flying && !unit.isCharging && !unit.attachedToUnitId && !canFly(unit)
         && endSurface < originSurface && areHexesAdjacent(unit.hex, targetHex)) {
       const ownInst = structures?.[`${unit.hex.q},${unit.hex.r}`];
       const ownT = ownInst ? structureTemplates?.[ownInst.templateId] : undefined;
@@ -653,9 +677,8 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
 
     if (freeMove) {
-      // DM free-move DRAG-OFF of an attached hero onto an OCCUPIED hex: same alliance
-      // → attach to that unit ('rider' for a hero-mount candidate, else 'back'); a
-      // HOSTILE occupant → detach in place (the hero floats; the DM resolves it).
+      // A hero already attached to a unit keeps the existing detach/attach
+      // behavior; the chooser handles independent tokens.
       if (unit.attachedToUnitId) {
         const occupant = units.find(u =>
           u.id !== unitId && !u.isDeleted && !u.attachedToUnitId &&
@@ -668,7 +691,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
               && !units.some(h => h.attachedToUnitId === occupant.id && !h.isDeleted);
             const position: 'rider' | 'back' = mountOk ? 'rider' : 'back';
             await finishHeroMove(unit);   // detach (DETACH_HERO)
-            await attachHero(unit, occupant, position, unitMaxMP(unit));
+            await attachHero(unit, occupant, position, unitMaxMP(unit), 1, true);
             addMessage(`${unit.unitName} attached to ${occupant.unitName} (${position})`);
             return;
           }
@@ -677,22 +700,104 @@ export function useMoveActions(deps: MoveActionsDeps) {
           return;
         }
       }
-      const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
+
+      const targetTop = structureSurfaceAt(targetHex, structures, structureTemplates);
+      const raisedTarget = targetTop > 0;
+
+      if (!unit.attachedToUnitId) {
+        const options = buildFreePlacementOptions?.({
+          hex: targetHex,
+          isHero: unit.isHero,
+          canFly: canFly(unit),
+          team: unit.team,
+          excludeUnitId: unit.id,
+          allowAnyUnit: false,
+          mountId: unit.mountId,
+          mountName: unit.mountName,
+          sizeCategory: unit.sizeCategory,
+        }) ?? [];
+        if (options.length === 0) {
+          addMessage(`${unit.unitName}: no free level at (${targetHex.q}, ${targetHex.r})`);
+          return;
+        }
+
+        const applyChoice = async (option: FreePlacementOption) => {
+          if (option.kind === 'board' && option.shipId) {
+            await onBoardShipFree?.(unit, option.shipId);
+            return;
+          }
+          if ((option.kind === 'attach' || option.kind === 'ride') && option.hostId) {
+            const host = units.find(u => u.id === option.hostId);
+            if (!host) return;
+            await attachHero(unit, host, option.position ?? 'back', unitMaxMP(unit), 1, true);
+            addMessage(`${unit.unitName} ${option.kind === 'ride' ? 'rides' : 'attaches to'} ${host.unitName}`);
+            return;
+          }
+          if (option.kind === 'air') {
+            const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
+            const range = elevationSliderRange(unit.elevation ?? 0, hexDistance(unit.hex, targetHex), groundOccupied);
+            const rangeWithTop = raisedTarget
+              ? {
+                ...range,
+                max: Math.max(range.max, targetTop),
+                defaultValue: Math.min(
+                  Math.max(range.min, targetTop),
+                  Math.max(range.max, targetTop),
+                ),
+              }
+              : range;
+            setPendingElevation({ unit, targetHex, cost: 0, maxMP: unit.flySpeed ?? 0, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation: undefined, range: rangeWithTop, originAir: flying, originSurface, endSurface, occupant: null, canSwoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
+            return;
+          }
+          const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
+          await moveUnitFree(unit, targetHex, attachedHero, breakToFormation, option.elevation ?? 0);
+          await maybeAutoReturnToRanged(unit);
+          offerReactionsFor({ ...unit, hex: targetHex });
+          pruneReactionOffers();
+          await finishHeroMove(unit);
+        };
+
+        if (options.length === 1 || !requestFreePlacement) {
+          await applyChoice(options[0]);
+          return;
+        }
+        requestFreePlacement({
+          title: `Place ${unit.unitName}`,
+          subtitle: `(${targetHex.q}, ${targetHex.r})`,
+          options,
+          onChoose: applyChoice,
+        });
+        return;
+      }
+
+      // Attached-hero fallthrough keeps the existing occupancy / flyer / move
+      // behavior (detach is handled above).
+      const occupied = flying
+        ? flyOccupied
+        : computeOccupiedHexes(units, unitId, raisedTarget ? 1 : 0);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
       }
-      // Free-move still picks the destination elevation for a flyer (the height
-      // choice is part of moving; only the MP cost is waived).
       if (canFly(unit)) {
         const groundOccupied = units.some(u => u.id !== unitId && !u.isDeleted && !u.attachedToUnitId && (u.elevation ?? 0) <= 0 && u.hex.q === targetHex.q && u.hex.r === targetHex.r);
         const range = elevationSliderRange(unit.elevation ?? 0, hexDistance(unit.hex, targetHex), groundOccupied);
-        setPendingElevation({ unit, targetHex, cost: 0, maxMP: unit.flySpeed ?? 0, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation: undefined, range, originAir: flying, originSurface, endSurface, occupant: null, canSwoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
+        const rangeWithTop = raisedTarget
+          ? {
+            ...range,
+            max: Math.max(range.max, targetTop),
+            defaultValue: Math.min(
+              Math.max(range.min, targetTop),
+              Math.max(range.max, targetTop),
+            ),
+          }
+          : range;
+        setPendingElevation({ unit, targetHex, cost: 0, maxMP: unit.flySpeed ?? 0, attachedHero: attachedHero ?? null, heroMaxMP: heroMax, breakToFormation: undefined, range: rangeWithTop, originAir: flying, originSurface, endSurface, occupant: null, canSwoop: false, isHostile: false, weaponIndex: unit.activeWeaponIndex ?? 0, damageDiceCount: damageDiceCount(parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0]?.damageDice ?? ''), mainTarget: 'rider' });
         return;
       }
       const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
       if (await onBoardShip?.(unit, targetHex, 0, unitMaxMP(unit), true)) return;
-      await moveUnitFree(unit, targetHex, attachedHero, breakToFormation, descendElev);
+      await moveUnitFree(unit, targetHex, attachedHero, breakToFormation, raisedTarget ? targetTop : descendElev);
       await maybeAutoReturnToRanged(unit);
       offerReactionsFor({ ...unit, hex: targetHex });
       pruneReactionOffers();
@@ -787,7 +892,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     }
     if (await onBoardShip?.(unit, targetHex, reachEntry.cost, finalMax, false)) return;
     await completeMove(unit, targetHex, reachEntry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
-  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero, onBoardShip]);
+  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero, onBoardShip, onBoardShipFree, buildFreePlacementOptions, requestFreePlacement]);
 
   /**
    * Atomic climb OVER a freestanding edge wall: climb up to the top (near side),

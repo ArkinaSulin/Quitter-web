@@ -80,6 +80,7 @@ export function mapStructureRow(row: any): StructureTemplate {
     modifiers: parseModifiers(row.modifiers),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: row.owner_id || null,
   };
 }
 

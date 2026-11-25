@@ -1,6 +1,7 @@
 // src/components/ScenarioMap/TopBar.tsx
 // Scenario header: role label, Undo, turn counter, End Turn, Free Move toggle,
 // GM settings/replay buttons, and Exit to Lobby.
+import { useLayoutEffect, useRef } from 'react';
 import { AllianceGroup } from '@/types/gameProtocol';
 import { allianceOf } from '@/packages/primitives';
 import { SiegePhase } from '@/packages/world';
@@ -41,6 +42,8 @@ interface TopBarProps {
   canToggleNextWave?: boolean;
   nextWaveArmed?: boolean;
   onToggleNextWave?: () => void;
+  /** Reports the bar's rendered height so overlays can sit below it. */
+  onHeightChange?: (height: number) => void;
 }
 
 export function TopBar(props: TopBarProps) {
@@ -78,7 +81,19 @@ export function TopBar(props: TopBarProps) {
     canToggleNextWave,
     nextWaveArmed,
     onToggleNextWave,
+    onHeightChange,
   } = props;
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el || !onHeightChange) return;
+    const report = () => onHeightChange(el.getBoundingClientRect().height);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onHeightChange]);
 
   // The DM keeps End Turn (and replay exit) even while playing as a player; the
   // editorial GM actions (Free Move / Settings / enter Replay) drop in player mode.
@@ -93,7 +108,7 @@ export function TopBar(props: TopBarProps) {
     : 'bg-[#D55E00]/80 text-white';
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2 bg-black/40 backdrop-blur-sm">
+    <div ref={rootRef} className="absolute top-0 left-0 right-0 z-20 flex flex-wrap items-center justify-between gap-y-1 px-4 py-2 bg-black/40 backdrop-blur-sm">
       <div className="flex items-center gap-3">
         {onTogglePlayerMode ? (
           <button
@@ -218,7 +233,7 @@ export function TopBar(props: TopBarProps) {
           <button
             onClick={onOpenStats}
             className="px-3 py-1 rounded shadow-lg text-sm bg-indigo-700 hover:bg-indigo-600 text-white"
-            title="Scenario statistics (troop kills, levels, status)"
+            title="Scenario statistics (troop kills, levels, HP, status)"
           >
             📊 Stats
           </button>

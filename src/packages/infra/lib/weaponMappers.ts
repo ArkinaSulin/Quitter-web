@@ -8,6 +8,7 @@ export interface LibraryWeapon extends Weapon {
   id: string;
   notes: string;
   costGp: number;
+  ownerId?: string | null;
 }
 
 export function mapWeaponRow(row: any): LibraryWeapon {
@@ -36,6 +37,7 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     minCrew: Math.max(0, Number(row?.min_crew) || 0),
     notes: row?.notes || '',
     costGp: Number(row?.cost_gp) || 0,
+    ownerId: row?.owner_id || null,
   };
 }
 

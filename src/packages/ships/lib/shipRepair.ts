@@ -38,6 +38,53 @@ export function repairHpCap(shipHpMax: number): number {
 }
 
 /**
+ * Lowest HP the ship has reached. Field repair kits raise current HP but never
+ * this value; only a dry-dock Save resets it to the new maximum.
+ */
+export function minHpAfterDamage(
+  previousMin: number | null | undefined,
+  newHp: number,
+): number {
+  const hp = Math.max(0, Math.round(Number(newHp) || 0));
+  const min = previousMin == null ? hp : Math.max(0, Math.round(Number(previousMin) || 0));
+  return Math.min(min, hp);
+}
+
+export interface ShipPatchDamage {
+  /** HP currently covered by an emergency field patch. */
+  patchedHp: number;
+  /** Underlying damage from the worst point to full HP. */
+  damageHp: number;
+  currentHp: number;
+  minHp: number;
+  maxHp: number;
+}
+
+/**
+ * Dry-dock repair amounts. The crew patched the ship up with repair kits, so the
+ * dock must strip the patch (current above the worst point) and then repair the
+ * real damage (worst point to max).
+ */
+export function computeShipPatchDamage(args: {
+  currentHp: number;
+  minHp: number | null | undefined;
+  maxHp: number;
+}): ShipPatchDamage {
+  const maxHp = Math.max(0, Math.round(Number(args.maxHp) || 0));
+  const currentHp = Math.max(0, Math.min(maxHp, Math.round(Number(args.currentHp) || 0)));
+  const minHp = args.minHp == null
+    ? currentHp
+    : Math.max(0, Math.min(maxHp, Math.round(Number(args.minHp) || 0)));
+  return {
+    currentHp,
+    minHp,
+    maxHp,
+    patchedHp: Math.max(0, currentHp - minHp),
+    damageHp: Math.max(0, maxHp - minHp),
+  };
+}
+
+/**
  * Whether a repair would change anything: HP below the 80% cap, or at least one
  * destroyed box on a card. A fully destroyed hull cannot be repaired.
  */

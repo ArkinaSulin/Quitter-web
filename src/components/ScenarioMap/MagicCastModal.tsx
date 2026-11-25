@@ -323,7 +323,7 @@ export function MagicCastModal({
   const failedCount = cast.result?.failedCount ?? 0;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none">
+    <div className="fixed inset-0 z-[260] flex items-center justify-center pointer-events-none">
       <div
         className="absolute bg-gray-900 border border-yellow-600/60 rounded-xl shadow-2xl w-[500px] max-w-[92vw] pointer-events-auto select-none"
         style={{ left: pos.x, top: pos.y }}

@@ -30,7 +30,7 @@ function StructureTooltip({ t, x, y }: { t: StructureTemplate; x: number; y: num
   const rest = t.modifiers.filter(m => m.kind !== 'ac');
   const door = t.doorHp ?? t.maxHp;
   return (
-    <Floating x={x} y={y} z={80} className="bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64">
+    <Floating x={x} y={y} z={200} className="bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64">
       <div className="font-semibold text-amber-300 mb-1">{t.name}</div>
       <div className="text-gray-300 capitalize">{t.anchor}{t.battlement ? ' · battlement' : ''}{t.barricade ? ' · barricade' : ''}{t.sinWave ? ' · sin wave' : ''}{t.ladder ? ' · ladder' : ''}</div>
       {t.anchor === 'edge' ? (

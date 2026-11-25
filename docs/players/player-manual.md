@@ -62,7 +62,7 @@ a fixed, readable zoom; stage one concept per frame (GM sandbox map is fine).
 | S-31 | 3 · Library | **Weapon editor** modal (left form, right weapon-library search) | modal open |
 | S-32 | 3 · Library | **Token Preview** test sliders: casualty %, morale modifier, formation radios | right panel |
 | S-33 | 12 · AI assist | **AI tab**: teams in the AI control box, a ✓-checked unit, a plotted route + crossed swords | Scenario Settings → AI assist on |
-| S-34 | 12 · GM | **Scenario Statistics**: alliance/team rows with starting/lost/killed troops and levels | Stats open after some combat |
+| S-34 | 12 · GM | **Scenario Statistics**: alliance/team rows with starting/lost/killed troops, levels and HP | Stats open after some combat |
 
 ---
 
@@ -215,8 +215,9 @@ The **End Turn** button is colored by the active group (blue = friendly,
 red = enemy, grey = neutral). It is enabled for the GM always and for a player
 when their own alliance holds the turn. **Free Move** starts a 60-second
 countdown when switched on mid-session and turns itself off when it expires.
-**Stats** opens the Scenario Statistics window (starting/lost/killed troops and
-levels per team); its **Share** button posts the summary to Messages. Click the
+**Stats** opens the Scenario Statistics window (starting/lost/killed troops,
+levels and HP per team); its **Share** button posts the summary to Messages.
+Resize the window from its bottom-right corner. Click the
 title text to toggle DM/player mode (GM only).
 
 ### The side panel
@@ -1501,7 +1502,8 @@ failed spawn may require re-arming; see the developer chapter for limitations.
   also resets **off** when the scenario is reopened unless it is still Turn 0
   free play.
 - **Stats** opens Scenario Statistics (GM in live play, anyone in replay):
-  starting/lost/killed troops and levels per team, grouped by alliance.
+  starting/lost/killed troops, levels and HP per team, grouped by alliance.
+  Resize the window from its bottom-right corner.
   **Share** posts a plain-text summary to Messages (hidden units are revealed
   fully in that summary).
 - Click the `Scenario Map - role · team` title to toggle **DM/player mode**

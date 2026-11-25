@@ -10,3 +10,4 @@ export * from './lib/walls';
 export * from './lib/structureTemplates';
 export * from './lib/structureDraw';
 export * from './lib/withdraw';
+export * from './lib/freePlacement';

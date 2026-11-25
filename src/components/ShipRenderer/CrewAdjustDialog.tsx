@@ -3,11 +3,14 @@
 import { useState } from 'react';
 import {
   CREW_SKILL_BONUS,
+  bestCheckBonus,
+  captaincyBonus,
   crewCheckBonus,
   computeCrewHp,
   computeCrewWeeklyCost,
   DEFAULT_CREW_STATS,
   proficiencyBonus,
+  signedBonus,
   type CheckStat,
 } from '@/packages/ships';
 import { RepeatStepper } from '@/components/shared/RepeatStepper';
@@ -80,7 +83,7 @@ export function CrewAdjustDialog({ draft: initial, title = 'Adjust Crew', allowR
   );
 
   return (
-    <div className="fixed inset-0 z-[200] grid place-items-center bg-black/70" onMouseDown={onCancel}>
+    <div className="fixed inset-0 z-[260] grid place-items-center bg-black/70" onMouseDown={onCancel}>
       <div className="w-[520px] max-w-[96vw] rounded-xl border border-gray-600 bg-gray-900 p-4" onMouseDown={e => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-amber-300">{title}</h2>
@@ -115,12 +118,13 @@ export function CrewAdjustDialog({ draft: initial, title = 'Adjust Crew', allowR
         <div className="mt-3 rounded border border-gray-700 p-2 text-[11px]">
           <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Ship handling</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-gray-300">
-            <span>Weapon: +{crewCheckBonus(draft, 'dex')}</span>
-            <span>Helm: +{crewCheckBonus(draft, 'wis')}</span>
-            <span>Sail trim (MC): +{crewCheckBonus(draft, 'int')}</span>
-            <span>Sail max (speed): +{crewCheckBonus(draft, 'con')}</span>
-            <span>Repair: +{crewCheckBonus(draft, 'str')}</span>
-            <span>Proficiency: +{proficiencyBonus(draft.level)} · CrewSkill: +{CREW_SKILL_BONUS}</span>
+            <span>Repair: {signedBonus(crewCheckBonus(draft, 'str'))}</span>
+            <span>Captaincy: {signedBonus(captaincyBonus(draft, true))}</span>
+            <span>Weapon: {signedBonus(crewCheckBonus(draft, 'dex'))}</span>
+            <span>Sail trimming: {signedBonus(crewCheckBonus(draft, 'int'))}</span>
+            <span>Sail maxing: {signedBonus(crewCheckBonus(draft, 'con'))}</span>
+            <span>Helm: {signedBonus(bestCheckBonus(draft, ['wis', 'int'], true))}</span>
+            <span className="col-span-2">Proficiency: +{proficiencyBonus(draft.level)} · CrewSkill: +{CREW_SKILL_BONUS}</span>
           </div>
         </div>
 

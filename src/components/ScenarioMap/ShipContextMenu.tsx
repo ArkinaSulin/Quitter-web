@@ -17,7 +17,7 @@ export interface ShipContextMenuProps {
   onToggleHide: () => void;
   onDelete: () => void;
   onDryDock?: () => void;
-  onMakePlayerShip?: () => void;
+  onMakeCampaignShip?: () => void;
   onClose: () => void;
 }
 
@@ -31,7 +31,7 @@ export function ShipContextMenu({
   onToggleHide,
   onDelete,
   onDryDock,
-  onMakePlayerShip,
+  onMakeCampaignShip,
   onClose,
 }: ShipContextMenuProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -56,7 +56,7 @@ export function ShipContextMenu({
       ref={menuRef}
       x={x}
       y={y}
-      z={50}
+      z={250}
       interactive
       className="bg-gray-900 border border-gray-700 rounded shadow-xl py-1 min-w-[190px] text-sm text-white"
     >
@@ -94,15 +94,15 @@ export function ShipContextMenu({
           >
             Delete Ship
           </div>
-          {(onMakePlayerShip || onDryDock) && (
+          {(onMakeCampaignShip || onDryDock) && (
             <>
               <div className="border-t border-gray-700 my-1" />
-              {onMakePlayerShip && (
+              {onMakeCampaignShip && (
                 <div
                   className="px-3 py-1 hover:bg-gray-700 cursor-pointer"
-                  onClick={() => { onMakePlayerShip(); onClose(); }}
+                  onClick={() => { onMakeCampaignShip(); onClose(); }}
                 >
-                  Make Player Ship
+                  {ship.campaignId ? 'Convert to Campaign Ship' : 'Make Campaign Ship'}
                 </div>
               )}
               {onDryDock && (

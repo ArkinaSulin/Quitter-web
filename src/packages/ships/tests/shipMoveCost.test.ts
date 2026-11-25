@@ -8,8 +8,10 @@ import {
   facingChangeDistance,
   rebuildStepBudgetPreservingMoved,
   shipFacingRadians,
+  shipMC,
   shipRoundRemaining,
   shipRoundSpent,
+  shipTurnDistance,
   spellSlotCostForHexes,
   splitSpeedAcrossSteps,
 } from '@/packages/ships';
@@ -64,6 +66,54 @@ describe('MC facing gate', () => {
     expect(effectiveTurnDistance({ mcBands: bands }, 9, 1)).toBe(2);
     expect(effectiveTurnDistance({ mcBands: bands }, 9, 5)).toBe(0);
     expect(effectiveTurnDistance({ mcBands: bands }, 9, 0)).toBe(3);
+  });
+});
+
+describe('mode MC rule', () => {
+  const stats = {
+    mcRaw: 2.4,
+    mcBands: [
+      { label: 'Speed 0-2', speedMin: 0, speedMax: 2, mc: 1.4 },
+      { label: 'Speed 3-7', speedMin: 3, speedMax: 7, mc: 2.4 },
+      { label: 'Speed 8-12', speedMin: 8, speedMax: 12, mc: 3.4 },
+    ],
+  };
+
+  it('atmosphere is one base MC, independent of speed', () => {
+    expect(shipMC(stats, 0, 'atmosphere')).toBe(3);
+    expect(shipMC(stats, 9, 'atmosphere')).toBe(3);
+    expect(shipMC(stats, 12, 'atmosphere')).toBe(3);
+  });
+
+  it('wildspace keeps the speed bands', () => {
+    expect(shipMC(stats, 0, 'wildspace')).toBe(2);
+    expect(shipMC(stats, 5, 'wildspace')).toBe(3);
+    expect(shipMC(stats, 9, 'wildspace')).toBe(4);
+  });
+
+  it('applies rudder trim after the mode MC', () => {
+    expect(shipTurnDistance(stats, 9, 'atmosphere')).toBe(3);
+    expect(shipTurnDistance(stats, 9, 'atmosphere', 1)).toBe(2);
+    expect(shipTurnDistance(stats, 9, 'wildspace', 1)).toBe(3);
+    expect(shipTurnDistance(stats, 9, 'atmosphere', 99)).toBe(0);
+  });
+
+  it('MC 0 turns freely and a missing base MC never turns', () => {
+    expect(shipMC({ ...stats, mcRaw: 0 }, 9, 'atmosphere')).toBe(0);
+    expect(shipTurnDistance({ ...stats, mcRaw: 0 }, 9, 'atmosphere', 5)).toBe(0);
+    expect(shipMC({ mcRaw: Number.POSITIVE_INFINITY, mcBands: stats.mcBands }, 9, 'atmosphere'))
+      .toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('uses the atmosphere one-MC gate in the move preview', () => {
+    const start = { hex: { q: 0, r: 0, s: 0 }, facing: 0 };
+    // 3 straight hexes + 1 turn + 1 forward hex = 5 pool points. Atmosphere
+    // MC 3 allows the turned move; wildspace MC 4 at the same speed does not.
+    const atmo = computeShipReachable(start, 5, shipTurnDistance(stats, 9, 'atmosphere'));
+    expect(Array.from(atmo.values()).some(e => e.finalFacing !== 0)).toBe(true);
+
+    const space = computeShipReachable(start, 5, shipTurnDistance(stats, 9, 'wildspace'));
+    expect(Array.from(space.values()).some(e => e.finalFacing !== 0)).toBe(false);
   });
 });
 

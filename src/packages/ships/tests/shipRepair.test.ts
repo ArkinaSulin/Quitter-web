@@ -3,8 +3,10 @@ import { ShipArmor, ShipComponent, ShipTemplate, ShipWeapon } from '@/types/ship
 import {
   buildShipFromTemplate,
   computeMassBreakdown,
+  computeShipPatchDamage,
   createDefaultDeckLayout,
   effectiveShipHp,
+  minHpAfterDamage,
   repairHpCap,
   repairOneBox,
   shipDamagedCards,
@@ -27,7 +29,8 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'ballista', name: 'Ballista', mass: 1, damage: '1d10', damageFormula: null, minRange: 0, range: 5, maxRange: 10, reloadSteps: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 100, ammoCost: null, special: null, ac: 10 },
+  { id: 'ballista', name: 'Ballista', mass: 1, damage: '1d10', damageFormula: null, minRange: 0, range: 5, maxRange: 10, reloadSteps: 1,
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 100, ammoCost: null, special: null, ac: 10 },
 ];
 
 const TEMPLATE: ShipTemplate = {
@@ -94,6 +97,33 @@ describe('shipRepair', () => {
     expect(repairOneBox(boxState, hullKey)).toEqual({ [hullKey]: 1 });
     expect(repairOneBox({ [hullKey]: 1 }, hullKey)).toEqual({});
     expect(repairOneBox({}, hullKey)).toEqual({});
+  });
+
+  it('tracks the lowest HP reached and never raises it', () => {
+    expect(minHpAfterDamage(undefined, 70)).toBe(70);
+    expect(minHpAfterDamage(70, 40)).toBe(40);
+    expect(minHpAfterDamage(40, 75)).toBe(40);
+    expect(minHpAfterDamage(40, 0)).toBe(0);
+  });
+
+  it('separates patched HP from underlying damage at dry dock', () => {
+    expect(computeShipPatchDamage({ currentHp: 80, minHp: 30, maxHp: 100 })).toMatchObject({
+      currentHp: 80,
+      minHp: 30,
+      maxHp: 100,
+      patchedHp: 50,
+      damageHp: 70,
+    });
+    expect(computeShipPatchDamage({ currentHp: 80, minHp: null, maxHp: 100 })).toMatchObject({
+      patchedHp: 0,
+      damageHp: 20,
+    });
+    expect(computeShipPatchDamage({ currentHp: 120, minHp: -5, maxHp: 100 })).toMatchObject({
+      currentHp: 100,
+      minHp: 0,
+      patchedHp: 100,
+      damageHp: 100,
+    });
   });
 
   it('repair is available below the 80% cap or when a box is damaged', () => {

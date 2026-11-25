@@ -3,7 +3,7 @@
 // Effect Editor (3 panels like Unit Editor). Author reusable effect templates —
 // a name/color/image/layer plus a list of modifiers (ac/morale/movement/dot/
 // hp_borrow/entry/mp_cost) — that any scenario can apply.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/packages/infra/supabase';
 import { ImagePickerModal } from '@/components/ImagePickerModal';
 import { ColorField } from '@/components/ColorField';
@@ -14,17 +14,35 @@ import {
   mapEffectRow, mapEffectToRow, blankEffectTemplate, modifierSummary, modifierScopeConflict,
 } from '@/packages/effects';
 import { refreshAndReselect } from '@/packages/world';
+import type { OwnershipFilter } from '@/packages/infra';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import { OwnerChip, OwnerFilterSelect, OwnerLockNotice } from '@/components/shared/ContentOwnership';
+import { UnsavedChangesModal } from '@/components/shared/UnsavedChangesModal';
 
 type Draft = Omit<EffectTemplate, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 
 const input =
   'w-full bg-gray-800 text-white text-sm rounded px-2 py-1 border border-gray-700 focus:border-amber-400 outline-none disabled:opacity-50';
 
-export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
+export default function EffectEditor({ readOnly: capabilityReadOnly }: { readOnly: boolean }) {
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
   const [list, setList] = useState<EffectTemplate[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const savedSnapshotRef = useRef('');
+  const isDirty = !!draft && JSON.stringify(draft) !== savedSnapshotRef.current;
+  const {
+    showUnsavedModal,
+    requestAction,
+    takePending,
+    discardPending,
+    cancelPending,
+  } = useUnsavedChanges(isDirty);
+  const ownershipLocked = !!draft?.id && !ownership.canEdit(draft.ownerId);
+  const readOnly = capabilityReadOnly || ownershipLocked;
   const [showImagePicker, setShowImagePicker] = useState(false);
 
   const load = useCallback(async (): Promise<EffectTemplate[]> => {
@@ -36,19 +54,29 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const select = (t: EffectTemplate) => setDraft({ ...t, id: t.id });
-  const fresh = () => setDraft({ ...blankEffectTemplate() });
+  const select = (t: EffectTemplate) => requestAction(() => {
+    const next = { ...t, id: t.id };
+    setDraft(next);
+    savedSnapshotRef.current = JSON.stringify(next);
+  });
+  const fresh = () => requestAction(() => {
+    setDraft({ ...blankEffectTemplate() });
+    savedSnapshotRef.current = '';
+  });
   const clone = () => {
     if (!draft) return;
-    const { id, ...rest } = draft;
-    setDraft({ ...rest, name: `${draft.name} copy` });
+    requestAction(() => {
+      const { id, ...rest } = draft;
+      setDraft({ ...rest, name: `${draft.name} copy` });
+    });
   };
 
-  const save = async () => {
-    if (!draft || !draft.name.trim()) { setStatus('Give the effect a name.'); return; }
+  const save = async (): Promise<boolean> => {
+    if (!draft || readOnly) return false;
+    if (!draft.name.trim()) { setStatus('Give the effect a name.'); return false; }
     if (modifierScopeConflict(draft.modifiers)) {
       setStatus('Cannot mix unit-only and zone-only modifiers (e.g. "Movement points" + "Terrain cost").');
-      return;
+      return false;
     }
     setBusy(true);
     setStatus('');
@@ -65,12 +93,24 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
       setStatus('Saved.');
       // Reselect from the FRESH list, never the stale `list` closure.
       const { selected } = await refreshAndReselect(load, id, t => t.id);
-      if (selected) select(selected);
+      if (selected) {
+        const clean = { ...selected, id: selected.id };
+        setDraft(clean);
+        savedSnapshotRef.current = JSON.stringify(clean);
+      }
+      return true;
     } catch (err: any) {
       setStatus('Save failed: ' + (err?.message || 'unknown'));
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleUnsavedSave = async () => {
+    const action = takePending();
+    const ok = await save();
+    if (ok) action?.();
   };
 
   const remove = async () => {
@@ -80,6 +120,7 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
     try {
       await supabase.from('map_effect_templates').delete().eq('id', draft.id);
       setDraft(null);
+      savedSnapshotRef.current = '';
       setStatus('Deleted.');
       await load();
     } catch (err: any) {
@@ -108,8 +149,17 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
         <h1 className="text-xl font-bold text-yellow-300">Effect Workshop</h1>
-        {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
-        <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
+        {capabilityReadOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
+        <a
+          href="/"
+          onClick={e => {
+            e.preventDefault();
+            requestAction(() => { window.location.href = '/'; });
+          }}
+          className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded"
+        >
+          Main Menu
+        </a>
       </header>
 
       <div className="flex flex-1 min-h-0">
@@ -121,7 +171,13 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
             </button>
           )}
           {list.length === 0 && <p className="text-xs text-gray-500">No effects yet.</p>}
-          {list.map(t => (
+          <OwnerFilterSelect
+            ownership={ownership}
+            value={ownerFilter}
+            onChange={setOwnerFilter}
+            className="w-full mb-1"
+          />
+          {ownership.filter(list, ownerFilter).map(t => (
             <button
               key={t.id}
               onClick={() => select(t)}
@@ -131,6 +187,9 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
               {t.name}
               <span className="block text-[10px] text-gray-400">
                 {t.scope} · {t.modifiers.map(m => m.kind).join('+') || '—'}
+              </span>
+              <span className="mt-0.5 block">
+                <OwnerChip ownership={ownership} ownerId={t.ownerId} />
               </span>
             </button>
           ))}
@@ -142,6 +201,17 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
             <p className="text-gray-500 text-sm">Select an effect from the list (or create one) to edit it.</p>
           ) : (
             <fieldset disabled={readOnly} className="space-y-3 w-full max-w-full">
+              {ownershipLocked && (
+                <OwnerLockNotice
+                  ownership={ownership}
+                  ownerId={draft.ownerId}
+                  onClone={() => {
+                    const { id, ...rest } = draft;
+                    void id;
+                    setDraft({ ...rest, name: `${draft.name} copy` });
+                  }}
+                />
+              )}
               <label className="block text-xs text-gray-400">Name
                 <input className={input} value={draft.name} disabled={readOnly} onChange={e => setDraft({ ...draft, name: e.target.value })} />
               </label>
@@ -302,6 +372,14 @@ export default function EffectEditor({ readOnly }: { readOnly: boolean }) {
           showRaces={false}
           onSelect={url => { setDraft({ ...draft, imageUrl: url ?? '' }); setShowImagePicker(false); }}
           onClose={() => setShowImagePicker(false)}
+        />
+      )}
+      {showUnsavedModal && (
+        <UnsavedChangesModal
+          busy={busy}
+          onSave={() => void handleUnsavedSave()}
+          onDiscard={discardPending}
+          onCancel={cancelPending}
         />
       )}
     </div>

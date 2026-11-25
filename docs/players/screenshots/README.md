@@ -39,7 +39,7 @@ is the table at the top of `../player-manual.md`.
 | `s-31-weapon-editor.png` | Weapon editor modal |
 | `s-32-token-preview.png` | Token Preview test sliders |
 | `s-33-ai-tab.png` | AI tab: teams in the control box, ✓ units, plotted route |
-| `s-34-stats.png` | Scenario Statistics (starting/lost/killed troops + levels) |
+| `s-34-stats.png` | Scenario Statistics (starting/lost/killed troops + levels + HP) |
 
 Capturing tips: dark app theme; zoom so the concept is legible; compose one
 idea per frame (a GM sandbox map is fine); for side-by-side "player vs GM"

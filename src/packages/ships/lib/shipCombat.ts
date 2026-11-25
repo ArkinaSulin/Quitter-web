@@ -4,9 +4,8 @@
 // The UI/engine slice wires these into commands later.
 
 import { Hex } from '@/types/gameProtocol';
-import { HEX_DIRS } from '@/packages/primitives';
 import { ShipAreaShape, ShipDeckRegion, ShipSaveChoice, ShipWeapon, WeaponArc } from '@/types/ship';
-import { COMPONENT_NAMES, ShipBuild, componentById, componentByName, computeMassBreakdown } from './shipStats';
+import { COMPONENT_NAMES, ShipBuild, componentById, componentByName, computeMassBreakdown, effectiveRuddersFromTons } from './shipStats';
 import { deckOrderedCardKeys, findCardSlot } from './deckLayout';
 import { effectiveWeaponArcs } from './weaponArcs';
 import { weaponById, weaponTons } from './shipStats';
@@ -29,40 +28,26 @@ export function shipRangeBand(distance: number, weapon: Pick<ShipWeapon, 'minRan
 }
 
 /**
- * Index of the `HEX_DIRS` sector containing a displacement at ANY range. Exact
- * integer cube math: the nearest of the six directions has the largest cube dot
- * product against the displacement. Ties keep the first index (stable).
- */
-function nearestHexDirIndex(dq: number, dr: number, ds: number): number {
-  let best = 0;
-  let bestDot = Number.NEGATIVE_INFINITY;
-  for (let i = 0; i < HEX_DIRS.length; i += 1) {
-    const d = HEX_DIRS[i];
-    const dot = dq * d.q + dr * d.r + ds * d.s;
-    if (dot > bestDot) {
-      bestDot = dot;
-      best = i;
-    }
-  }
-  return best;
-}
-
-/**
- * Relative sector of a target at any range: bow (4,5), stern (1,2), port (3),
- * starboard (0) around the ship's facing. The displacement is resolved to its
- * nearest hex direction first, so the adjacency sectors extend outward.
+ * Relative sector of a target at any range: four roughly 90° sectors around the
+ * ship's facing. The dial uses the same spans, so bow/starboard/stern/port all
+ * cover about a quarter circle. Hex targets near a boundary are assigned by
+ * their centre bearing.
  * `arcsEnabled` false = 360°.
  */
 export function shipTargetArc(origin: Hex, facing: number, target: Hex): WeaponArc | null {
   const dq = target.q - origin.q;
   const dr = target.r - origin.r;
   if (dq === 0 && dr === 0) return null;
-  const idx = nearestHexDirIndex(dq, dr, -dq - dr);
-  const rel = ((idx - facing) % 6 + 6) % 6;
-  if (rel === 4 || rel === 5) return 'bow';
-  if (rel === 1 || rel === 2) return 'stern';
-  if (rel === 3) return 'port';
-  return 'starboard';
+  // Axial -> screen bearing (0° = north, clockwise positive).
+  const x = dq + dr / 2;
+  const y = (dr * Math.sqrt(3)) / 2;
+  const bearing = ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360;
+  const facingAngle = (((Math.floor(facing) || 0) % 6) + 6) % 6 * 60;
+  const relative = (bearing - facingAngle + 360) % 360;
+  if (relative < 45 || relative >= 315) return 'bow';
+  if (relative < 135) return 'starboard';
+  if (relative < 225) return 'stern';
+  return 'port';
 }
 
 export function shipArcAllowed(
@@ -144,6 +129,16 @@ export function pickShipComponent(cards: ShipHitCard[], rng: () => number = Math
     if (roll < 0) return card;
   }
   return eligible[eligible.length - 1] ?? null;
+}
+
+/** One component ton per full 10 damage (14 → 1, 21 → 2, 49 → 4). */
+export function componentTonsForDamage(damage: number): number {
+  return Math.max(0, Math.floor((Number(damage) || 0) / 10));
+}
+
+/** Component tons actually applied to a card, capped by its remaining boxes. */
+export function cappedComponentTons(remainingTons: number, damage: number): number {
+  return Math.min(Math.max(0, Math.floor(remainingTons)), componentTonsForDamage(damage));
 }
 
 export interface ShipWeaponReloadState {
@@ -320,6 +315,67 @@ export function shipHitCards(build: ShipBuild): ShipHitCard[] {
     }
   }
   return out.filter(c => c.tons > 0 && !c.safe);
+}
+
+/** Sail/rudder counts that survive destroyed component boxes (1 ton = 1 box). */
+export interface SurvivingSailRudder {
+  sails: number;
+  rudders: number;
+}
+
+/**
+ * Physical sails/rudders remaining after box damage. A Sail box is one sail; a
+ * Rudder is not destroyed until its full mass is gone, so surviving rudder
+ * tonnage is divided by the authored rudder mass and rounded up
+ * (`effectiveRuddersFromTons`). Per-unit cards count one unit unless their card
+ * is destroyed.
+ */
+export function survivingSailRudder(
+  build: ShipBuild,
+  boxState: Record<string, unknown> | null | undefined,
+): SurvivingSailRudder {
+  const designSails = Math.max(0, build.sails);
+  const designRudders = Math.max(0, build.rudders);
+  if (designSails <= 0 && designRudders <= 0) return { sails: 0, rudders: 0 };
+  // Legacy snapshots without a deck layout cannot express box damage; the
+  // designed counts stand in.
+  if (!build.deckLayout) return { sails: designSails, rudders: designRudders };
+
+  const sailMass = Math.max(0.01, componentByName(build.components, COMPONENT_NAMES.sail).mass || 1);
+  const rudderMass = Math.max(0.01, componentByName(build.components, COMPONENT_NAMES.rudder).mass || 1.5);
+  let sails = 0;
+  let rudders = 0;
+  let sawSail = false;
+  let sawRudder = false;
+
+  for (const card of shipHitCards(build)) {
+    if (card.kind !== 'component') continue;
+    if (card.name !== COMPONENT_NAMES.sail && card.name !== COMPONENT_NAMES.rudder) continue;
+    const perUnit = /:\d+$/.test(card.key.slice('component:'.length));
+    const destroyed = Math.max(0, Number(boxState?.[card.key] ?? 0));
+
+    if (card.name === COMPONENT_NAMES.sail) {
+      sawSail = true;
+      if (perUnit) {
+        if (destroyed < Math.max(1, card.tons)) sails += 1;
+      } else {
+        const survivingTons = Math.max(0, designSails * sailMass - destroyed);
+        sails += survivingTons / sailMass;
+      }
+    } else if (perUnit) {
+      sawRudder = true;
+      if (destroyed < Math.max(1, card.tons)) rudders += 1;
+    } else {
+      sawRudder = true;
+      const survivingTons = Math.max(0, designRudders * rudderMass - destroyed);
+      rudders += effectiveRuddersFromTons(designRudders, rudderMass, survivingTons);
+    }
+  }
+
+  return {
+    sails: Math.min(designSails, Math.max(0, Math.ceil(sawSail ? sails : designSails))),
+    rudders: Math.min(designRudders, Math.max(0, Math.ceil(sawRudder ? rudders : designRudders))),
+  };
 }
 
 export function weaponArea(weapon: Pick<ShipWeapon, 'magicDimension' | 'shape' | 'savingThrow' | 'saveDC' | 'onSaveHalfOrNeg'>): {

@@ -51,7 +51,7 @@ export function parseDragPayload(raw: string): Pick<EffectTemplate, 'id' | 'name
 /** Hover tooltip: the effect template's scope, duration and full modifier list. */
 function EffectTooltip({ t, x, y }: { t: EffectTemplate; x: number; y: number }) {
   return (
-    <Floating x={x} y={y} z={80} className="bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64">
+    <Floating x={x} y={y} z={200} className="bg-black/95 border border-gray-600 rounded shadow-xl p-2.5 text-[11px] text-white w-64">
       <div className="font-semibold" style={{ color: t.color }}>{t.name}</div>
       <div className="text-gray-300 capitalize mt-0.5">{t.scope} · {t.defaultDuration} turn{t.defaultDuration === 1 ? '' : 's'}</div>
       <div className="text-gray-400 mt-1">

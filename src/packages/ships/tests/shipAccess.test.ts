@@ -13,7 +13,8 @@ const COMPONENTS = [
 
 const WEAPON = {
   id: 'w1', name: 'Ballista', mass: 1, damage: '2d10', damageFormula: null,
-  minRange: 0, range: 3, maxRange: 10, reloadSteps: 2, magicDimension: 0,
+  minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
+    maxTargets: 1, magicDimension: 0,
   shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
   dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null,
 } as any;
@@ -22,6 +23,7 @@ function build(): ShipBuild {
   return {
     components: COMPONENTS,
     weaponsCatalog: [WEAPON],
+    armor: { id: 'wood', name: 'wood', massPct: 0, ac: 15, hpMult: 1 },
     totalMass: 20,
     helm: 1,
     commandBridge: 1,
@@ -31,16 +33,27 @@ function build(): ShipBuild {
     cargoArea: 0,
     templateComponents: [],
     templateWeapons: [{ id: 'row', weaponId: 'w1', count: 1 }],
+    deckLayout: {
+      version: 2,
+      bow: [],
+      stern: [],
+      port: [{ cardKey: 'component:helm' }],
+      body: [[{ cardKey: 'component:bridge' }]],
+      starboard: [],
+    },
   } as unknown as ShipBuild;
 }
 
-function ship(stations: ShipRuntime['stations']): ShipRuntime {
+function ship(
+  stations: ShipRuntime['stations'],
+  boxState: Record<string, unknown> = {},
+): ShipRuntime {
   return {
     id: 's1',
     snapshot: { build: build() } as ShipRuntime['snapshot'],
     stations,
     crewState: {},
-    boxState: {},
+    boxState,
   } as ShipRuntime;
 }
 
@@ -124,6 +137,36 @@ describe('shipViewerAccess', () => {
     expect(access.manageableCardKeys).toEqual([HELM]);
   });
 
+  it('does not give a destroyed Bridge captain access', () => {
+    const access = shipViewerAccess(
+      ship(
+        { [BRIDGE]: { heroId: 'h1', crewIds: ['c1', 'c2', 'c3', 'c4'] } },
+        { [BRIDGE]: 3 },
+      ),
+      [hero('h1', BRIDGE)],
+      'red',
+      false,
+    );
+    expect(access.bridgeFull).toBe(false);
+    expect(access.captainExists).toBe(false);
+    expect(access.revealAllCards).toBe(false);
+    expect(access.manageAllCards).toBe(false);
+    expect(access.visibleCardKeys).toEqual([BRIDGE]);
+  });
+
+  it('does not let a destroyed Helm reveal or manage every card', () => {
+    const access = shipViewerAccess(
+      ship({ [HELM]: { heroId: 'h1' } }, { [HELM]: 1 }),
+      [hero('h1', HELM)],
+      'red',
+      false,
+    );
+    expect(access.revealAllCards).toBe(false);
+    expect(access.manageAllCards).toBe(false);
+    expect(access.visibleCardKeys).toEqual([HELM]);
+    expect(access.manageableCardKeys).toEqual([HELM]);
+  });
+
   it('limits a weapon-station hero to that card', () => {
     const access = shipViewerAccess(
       ship({ [WEAPON_CARD]: { heroId: 'h1' } }),
@@ -170,6 +213,14 @@ describe('shipCommandHero', () => {
 
   it('returns null when no hero commands the ship', () => {
     expect(shipCommandHero(ship({ [HELM]: { crewIds: ['c1'] } }), [])).toBeNull();
+  });
+
+  it('does not fall back to a hero on a destroyed Helm', () => {
+    const units = [hero('helm', HELM)];
+    expect(shipCommandHero(
+      ship({ [HELM]: { heroId: 'helm' } }, { [HELM]: 1 }),
+      units,
+    )).toBeNull();
   });
 });
 

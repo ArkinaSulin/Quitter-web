@@ -23,6 +23,7 @@ export interface MapEntity {
   hexEffects: MapHexEffect[];
   createdAt: string;
   updatedAt: string;
+  ownerId?: string | null;
 }
 
 export const MAP_DEFAULTS = {
@@ -45,11 +46,12 @@ export function mapMapRow(row: any): MapEntity {
     hexEffects: parseHexEffects(row.hex_effects),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: row.owner_id || null,
   };
 }
 
 /** Map a MapEntity to a snake_case maps row for INSERT/UPDATE. */
-export function mapEntityToRow(entity: MapEntity, creatorId?: string) {
+export function mapEntityToRow(entity: MapEntity) {
   return {
     name: entity.name || 'Untitled map',
     description: entity.description || '',
@@ -60,6 +62,5 @@ export function mapEntityToRow(entity: MapEntity, creatorId?: string) {
     grid_radius: entity.gridRadius || MAP_DEFAULTS.gridRadius,
     structures: entity.structures || {},
     hex_effects: entity.hexEffects || [],
-    created_by: creatorId,
   };
 }

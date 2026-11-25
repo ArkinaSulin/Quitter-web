@@ -26,12 +26,12 @@ describe('mapEntities mappers', () => {
       id: 'm1', name: 'x', description: '', imageUrl: '', offsetX: 0, offsetY: 0,
       scale: 1, gridRadius: 12, structures: { '0,0,0': { templateId: 'wall' } }, hexEffects: [],
       createdAt: '', updatedAt: '',
-    }, 'user-1');
+      ownerId: 'user-1',
+    });
     expect(row).toMatchObject({
       name: 'x',
       grid_radius: 12,
       structures: { '0,0,0': { templateId: 'wall' } },
-      created_by: 'user-1',
     });
   });
 });

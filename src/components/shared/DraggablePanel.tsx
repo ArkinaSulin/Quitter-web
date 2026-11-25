@@ -11,14 +11,20 @@ export interface DraggablePanelProps {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   onClose?: () => void;
+  /** Label for the title-bar close button (default "Close"). */
+  closeLabel?: string;
   children: React.ReactNode;
   className?: string;
+  /** Extra classes for the body (default `overflow-y-auto`). */
+  bodyClassName?: string;
   initial?: { x: number; y: number };
   z?: number;
   /** Show a bottom-right resize handle. */
   resizable?: boolean;
   /** localStorage key for the resized dimensions. */
   persistKey?: string;
+  /** Preferred initial size when there is no stored one (defaults to the minimums). */
+  initialSize?: { w: number; h: number };
   minWidth?: number;
   minHeight?: number;
 }
@@ -27,12 +33,15 @@ export function DraggablePanel({
   title,
   subtitle,
   onClose,
+  closeLabel = 'Close',
   children,
   className = 'w-[520px]',
+  bodyClassName = 'overflow-y-auto',
   initial,
   z = 120,
   resizable = false,
   persistKey,
+  initialSize,
   minWidth = 420,
   minHeight = 320,
 }: DraggablePanelProps) {
@@ -50,6 +59,18 @@ export function DraggablePanel({
     return { x: Math.max(8, Math.min(maxX, p.x)), y: Math.max(8, Math.min(maxY, p.y)) };
   }, []);
 
+  /** Fit a requested size inside the current viewport (min shrinks on tiny screens). */
+  const clampSize = useCallback((s: { w: number; h: number }) => {
+    const maxW = Math.max(320, window.innerWidth - 16);
+    const maxH = Math.max(240, window.innerHeight - 16);
+    const minW = Math.min(minWidth, maxW);
+    const minH = Math.min(minHeight, maxH);
+    return {
+      w: Math.max(minW, Math.min(maxW, s.w)),
+      h: Math.max(minH, Math.min(maxH, s.h)),
+    };
+  }, [minWidth, minHeight]);
+
   useEffect(() => {
     if (pos !== null) return;
     const start = initial ?? { x: window.innerWidth - 560, y: 72 };
@@ -65,24 +86,27 @@ export function DraggablePanel({
         if (raw) {
           const parsed = JSON.parse(raw) as { w?: number; h?: number };
           if (Number.isFinite(parsed.w) && Number.isFinite(parsed.h)) {
-            stored = { w: Math.max(minWidth, Number(parsed.w)), h: Math.max(minHeight, Number(parsed.h)) };
+            stored = { w: Number(parsed.w), h: Number(parsed.h) };
           }
         }
       } catch {
         stored = null;
       }
     }
-    setSize(stored ?? { w: minWidth, h: minHeight });
-  }, [resizable, persistKey, minWidth, minHeight, size]);
+    setSize(clampSize(stored ?? initialSize ?? { w: minWidth, h: minHeight }));
+  }, [resizable, persistKey, initialSize, minWidth, minHeight, size, clampSize]);
 
   useLayoutEffect(() => {
     if (pos === null) return;
     setPos(p => (p ? clampPos(p) : p));
-    const onResize = () => setPos(p => (p ? clampPos(p) : p));
+    const onResize = () => {
+      setPos(p => (p ? clampPos(p) : p));
+      setSize(current => (current ? clampSize(current) : current));
+    };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clampPos, size]);
+  }, [clampPos, clampSize, size]);
 
   const startDrag = (e: React.MouseEvent) => {
     if (!pos) return;
@@ -102,28 +126,62 @@ export function DraggablePanel({
     window.addEventListener('mouseup', up);
   };
 
+  const persistSize = useCallback((next: { w: number; h: number }) => {
+    if (!persistKey) return;
+    try { window.localStorage.setItem(persistKey, JSON.stringify(next)); } catch { /* ignore */ }
+  }, [persistKey]);
+
   const startResize = (e: React.MouseEvent) => {
     if (!pos || !size) return;
     e.preventDefault();
     e.stopPropagation();
     const start = { x: e.clientX, y: e.clientY, w: size.w, h: size.h };
     const move = (ev: MouseEvent) => {
-      const maxW = Math.max(minWidth, window.innerWidth - pos.x - 8);
-      const maxH = Math.max(minHeight, window.innerHeight - pos.y - 8);
+      const maxW = Math.max(320, window.innerWidth - pos.x - 8);
+      const maxH = Math.max(240, window.innerHeight - pos.y - 8);
+      const minW = Math.min(minWidth, maxW);
+      const minH = Math.min(minHeight, maxH);
       setSize({
-        w: Math.max(minWidth, Math.min(maxW, start.w + ev.clientX - start.x)),
-        h: Math.max(minHeight, Math.min(maxH, start.h + ev.clientY - start.y)),
+        w: Math.max(minW, Math.min(maxW, start.w + ev.clientX - start.x)),
+        h: Math.max(minH, Math.min(maxH, start.h + ev.clientY - start.y)),
       });
     };
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
-      setSize(current => {
-        if (current && persistKey) {
-          try { window.localStorage.setItem(persistKey, JSON.stringify(current)); } catch { /* ignore */ }
-        }
-        return current;
-      });
+      setSize(current => { if (current) persistSize(current); return current; });
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  /** Bottom-left resize: keeps the right and top edges fixed. */
+  const startResizeLeft = (e: React.MouseEvent) => {
+    if (!pos || !size) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const start = {
+      x: e.clientX,
+      y: e.clientY,
+      w: size.w,
+      h: size.h,
+      right: pos.x + size.w,
+      top: pos.y,
+    };
+    const move = (ev: MouseEvent) => {
+      const maxW = Math.max(320, start.right - 8);
+      const minW = Math.min(minWidth, maxW);
+      const nextW = Math.max(minW, Math.min(maxW, start.w - (ev.clientX - start.x)));
+      const maxH = Math.max(240, window.innerHeight - start.top - 8);
+      const minH = Math.min(minHeight, maxH);
+      const nextH = Math.max(minH, Math.min(maxH, start.h + (ev.clientY - start.y)));
+      setPos(p => (p ? { ...p, x: start.right - nextW } : p));
+      setSize({ w: nextW, h: nextH });
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      setSize(current => { if (current) persistSize(current); return current; });
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -160,19 +218,28 @@ export function DraggablePanel({
             onMouseDown={e => e.stopPropagation()}
             className="rounded border border-gray-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-800"
           >
-            Close
+            {closeLabel}
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+      <div className={`min-h-0 flex-1 ${bodyClassName}`}>{children}</div>
       {resizable && (
-        <div
-          onMouseDown={startResize}
-          title="Resize"
-          className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
-        >
-          <div className="absolute bottom-1 right-1 h-2.5 w-2.5 border-b-2 border-r-2 border-amber-400/80" />
-        </div>
+        <>
+          <div
+            onMouseDown={startResizeLeft}
+            title="Resize"
+            className="absolute bottom-0 left-0 h-5 w-5 cursor-nesw-resize"
+          >
+            <div className="absolute bottom-1 left-1 h-2.5 w-2.5 border-b-2 border-l-2 border-amber-400/80" />
+          </div>
+          <div
+            onMouseDown={startResize}
+            title="Resize"
+            className="absolute bottom-0 right-0 h-5 w-5 cursor-nwse-resize"
+          >
+            <div className="absolute bottom-1 right-1 h-2.5 w-2.5 border-b-2 border-r-2 border-amber-400/80" />
+          </div>
+        </>
       )}
     </div>,
     document.body,

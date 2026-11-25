@@ -9,7 +9,9 @@ import { Hex, GroundEffect } from '@/types/gameProtocol';
 import { EdgeRef } from '@/packages/movement';
 import { MapStructures, instanceModifiers, structureDoorState } from '@/packages/movement';
 import { StructureTemplate, StructureInstance } from '@/types/structure';
+import type { CargoManifestItem } from '@/types/ship';
 import { modifierAmount, modifierSummary } from '@/packages/effects';
+import { cargoDamageSummary } from '@/packages/ships';
 import { mpPairText } from '@/packages/world';
 import { Floating } from './Floating';
 
@@ -48,6 +50,28 @@ function EffectInfo({ zone }: { zone: GroundEffect }) {
         {zone.permanent ? 'permanent' : `${zone.turnsLeft} turn${zone.turnsLeft === 1 ? '' : 's'} left`}
         {zone.casterTeam ? ` · ${zone.casterTeam}` : ''}
       </div>
+    </div>
+  );
+}
+
+function CargoDebrisInfo({ zones }: { zones: GroundEffect[] }) {
+  const merged = new Map<string, CargoManifestItem>();
+  for (const zone of zones) {
+    for (const item of zone.cargo ?? []) {
+      const key = `${item.category}|${item.name.trim().toLowerCase()}`;
+      const current = merged.get(key);
+      if (current) current.quantity += item.quantity;
+      else merged.set(key, { ...item });
+    }
+  }
+  const summary = cargoDamageSummary(Array.from(merged.values()));
+  return (
+    <div className="mb-1 last:mb-0">
+      <div className="font-semibold text-amber-300">Floating cargo</div>
+      <div className="text-gray-300">
+        {summary ? `50% of ${summary}` : 'Empty'}
+      </div>
+      <div className="text-gray-500">Dodge DC 15 when a ship enters this hex</div>
     </div>
   );
 }
@@ -103,6 +127,8 @@ export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, z
   } else if (kind === 'hex' && hex) {
     const key = `${hex.q},${hex.r}`;
     const zoneList = zones.filter(z => z.q === hex.q && z.r === hex.r);
+    const cargoZones = zoneList.filter(z => z.kind === 'cargo_debris');
+    const otherZones = zoneList.filter(z => z.kind !== 'cargo_debris');
     const inst = structures[key];
     const t = inst ? templates[inst.templateId] : undefined;
     const structEl = t && inst
@@ -110,7 +136,8 @@ export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, z
       : null;
     const effectsEl = zoneList.length > 0 ? (
       <>
-        {zoneList.map(z => <EffectInfo key={z.key} zone={z} />)}
+        {otherZones.map(z => <EffectInfo key={z.key} zone={z} />)}
+        {cargoZones.length > 0 && <CargoDebrisInfo zones={cargoZones} />}
       </>
     ) : null;
     title = `Hex (${hex.q}, ${hex.r})`;
@@ -131,7 +158,7 @@ export function MapInfoTooltip({ kind, hex, edge, x, y, structures, templates, z
   if (!body) return null;
 
   return (
-    <Floating x={x} y={y} z={50} className={`bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${sideBySide ? 'max-w-[min(560px,calc(100vw-16px))]' : 'max-w-[min(360px,calc(100vw-16px))]'}`}>
+    <Floating x={x} y={y} z={200} className={`bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white ${sideBySide ? 'max-w-[min(560px,calc(100vw-16px))]' : 'max-w-[min(360px,calc(100vw-16px))]'}`}>
       <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">{title}</div>
       {body}
     </Floating>

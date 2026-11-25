@@ -55,6 +55,9 @@ export interface UseHexGridProps {
   onHexRightClick?: (hex: Hex, unit: Unit | undefined, clientX: number, clientY: number) => void;
   onUnitHover?: (unit: Unit, screenX: number, screenY: number) => void;
   onUnitLeave?: () => void;
+  /** A ship image under the pointer (units win when they overlap). */
+  onShipHover?: (ship: GrabbableShip, screenX: number, screenY: number) => void;
+  onShipLeave?: () => void;
   onAttack?: (attackerId: string, targetId: string) => void;
   /** Walls on the board (drag-onto-the-edge wall attacks). */
   walls?: Walls;
@@ -126,6 +129,8 @@ export function useHexGrid({
   onHexRightClick,
   onUnitHover,
   onUnitLeave,
+  onShipHover,
+  onShipLeave,
   onAttack,
   walls,
   onAttackWall,
@@ -167,6 +172,7 @@ export function useHexGrid({
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [mouseDownTarget, setMouseDownTarget] = useState<'unit' | 'ship' | 'hex' | 'none'>('none');
   const [lastHoveredUnit, setLastHoveredUnit] = useState<Unit | null>(null);
+  const [lastHoveredShip, setLastHoveredShip] = useState<GrabbableShip | null>(null);
 
   const rafIdRef = useRef<number | null>(null);
   /** Last reported hovered wall-edge key (dedupes the overlay-hint callback). */
@@ -535,6 +541,10 @@ export function useHexGrid({
     const hoverUnit = unit;
     if (hoverUnit && hoverUnit !== lastHoveredUnit) {
       setLastHoveredUnit(hoverUnit);
+      if (lastHoveredShip) {
+        setLastHoveredShip(null);
+        onShipLeave?.();
+      }
       // Viewport (client) coords — the tooltips are portal/fixed, browser-bound.
       if (onUnitHover) onUnitHover(hoverUnit, e.clientX, e.clientY);
     } else if (!hoverUnit && lastHoveredUnit) {
@@ -542,11 +552,22 @@ export function useHexGrid({
       if (onUnitLeave) onUnitLeave();
     }
 
-    // Hex/edge info hover (skip while a unit tooltip is showing). The edge
+    // Ship images: units win on overlap. The tooltip follows the same hit box as
+    // ship drag/right-click so hovering the visible hull works.
+    const hoverShip = !hoverUnit ? getShipAtScreen(e.clientX, e.clientY) : undefined;
+    if (hoverShip && hoverShip !== lastHoveredShip) {
+      setLastHoveredShip(hoverShip);
+      onShipHover?.(hoverShip, e.clientX, e.clientY);
+    } else if (!hoverShip && lastHoveredShip) {
+      setLastHoveredShip(null);
+      onShipLeave?.();
+    }
+
+    // Hex/edge info hover (skip while a unit or ship tooltip is showing). The edge
     // hit-box is enlarged in inspect mode for easier navigation.
     const rect = canvasRef.current?.getBoundingClientRect();
     const infoKey = (() => {
-      if (hoverUnit || draggingUnitId || !hex || !rect) return null;
+      if (hoverUnit || hoverShip || draggingUnitId || !hex || !rect) return null;
       const edge = getWallEdgeAt(e.clientX, e.clientY);
       return edge ? `e:${edge.key}` : `h:${hex.q},${hex.r}`;
     })();
@@ -592,7 +613,7 @@ export function useHexGrid({
       hoveredStructKeyRef.current = nextStructKey;
       onHoverStructureHex?.(nextStructHex);
     }
-  }, [getHexFromScreen, getUnitAtScreen, targetFilter, isPanning, panStart, lastHoveredUnit, onUnitHover, onUnitLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, canAttemptStructure, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
+  }, [getHexFromScreen, getUnitAtScreen, getShipAtScreen, targetFilter, isPanning, panStart, lastHoveredUnit, lastHoveredShip, onUnitHover, onUnitLeave, onShipHover, onShipLeave, draggingUnitId, canAttackWallEdge, getWallEdgeAt, onHoverWallEdge, onHoverStructureHex, canAttemptStructure, onHexHover, onHexLeave, onEdgeHover, onEdgeLeave]);
 
   // Pointer leaves the canvas (e.g. onto a modal overlay): drop all hover state so
   // tooltips disappear and a re-entry re-fires the hover callbacks.
@@ -601,6 +622,10 @@ export function useHexGrid({
       setLastHoveredUnit(null);
       onUnitLeave?.();
     }
+    if (lastHoveredShip) {
+      setLastHoveredShip(null);
+      onShipLeave?.();
+    }
     hoveredEdgeKeyRef.current = null;
     onHoverWallEdge?.(null);
     hoveredStructKeyRef.current = null;
@@ -608,7 +633,7 @@ export function useHexGrid({
     hoveredInfoKeyRef.current = null;
     onHexLeave?.();
     onEdgeLeave?.();
-  }, [lastHoveredUnit, onUnitLeave, onHoverWallEdge, onHoverStructureHex, onHexLeave, onEdgeLeave]);
+  }, [lastHoveredUnit, lastHoveredShip, onUnitLeave, onShipLeave, onHoverWallEdge, onHoverStructureHex, onHexLeave, onEdgeLeave]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const hex = getHexFromScreen(e.clientX, e.clientY);

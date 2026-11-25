@@ -42,24 +42,30 @@ export function WarningTriangle({ className = '' }: { className?: string }) {
 export function CargoLoadBadge({
   mass,
   capacity,
+  designCapacity,
   showIcon = true,
   compact = false,
 }: {
   mass: number;
   capacity: number;
+  /** Undamaged hold size; shown as `used / effective (design)t` when larger. */
+  designCapacity?: number;
   showIcon?: boolean;
   compact?: boolean;
 }) {
   const over = mass > capacity;
   const full = capacity > 0 && mass >= capacity;
   const color = over ? 'text-red-300' : full ? 'text-amber-300' : 'text-gray-200';
+  const designSuffix = designCapacity != null && designCapacity > capacity
+    ? ` (${formatCargoMass(designCapacity)})`
+    : '';
   return (
     <span
       className={`inline-flex items-center gap-1 tabular-nums ${compact ? 'text-xs' : 'text-base font-bold'} ${color}`}
       title={over ? 'Cargo exceeds capacity' : full ? 'Cargo hold full' : 'Cargo load'}
     >
       {over && showIcon && <WarningTriangle className="h-3.5 w-3.5" />}
-      {formatCargoMass(mass)} / {formatCargoMass(capacity)}t
+      {formatCargoMass(mass)} / {formatCargoMass(capacity)}{designSuffix}t
     </span>
   );
 }
@@ -67,7 +73,11 @@ export function CargoLoadBadge({
 export interface CargoManifestProps {
   items: CargoManifestItem[];
   capacity: number;
+  /** Undamaged hold size; shown as `used / effective (design)t` when larger. */
+  designCapacity?: number;
   canEdit: boolean;
+  /** Read-only preview: show Add cargo disabled instead of hiding it. */
+  readOnly?: boolean;
   /** Food & water endurance at the current people count. */
   foodWaterDays?: number | null;
   /** Current people count for the Food & water edit hint. */
@@ -78,7 +88,9 @@ export interface CargoManifestProps {
 export function CargoManifest({
   items,
   capacity,
+  designCapacity,
   canEdit,
+  readOnly = false,
   foodWaterDays,
   people = 0,
   onChange,
@@ -97,8 +109,8 @@ export function CargoManifest({
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => item.quantity > 0);
 
-  const grid = 'grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_70px_44px_22px]';
-  const rowClass = 'flex items-center gap-2 px-2 py-1 text-[11px]';
+  const grid = 'grid grid-cols-[minmax(0,1fr)_34px_42px_22px] gap-1';
+  const rowClass = 'flex items-center px-2 py-1 text-[11px]';
 
   const saveDialog = (draft: CargoManifestDraft, index?: number) => {
     if (!onChange) return;
@@ -110,16 +122,29 @@ export function CargoManifest({
   };
 
   return (
-    <div className={`relative rounded-lg border ${over ? 'border-red-600 bg-red-950/30' : full ? 'border-amber-600 bg-amber-950/20' : 'border-gray-700'}`}>
-      {over && (
-        <span className="pointer-events-none absolute right-1.5 top-1.5 text-red-300" title="Cargo exceeds capacity">
-          <WarningTriangle className="h-4 w-4" />
-        </span>
-      )}
+    <div className={`rounded-lg border ${over ? 'border-red-600 bg-red-950/30' : full ? 'border-amber-600 bg-amber-950/20' : 'border-gray-700'}`}>
       <div className="border-b border-gray-800 px-2 py-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500">Cargo manifest</span>
-          <CargoLoadBadge mass={total} capacity={capacity} showIcon={false} compact />
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-left text-[10px] uppercase leading-tight tracking-wide text-gray-500">
+            Cargo<br />manifest
+          </span>
+          <div className="flex min-w-0 flex-1 justify-center">
+            <CargoLoadBadge mass={total} capacity={capacity} designCapacity={designCapacity} showIcon compact />
+          </div>
+          {(canEdit || readOnly) && (
+            <button
+              type="button"
+              onClick={() => setDialog({
+                category: 'general_cargo',
+                name: CARGO_CATEGORY_LABELS.general_cargo,
+                quantity: 1,
+              })}
+              disabled={!canEdit}
+              className="shrink-0 px-2 py-0.5 text-[11px] bg-green-800 border border-yellow-400 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + Add cargo
+            </button>
+          )}
         </div>
         {foodWaterDays !== undefined && (
           <div className="mt-0.5 flex items-center justify-between text-[9px] text-gray-500">
@@ -129,8 +154,8 @@ export function CargoManifest({
             </span>
           </div>
         )}
-        <div className={`mt-0.5 ${grid} gap-1 text-[9px] uppercase tracking-wide text-gray-500`}>
-          <span>Name</span><span>Category</span><span className="text-right">Qty</span><span className="text-right">Mass</span><span />
+        <div className={`mt-0.5 ${grid} text-[9px] uppercase tracking-wide text-gray-500`}>
+          <span>Name</span><span className="text-right">Qty</span><span className="text-right">Mass</span><span />
         </div>
       </div>
 
@@ -139,12 +164,14 @@ export function CargoManifest({
 
         {visible.map(({ item, index }) => (
           <div key={`cargo-${index}`} className={`${rowClass} ${grid}`}>
-            <span className="truncate text-gray-200" title={item.name}>{item.name}</span>
-            <span className="truncate text-gray-400" title={CARGO_CATEGORY_LABELS[item.category]}>
-              {CARGO_CATEGORY_LABELS[item.category]}
+            <span
+              className="truncate text-gray-200"
+              title={`${item.name} · ${CARGO_CATEGORY_LABELS[item.category]}`}
+            >
+              {item.name}
             </span>
-            <span className="text-right tabular-nums text-gray-300">
-              {item.quantity} <span className="text-gray-500">{cargoUnitLabel(item.category)}</span>
+            <span className="text-right tabular-nums text-gray-300" title={cargoUnitLabel(item.category)}>
+              {item.quantity}
             </span>
             <span className="text-right tabular-nums text-gray-300">{formatCargoMass(cargoItemMass(item))}t</span>
             {canEdit ? (
@@ -163,20 +190,6 @@ export function CargoManifest({
             ) : <span />}
           </div>
         ))}
-
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => setDialog({
-              category: 'general_cargo',
-              name: CARGO_CATEGORY_LABELS.general_cargo,
-              quantity: 1,
-            })}
-            className="flex w-full items-center justify-center gap-1 px-2 py-1.5 text-[11px] text-emerald-300 hover:bg-gray-800"
-          >
-            + Add cargo
-          </button>
-        )}
       </div>
 
       {dialog && (

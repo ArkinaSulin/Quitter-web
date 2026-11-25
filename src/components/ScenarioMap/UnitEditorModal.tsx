@@ -331,7 +331,7 @@ export function UnitEditorModal({ unit, formationsMap, units, alliances, onClose
   const mountOptions = [{ value: '', label: 'None' }, ...mounts.map(m => ({ value: m.id, label: m.name }))];
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 pointer-events-auto">
+    <div className="absolute inset-0 z-[260] flex items-center justify-center bg-black/30 pointer-events-auto">
       <div
         ref={modalRef}
         className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[460px] max-h-[92vh] flex flex-col"

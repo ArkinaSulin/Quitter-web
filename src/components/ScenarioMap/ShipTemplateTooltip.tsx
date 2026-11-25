@@ -31,7 +31,7 @@ export function ShipTemplateTooltip({
   });
 
   return (
-    <Floating x={x} y={y} z={50} className="bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(440px,calc(100vw-16px))]">
+    <Floating x={x} y={y} z={200} className="bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(440px,calc(100vw-16px))]">
       <div className="font-bold mb-1">
         {template.name}
         {template.role && <span className="text-gray-400 font-normal"> — {template.role}</span>}

@@ -394,7 +394,12 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
   }, [scenarioId]);
 
   // 5. Add unit from template
-  const addUnitFromTemplate = useCallback(async (template: UnitTemplate, hex: Hex, team: string = 'black'): Promise<Unit | null> => {
+  const addUnitFromTemplate = useCallback(async (
+    template: UnitTemplate,
+    hex: Hex,
+    team: string = 'black',
+    elevation = 0,
+  ): Promise<Unit | null> => {
     let defaultFormation = 'Scattered';
     if (template.formationAvailability && template.formationAvailability.includes('Open Order')) {
       defaultFormation = 'Open Order';
@@ -452,7 +457,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       attachedToUnitId: null,
       attachedPosition: null,
       mountSplit: null,
-      elevation: 0,
+      elevation: Math.max(0, Math.round(elevation)),
       flySpeed: template.flySpeed ?? 0,
       // Heroes spawn with their whole movement up front (ground AND fly pools),
       // mirroring `movementPointsAvailable`; units materialize pools from actions.

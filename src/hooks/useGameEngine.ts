@@ -17,6 +17,7 @@ import { ActionType, SubStep, CommandLogRow, UndoState, parseSubSteps } from '@/
 import { getActiveGroups, advanceTurn, advanceShipStep } from '@/packages/world';
 import {
   cardStepsRemaining,
+  clearCommandBonuses,
   planShipWeaponAutoLoad,
   shipCardCrewCount,
   shipCardLeaderTeam,
@@ -168,6 +169,10 @@ export function useGameEngine({
             }
           }
           if (Object.keys(patch).length > 0) setShipLocal(step.unitId, patch);
+        } else if (step.type === 'CAMPAIGN') {
+          // Campaign rows refresh through their own realtime channel; nothing to
+          // apply optimistically here.
+          continue;
         } else if (step.type === 'SCENARIO' && setScenarioLocal) {
           const update: any = {};
           for (const change of step.changes) {
@@ -212,7 +217,7 @@ export function useGameEngine({
       actionType: ActionType,
       subSteps: SubStep[],
       description: string,
-      options?: { chained?: boolean; message?: string; verboseMessage?: string; localOnly?: boolean },
+      options?: { chained?: boolean; message?: string; verboseMessage?: string; localOnly?: boolean; silent?: boolean },
     ): Promise<CommandLogRow | null> => {
       const isChained = options?.chained ?? false;
 
@@ -287,13 +292,15 @@ export function useGameEngine({
       const local = options?.localOnly || (unitChange && isGM);
       const msg = options?.message ?? description;
       const verbose = options?.verboseMessage ?? options?.message;
-      if (actionType === 'EDIT_UNIT') {
-        if (local) addLocalError(description);
-        else addError(description);
-      } else if (local) {
-        addLocalMessage(msg, verbose);
-      } else {
-        addMessage(msg, verbose);
+      if (!options?.silent) {
+        if (actionType === 'EDIT_UNIT') {
+          if (local) addLocalError(description);
+          else addError(description);
+        } else if (local) {
+          addLocalMessage(msg, verbose);
+        } else {
+          addMessage(msg, verbose);
+        }
       }
       refreshUndoState();
       return row;
@@ -952,15 +959,26 @@ export function useGameEngine({
   );
 
   const attachHero = useCallback(
-    async (hero: Unit, targetUnit: Unit, position: 'front' | 'back' | 'rider', heroMaxMP: number, cost = 1): Promise<void> => {
+    async (
+      hero: Unit,
+      targetUnit: Unit,
+      position: 'front' | 'back' | 'rider',
+      heroMaxMP: number,
+      cost = 1,
+      isFree = freeMove,
+    ): Promise<void> => {
       const changes: { field: string; from: any; to: any }[] = [
         { field: 'attachedToUnitId', from: null, to: targetUnit.id },
         { field: 'attachedPosition', from: null, to: position },
         { field: 'hex', from: { ...hero.hex }, to: { ...targetUnit.hex } },
       ];
+      // Attached heroes share the host's level (structure top / air host).
+      if ((hero.elevation ?? 0) !== (targetUnit.elevation ?? 0)) {
+        changes.push({ field: 'elevation', from: hero.elevation ?? 0, to: targetUnit.elevation ?? 0 });
+      }
       // Attaching pays the host hex's ENTRY cost from the hero's GROUND pool
       // (a same-level step, never flight); actions convert at the prorated rate.
-      if (!freeMove) {
+      if (!isFree) {
         const budget = moveBudgetUnit(hero, 'ground');
         const { movementPointsAvailable, actionsAvailable } = applyHeroMoveCost(budget, cost, heroMaxMP);
         changes.push({
@@ -1169,13 +1187,15 @@ export function useGameEngine({
         describeEffectDamage(ev.unitName, ev.source, ev.detail, true),
       );
 
-      // Ships reset their per-step movement spend and rudder MC trim on every
-      // step/turn boundary.
+      // Ships reset their per-step movement spend on every step boundary. The
+      // rudder trim and the sail check locks last until the END of the turn, so
+      // they clear only when the turn number actually advances.
+      const turnAdvanced = newTurnNumber !== args.turnNumber;
       for (const ship of args.ships ?? []) {
         if (ship.isDeleted) continue;
         const changes: { field: string; from: unknown; to: unknown }[] = [];
         if (ship.speedSpent) changes.push({ field: 'speedSpent', from: ship.speedSpent, to: 0 });
-        if (ship.mcReduction) changes.push({ field: 'mcReduction', from: ship.mcReduction, to: 0 });
+        if (turnAdvanced && ship.mcReduction) changes.push({ field: 'mcReduction', from: ship.mcReduction, to: 0 });
         // turnsSinceFacing is a pure "hexes since the last facing change"
         // counter. It persists across steps/turns; only a real turn resets it.
         // Advance the previous-round speed only at the round boundary. Within a
@@ -1190,8 +1210,15 @@ export function useGameEngine({
         // Sail maxing / trimming are one success per turn; END_TURN reopens them
         // in every mode (atmosphere keeps ship_step at 1, so step comparison
         // alone would leave them locked forever).
-        if (ship.sailMaxStep) changes.push({ field: 'sailMaxStep', from: ship.sailMaxStep, to: 0 });
-        if (ship.sailTrimStep) changes.push({ field: 'sailTrimStep', from: ship.sailTrimStep, to: 0 });
+        if (turnAdvanced && ship.sailMaxStep) changes.push({ field: 'sailMaxStep', from: ship.sailMaxStep, to: 0 });
+        if (turnAdvanced && ship.sailTrimStep) changes.push({ field: 'sailTrimStep', from: ship.sailTrimStep, to: 0 });
+        // An unspent captaincy bonus expires at end of turn.
+        if (turnAdvanced) {
+          const clearedBonuses = clearCommandBonuses(ship.cardState);
+          if (clearedBonuses !== ship.cardState) {
+            changes.push({ field: 'cardState', from: ship.cardState ?? {}, to: clearedBonuses });
+          }
+        }
         if (changes.length > 0) {
           subSteps.push({
             type: 'SHIP',

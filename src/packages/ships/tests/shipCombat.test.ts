@@ -12,8 +12,44 @@ import {
   shipRamDamage,
   shipRangeBand,
   shipTargetArc,
+  survivingSailRudder,
+  componentTonsForDamage,
+  cappedComponentTons,
 } from '@/packages/ships';
 import { HEX_DIRS } from '@/packages/primitives';
+import type { ShipBuild } from '@/packages/ships';
+import type { ShipComponent } from '@/types/ship';
+
+const COMPONENTS: ShipComponent[] = [
+  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+];
+
+function sailRudderBuild(sails: number, rudders: number): ShipBuild {
+  return {
+    armor: { id: 'wood', name: 'wood', massPct: 0, ac: 15, hpMult: 1 },
+    components: COMPONENTS,
+    weaponsCatalog: [],
+    totalMass: 30,
+    helm: 1,
+    commandBridge: 0,
+    sails,
+    rudders,
+    reinforcement: 0,
+    cargoArea: 0,
+    templateComponents: [],
+    templateWeapons: [],
+    deckLayout: {
+      version: 2,
+      bow: [{ cardKey: null }],
+      stern: [{ cardKey: null }],
+      port: [{ cardKey: 'component:comp-rudder' }],
+      body: [[{ cardKey: 'component:comp-sail' }], [{ cardKey: null }]],
+      starboard: [{ cardKey: null }],
+    },
+  } as unknown as ShipBuild;
+}
 
 const weapon = { minRange: 1, range: 3, maxRange: 10 };
 
@@ -137,7 +173,8 @@ describe('manualShipWeaponLoad', () => {
 });
 
 describe('planShipWeaponAutoLoad', () => {
-  const base = { reloadSteps: 4, fullCrew: true, hasHero: false, cardStepsRemaining: 5 };
+  const base = { reloadSteps: 4,
+    maxTargets: 1, fullCrew: true, hasHero: false, cardStepsRemaining: 5 };
 
   it('loads one step per ship step in wildspace', () => {
     expect(planShipWeaponAutoLoad({ progress: 0, armed: false }, { ...base, mode: 'wildspace' })).toEqual({
@@ -165,5 +202,49 @@ describe('planShipWeaponAutoLoad', () => {
       { progress: 0, armed: false },
       { ...base, reloadSteps: 5, mode: 'atmosphere', cardStepsRemaining: 1 },
     )).toEqual({ state: { progress: 1, armed: false }, loads: 1 });
+  });
+});
+
+describe('component damage', () => {
+  it('uses one ton per full 10 damage', () => {
+    expect(componentTonsForDamage(9)).toBe(0);
+    expect(componentTonsForDamage(10)).toBe(1);
+    expect(componentTonsForDamage(15)).toBe(1);
+    expect(componentTonsForDamage(21)).toBe(2);
+    expect(componentTonsForDamage(49)).toBe(4);
+  });
+
+  it('caps at the struck card remaining boxes', () => {
+    expect(cappedComponentTons(4, 49)).toBe(4);
+    expect(cappedComponentTons(1, 49)).toBe(1);
+    expect(cappedComponentTons(0, 49)).toBe(0);
+  });
+});
+
+describe('surviving sails and rudders', () => {
+  it('sail boxes map one-to-one and rudders use surviving tonnage', () => {
+    const build = sailRudderBuild(10, 7);
+    expect(survivingSailRudder(build, {})).toEqual({ sails: 10, rudders: 7 });
+    // 10 sails - 4 boxes = 6 sails; 10.5 t - 1 t = 9.5 t ? ceil(6.33) = 7 rudders.
+    expect(survivingSailRudder(build, {
+      'component:comp-sail': 4,
+      'component:comp-rudder': 1,
+    })).toEqual({ sails: 6, rudders: 7 });
+    // Two rudder tons: 8.5 / 1.5 = 5.67 ? 6.
+    expect(survivingSailRudder(build, {
+      'component:comp-sail': 4,
+      'component:comp-rudder': 2,
+    })).toEqual({ sails: 6, rudders: 6 });
+    // Three rudder tons: 7.5 / 1.5 = 5 exactly.
+    expect(survivingSailRudder(build, {
+      'component:comp-sail': 4,
+      'component:comp-rudder': 3,
+    })).toEqual({ sails: 6, rudders: 5 });
+  });
+
+  it('falls back to the design counts without a deck layout', () => {
+    const build = sailRudderBuild(10, 7);
+    build.deckLayout = undefined;
+    expect(survivingSailRudder(build, { 'component:comp-sail': 99 })).toEqual({ sails: 10, rudders: 7 });
   });
 });

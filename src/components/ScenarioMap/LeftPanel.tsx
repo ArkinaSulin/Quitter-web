@@ -39,7 +39,7 @@ interface LeftPanelProps {
   playerId: string;
   onUnitDragStart: (template: UnitTemplate) => void;
   onShipDragStart: (entry: ShipLibraryEntry) => void;
-  onPlayerShipDragStart: (playerShip: import('@/packages/ships').PlayerShip, entry: ShipLibraryEntry) => void;
+  onCampaignDragStart: (root: import('@/packages/ships').CampaignShip) => void;
   canViewShipLibrary: boolean;
   isGM: boolean;
   alliances: Record<string, AllianceGroup>;
@@ -76,7 +76,7 @@ interface LeftPanelProps {
   onToggleSide: () => void;
 }
 
-export function LeftPanel({ scenarioId, playerId, onUnitDragStart, onShipDragStart, onPlayerShipDragStart, canViewShipLibrary, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
+export function LeftPanel({ scenarioId, playerId, onUnitDragStart, onShipDragStart, onCampaignDragStart, canViewShipLibrary, isGM, alliances, onMoveTeam, participants, roomOpen, onSetRoomOpen, onSetParticipantTeam, onSetParticipantRole, onKickParticipant, backgroundConfig, onSaveBackground, onPreviewMapConfig, currentMapId, onAssignMap, onClearMap, structureTemplates, structurePaletteId, onSetStructurePaletteId, structures, selectedStructureKey, onPatchStructure, onRemoveStructure, canUseEffects, aiPanelContent, verboseCombat, side, onToggleSide }: LeftPanelProps) {
   // Persist which tabs are open per scenario + user, so a rejoined session
   // restores the same panel layout.
   // Persist which tabs are open per scenario + user. The saved layout is restored
@@ -210,9 +210,10 @@ export function LeftPanel({ scenarioId, playerId, onUnitDragStart, onShipDragSta
       content: (
         <ShipSelector
           scenarioId={scenarioId}
+          ownerId={playerId}
           canViewLibrary={canViewShipLibrary}
           onShipDragStart={onShipDragStart}
-          onPlayerShipDragStart={onPlayerShipDragStart}
+          onCampaignDragStart={onCampaignDragStart}
         />
       ),
     },

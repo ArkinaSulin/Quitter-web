@@ -25,7 +25,9 @@ export function mapShipArmorRow(row: any): ShipArmor {
     massPct: Number(row.mass_pct ?? row.mass_factor) || 0,
     ac: Number(row.ac) || 0,
     hpMult: Number(row.hp_mult ?? (Number(row.box_hp) > 5 ? 2 : 1)) || 1,
+    costPerTon: Number(row.cost_per_ton) || 0,
     imageUrl: row.image_url || '',
+    ownerId: row.owner_id || null,
   };
 }
 
@@ -45,6 +47,7 @@ export function mapShipComponentRow(row: any): ShipComponent {
     ac: row.ac != null ? Number(row.ac) : 10,
     isRam: !!row.is_ram,
     imageUrl: row.image_url || '',
+    ownerId: row.owner_id || null,
   };
 }
 
@@ -60,6 +63,7 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     range: Number(row.range) || 0,
     maxRange: Number(row.max_range) || 0,
     reloadSteps: Math.max(0, Number(row.reload_steps) || 0),
+    maxTargets: Math.max(1, Number(row.max_targets) || 1),
     dt: Number(row.dt) || 15,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
@@ -72,6 +76,7 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     special: row.special || null,
     ac: row.ac != null ? Number(row.ac) : 10,
     imageUrl: row.image_url || '',
+    ownerId: row.owner_id || null,
   };
 }
 
@@ -133,6 +138,7 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     manifest: normalizeCargoManifest(row.manifest),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: row.owner_id || null,
   };
 }
 

@@ -81,6 +81,8 @@ export interface ShipRuntime {
   speedStat: number;
   shipHp: number;
   shipHpMax: number;
+  /** Lowest HP reached before the next dry-dock repair. */
+  minHpAttained: number;
   loadedCargo: number;
   crewAssigned: Record<string, number>;
   boxState: Record<string, unknown>;
@@ -97,11 +99,11 @@ export interface ShipRuntime {
   crewState: Record<string, ShipCrewState>;
   /** Team/alliance colour for the whole crew roster (null = unset). */
   crewTeam: string | null;
-  /** Temporary MC reduction for the current step (rudder trim). */
+  /** Temporary MC reduction for the current turn (rudder trim). */
   mcReduction: number;
-  /** Step number a sail speed adjustment succeeded (0 = none). */
+  /** Turn number a sail speed adjustment succeeded (0 = none). */
   sailMaxStep: number;
-  /** Step number a rudder MC trim succeeded (0 = none). */
+  /** Turn number a rudder MC trim succeeded (0 = none). */
   sailTrimStep: number;
   /** Turn number a ram was used (0 = none). */
   ramUsedTurn: number;
@@ -113,10 +115,14 @@ export interface ShipRuntime {
   imageOffsetY: number;
   /** Shared scenario serial label number (A=1, B=2, ...). */
   serialNumber: number;
-  /** Linked persistent player ship, if any. */
-  playerShipId: string | null;
+  /** Campaign version this instance currently represents, if any. */
+  campaignId: string | null;
+  /** This instance feeds its campaign row's runtime mirror. */
+  campaignCarrier: boolean;
   /** Dry-dock editor window is open for this ship. */
   dryDockOpen: boolean;
+  /** Bumped by the DM to re-share a locally closed dry-dock window. */
+  dryDockRevision: number;
   /** DM-hidden: invisible/non-interactive for players, dim for the DM. */
   hidden: boolean;
   isDeleted: boolean;
@@ -255,6 +261,9 @@ export function mapShipRuntimeRow(row: any): ShipRuntime {
     speedStat: num(row.speed_stat),
     shipHp: effectiveShipHp(snapshot, boxState, num(row.ship_hp)),
     shipHpMax: num(row.ship_hp_max),
+    minHpAttained: row.min_hp_attained != null
+      ? num(row.min_hp_attained)
+      : effectiveShipHp(snapshot, boxState, num(row.ship_hp)),
     loadedCargo: num(row.loaded_cargo),
     crewAssigned: obj(row.crew_assigned),
     boxState,
@@ -279,12 +288,63 @@ export function mapShipRuntimeRow(row: any): ShipRuntime {
     keelLength: num(row.keel_length, 100),
     imageOffsetY: num(row.image_offset_y),
     serialNumber: num(row.serial_number),
-    playerShipId: row.player_ship_id || null,
+    campaignId: row.campaign_id || null,
+    campaignCarrier: !!row.campaign_carrier,
     dryDockOpen: !!row.dry_dock_open,
+    dryDockRevision: num(row.dry_dock_revision),
     hidden: !!row.hidden,
     isDeleted: !!row.is_deleted,
     commandSeq: num(row.command_seq),
   };
+}
+
+/** Crew ids currently in a template roster. */
+export function shipCrewIds(template: ShipTemplate | null | undefined): Set<string> {
+  return new Set((template?.crews ?? []).map(crew => crew.id));
+}
+
+/** Drop runtime crew HP/dead entries for people no longer in the roster. */
+export function pruneShipCrewState(
+  crewState: Record<string, ShipCrewState> | null | undefined,
+  validCrewIds: Set<string>,
+): Record<string, ShipCrewState> {
+  const next: Record<string, ShipCrewState> = {};
+  for (const [id, state] of Object.entries(crewState ?? {})) {
+    if (validCrewIds.has(id)) next[id] = state;
+  }
+  return next;
+}
+
+/** Drop box damage for cards that no longer exist after a refit. */
+export function pruneShipBoxState(
+  boxState: Record<string, unknown> | null | undefined,
+  validCardKeys: Set<string>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(boxState ?? {})) {
+    if (validCardKeys.has(key)) next[key] = value;
+  }
+  return next;
+}
+
+/** Drop crew assignments and hero positions for removed crew/cards. */
+export function pruneShipStations(
+  stations: Record<string, ShipStationAssignment> | null | undefined,
+  validCrewIds: Set<string>,
+  validCardKeys: Set<string>,
+): Record<string, ShipStationAssignment> {
+  const next: Record<string, ShipStationAssignment> = {};
+  for (const [key, station] of Object.entries(stations ?? {})) {
+    if (!validCardKeys.has(key)) continue;
+    next[key] = {
+      ...station,
+      crewIds: (station.crewIds ?? []).filter(id => validCrewIds.has(id)),
+      heroPositions: station.heroPositions
+        ? Object.fromEntries(Object.entries(station.heroPositions))
+        : undefined,
+    };
+  }
+  return next;
 }
 
 /** Build the insert/`row` payload for a newly placed ship instance. */
@@ -298,9 +358,13 @@ export function shipRowFromParts(args: {
   team?: string | null;
   name?: string;
   serialNumber?: number;
-  playerShipId?: string | null;
+  campaignId?: string | null;
+  campaignCarrier?: boolean;
   shipHp?: number;
   shipHpMax?: number;
+  minHpAttained?: number;
+  /** Starting altitude (ft). Atmosphere ships default to 10 ft at the call site. */
+  elevation?: number;
   damage?: Record<string, unknown>;
   crewState?: Record<string, unknown>;
 }): Record<string, unknown> {
@@ -312,19 +376,21 @@ export function shipRowFromParts(args: {
     templateId: template.id,
     name: args.name ?? (template.name || 'Ship'),
     serialNumber: args.serialNumber ?? 0,
-    playerShipId: args.playerShipId ?? null,
+    campaignId: args.campaignId ?? null,
+    campaignCarrier: args.campaignCarrier ?? false,
     team: team ?? null,
     hex,
     facing: 0,
     speedStat: 0,
     shipHp: Math.max(0, args.shipHp ?? stats.shipHp),
     shipHpMax: Math.max(1, args.shipHpMax ?? stats.shipHp),
+    minHpAttained: Math.max(0, args.minHpAttained ?? args.shipHp ?? stats.shipHp),
     loadedCargo: cargoManifestMass(template.manifest),
     crewAssigned: {},
     boxState: args.damage ?? {},
     crewState: args.crewState ?? {},
     snapshot,
-    elevation: 0,
+    elevation: Math.max(0, Math.round(args.elevation ?? 0)),
     lastSpeed: 5,
     declaredSpeed: 0,
     declaredRound: 0,
@@ -343,6 +409,7 @@ export function shipRowFromParts(args: {
     keelLength: template.keelLength,
     imageOffsetY: template.imageOffsetY,
     dryDockOpen: false,
+    dryDockRevision: 0,
     hidden: false,
     isDeleted: false,
   };

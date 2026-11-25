@@ -2,19 +2,37 @@
 // src/components/WeaponEditor/WeaponEditor.tsx
 // Weapon Editor — author the reusable weapons library (2 panels: list + form).
 // The form body is the same `WeaponFields` the Add/Edit Weapon modal uses.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/packages/infra/supabase';
 import { blankWeapon, validateWeapon } from '@/packages/units';
-import { LibraryWeapon, mapWeaponRow, mapWeaponToRow } from '@/packages/infra';
+import { LibraryWeapon, mapWeaponRow, mapWeaponToRow, type OwnershipFilter } from '@/packages/infra';
 import { refreshAndReselect } from '@/packages/world';
 import { WeaponFields } from '@/components/WeaponEditor/WeaponFields';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
+import { OwnerChip, OwnerFilterSelect, OwnerLockNotice } from '@/components/shared/ContentOwnership';
+import { UnsavedChangesModal } from '@/components/shared/UnsavedChangesModal';
 
-export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
+export default function WeaponEditor({ readOnly: capabilityReadOnly }: { readOnly: boolean }) {
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
   const [list, setList] = useState<LibraryWeapon[]>([]);
   const [draft, setDraft] = useState<LibraryWeapon | null>(null);
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const savedSnapshotRef = useRef('');
+  const isDirty = !!draft && JSON.stringify(draft) !== savedSnapshotRef.current;
+  const {
+    showUnsavedModal,
+    requestAction,
+    takePending,
+    discardPending,
+    cancelPending,
+  } = useUnsavedChanges(isDirty);
+
+  const ownershipLocked = !!draft?.id && !ownership.canEdit(draft.ownerId);
+  const readOnly = capabilityReadOnly || ownershipLocked;
 
   const load = useCallback(async (): Promise<LibraryWeapon[]> => {
     const { data } = await supabase.from('unit_weapons').select('*').order('name', { ascending: true });
@@ -25,13 +43,20 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const select = (w: LibraryWeapon) => setDraft({ ...w });
-  const fresh = () => setDraft({ ...blankWeapon(), id: '', notes: '', costGp: 0 });
+  const select = (w: LibraryWeapon) => requestAction(() => {
+    const next = { ...w };
+    setDraft(next);
+    savedSnapshotRef.current = JSON.stringify(next);
+  });
+  const fresh = () => requestAction(() => {
+    setDraft({ ...blankWeapon(), id: '', notes: '', costGp: 0 });
+    savedSnapshotRef.current = '';
+  });
 
-  const save = async () => {
-    if (!draft || readOnly) return;
+  const save = async (): Promise<boolean> => {
+    if (!draft || readOnly) return false;
     const err = validateWeapon(draft);
-    if (err) { setStatus(err); return; }
+    if (err) { setStatus(err); return false; }
     setBusy(true);
     setStatus('');
     try {
@@ -47,12 +72,24 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
       }
       setStatus('Saved.');
       const { selected } = await refreshAndReselect(load, id);
-      if (selected) select(selected);
+      if (selected) {
+        const clean = { ...selected };
+        setDraft(clean);
+        savedSnapshotRef.current = JSON.stringify(clean);
+      }
+      return true;
     } catch (e: any) {
       setStatus('Save failed: ' + (e?.message || 'unknown'));
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleUnsavedSave = async () => {
+    const action = takePending();
+    const ok = await save();
+    if (ok) action?.();
   };
 
   const remove = async () => {
@@ -62,6 +99,7 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
     try {
       await supabase.from('unit_weapons').delete().eq('id', draft.id);
       setDraft(null);
+      savedSnapshotRef.current = '';
       setStatus('Deleted.');
       await load();
     } catch (e: any) {
@@ -73,15 +111,25 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? list.filter(w => w.name.toLowerCase().includes(q)) : list;
-  }, [list, search]);
+    const base = q ? list.filter(w => w.name.toLowerCase().includes(q)) : list;
+    return ownership.filter(base, ownerFilter);
+  }, [list, search, ownerFilter, ownership]);
 
   return (
     <div className="flex flex-col w-full h-screen bg-[#0d0d1a] text-white overflow-hidden select-none">
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
         <h1 className="text-xl font-bold text-yellow-300">Weapon Workshop</h1>
         {readOnly && <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">Read-only view</span>}
-        <a href="/" className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded">Main Menu</a>
+        <a
+          href="/"
+          onClick={e => {
+            e.preventDefault();
+            requestAction(() => { window.location.href = '/'; });
+          }}
+          className="text-sm bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded"
+        >
+          Main Menu
+        </a>
       </header>
 
       <div className="flex flex-1 min-h-0">
@@ -98,6 +146,12 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
             placeholder="Search weapons…"
             className="w-full bg-gray-800 text-white text-xs rounded px-2 py-1.5 border border-gray-700 focus:border-amber-400 outline-none mb-1"
           />
+          <OwnerFilterSelect
+            ownership={ownership}
+            value={ownerFilter}
+            onChange={setOwnerFilter}
+            className="w-full mb-1"
+          />
           {filtered.length === 0 && <p className="text-xs text-gray-500">No weapons yet.</p>}
           {filtered.map(w => (
             <button
@@ -109,6 +163,9 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
               <span className="block text-[10px] text-gray-400">
                 {w.damageDice}{w.isHealing ? ' heal' : ''} · {w.range}hex{w.magicDimension > 0 ? ` · ${w.magicDimension}ft` : ''}
               </span>
+              <span className="mt-0.5 block">
+                <OwnerChip ownership={ownership} ownerId={w.ownerId} />
+              </span>
             </button>
           ))}
         </div>
@@ -119,6 +176,13 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
             <p className="text-gray-500 text-sm">Select a weapon from the list (or create one) to edit it.</p>
           ) : (
             <fieldset disabled={readOnly} className="space-y-3 w-full max-w-3xl">
+              {ownershipLocked && (
+                <OwnerLockNotice
+                  ownership={ownership}
+                  ownerId={draft.ownerId}
+                  onClone={() => setDraft({ ...draft, id: '', name: `${draft.name} (copy)` })}
+                />
+              )}
               <WeaponFields
                 value={draft}
                 onChange={w => setDraft(prev => (prev ? { ...prev, ...w } : prev))}
@@ -151,6 +215,14 @@ export default function WeaponEditor({ readOnly }: { readOnly: boolean }) {
           )}
         </div>
       </div>
+      {showUnsavedModal && (
+        <UnsavedChangesModal
+          busy={busy}
+          onSave={() => void handleUnsavedSave()}
+          onDiscard={discardPending}
+          onCancel={cancelPending}
+        />
+      )}
     </div>
   );
 }

@@ -96,7 +96,7 @@ export function StatValueHint({
         <Floating
           x={pos.x}
           y={pos.y}
-          z={60}
+          z={200}
           className="bg-black/95 border border-gray-600 rounded shadow-xl p-2 text-[11px] text-white min-w-[190px]"
         >
           <div className="font-semibold text-amber-300 mb-1">{label}</div>

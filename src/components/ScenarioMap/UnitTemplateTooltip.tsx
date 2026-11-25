@@ -47,7 +47,7 @@ export function UnitTemplateTooltip({ template, x, y }: UnitTemplateTooltipProps
   const sizeLabel = SIZE_LABELS[template.sizeCategory] || 'Medium';
 
   return (
-    <Floating x={x} y={y} z={50} className="bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(420px,calc(100vw-16px))]">
+    <Floating x={x} y={y} z={200} className="bg-black/90 border border-gray-600 rounded shadow-xl p-3 text-xs text-white max-w-[min(420px,calc(100vw-16px))]">
       <div className="font-bold mb-1">
         {template.raceName && <span className="capitalize text-gray-400">{template.raceName}</span>}{' '}
         {template.unitName}

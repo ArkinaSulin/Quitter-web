@@ -2,12 +2,12 @@
 // Oracle: the 2026 Spelljammer overhaul rules + the five reference templates
 // (Racer, Shuttle, Wasp, Damselfly, Star Moth).
 //
-//   hullMass  = totalMass × (10% + totalMass / 500)
-//   armorMass = totalMass × armor.massPct
-//   HP        = (totalMass × 3 + 40) × armor.hpMult
-//   accel     = (sails + rudders) / totalMass × 15
-//   MC        = x = rudders × 10 / totalMass; x < 1 → 1/x + 2, else 4 − x
-//   effectiveMC = MC + (−1 / 0 / +1) at speeds 0–2 / 3–7 / 8–12, floored at 0
+//   hullMass  = totalMass Ã— (10% + totalMass / 500)
+//   armorMass = totalMass Ã— armor.massPct
+//   HP        = (totalMass Ã— 3 + 40) Ã— armor.hpMult
+//   accel     = (sails + rudders) / totalMass Ã— 15
+//   MC        = x = rudders Ã— 10 / totalMass; x < 1 â†’ 1/x + 2, else 4 âˆ’ x
+//   effectiveMC = MC + (âˆ’1 / 0 / +1) at speeds 0â€“2 / 3â€“7 / 8â€“12, floored at 0
 //
 // Mass groups round to the nearest whole ton; crew requirements round up
 // per component; crew sleep in Deck/Cargo (food & water limits endurance).
@@ -39,6 +39,10 @@ import {
   computeMCBands,
   computeMCRaw,
   computeMinCrew,
+  computeSailRudderCrew,
+  effectiveSailRudderCounts,
+  effectiveRuddersFromTons,
+  withEffectiveSailsRudders,
   computeRemainingMass,
   computeCargoCapacity,
   computeShipBuild,
@@ -51,6 +55,9 @@ import {
   canPlaceWeapon,
   crewCheckBonus,
   heroCheckBonus,
+  bestCheckBonus,
+  captaincyBonus,
+  signedBonus,
   ShipBuild,
 } from '@/packages/ships/lib/shipStats';
 
@@ -77,10 +84,14 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: null, minRange: 0, range: 3, maxRange: 10, reloadSteps: 2, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
-  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', damageFormula: null, minRange: 0, range: 4, maxRange: 16, reloadSteps: 5, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
-  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
-  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: null, minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
+  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', damageFormula: null, minRange: 0, range: 4, maxRange: 16, reloadSteps: 5,
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
+  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
+  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
 ];
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;
@@ -147,7 +158,7 @@ const starMoth = () => buildBase({
 });
 
 describe('hull + armor mass', () => {
-  it('hull mass uses totalMass × (10% + totalMass / 500)', () => {
+  it('hull mass uses totalMass Ã— (10% + totalMass / 500)', () => {
     expect(computeHullMass(10)).toBeCloseTo(1.2, 6);
     expect(computeHullMass(20)).toBeCloseTo(2.8, 6);
     expect(computeHullMass(30)).toBeCloseTo(4.8, 6);
@@ -216,9 +227,9 @@ describe('reference template mass', () => {
 describe('reference template performance', () => {
   const cases = [
     { name: 'Racer', build: racer, accel: 9, mc: 0, hp: 70, ac: 15, minCrew: 4, bands: [0, 0, 1] },
-    { name: 'Shuttle', build: shuttle, accel: 3, mc: 3, hp: 70, ac: 15, minCrew: 3, bands: [2, 3, 4] },
+    { name: 'Shuttle', build: shuttle, accel: 3, mc: 3, hp: 70, ac: 15, minCrew: 2, bands: [2, 3, 4] },
     { name: 'Wasp', build: wasp, accel: 5.3, mc: 1, hp: 100, ac: 15, minCrew: 5, bands: [0, 1, 2] },
-    { name: 'Damselfly', build: damselfly, accel: 5, mc: 3, hp: 130, ac: 19, minCrew: 4, bands: [2, 3, 4] },
+    { name: 'Damselfly', build: damselfly, accel: 5, mc: 3, hp: 130, ac: 19, minCrew: 5, bands: [2, 3, 4] },
     { name: 'Star Moth', build: starMoth, accel: 5, mc: 1, hp: 440, ac: 13, minCrew: 11, bands: [0, 1, 2] },
   ];
 
@@ -241,23 +252,61 @@ describe('reference template performance', () => {
 });
 
 describe('crew', () => {
-  it('minimum crew is one helm plus sail and rudder slots', () => {
-    // Shuttle: 1 helm + 1 sail + 1 rudder = 3
-    expect(computeMinCrew(shuttle())).toBe(3);
+  it('minimum crew is one helm plus the shared sail/rudder pool', () => {
+    // Shuttle: 1 helm + ceil((1 sail + 2 Ã— 1 rudder) / 4) = 2
+    expect(computeMinCrew(shuttle())).toBe(2);
 
-    // Damselfly: 1 helm + 1 sail + 2 rudder = 4
-    expect(computeMinCrew(damselfly())).toBe(4);
+    // Damselfly: 1 helm + ceil((7 sails + 2 Ã— 3 rudders) / 4) = 5
+    expect(computeMinCrew(damselfly())).toBe(5);
 
-    // Star Moth: 1 helm + 1 sail + 9 rudder = 11 (bridge excluded)
+    // Star Moth: 1 helm + ceil((2 sails + 2 Ã— 18 rudders) / 4) = 11 (bridge excluded)
     expect(computeComponentCrew(starMoth())).toBe(16);
     expect(computeMinCrew(starMoth())).toBe(11);
   });
 
   it('full crew is max(two shifts, every crew slot)', () => {
-    expect(computeFullCrew(shuttle())).toBe(6); // min 3 x2 = 6, slots 3
+    expect(computeFullCrew(shuttle())).toBe(4); // min 2 x2 = 4, slots 2
     expect(computeFullCrew(wasp())).toBe(10); // min 5 x2 = 10, slots 7
-    expect(computeFullCrew(damselfly())).toBe(10); // min 4 x2 = 8, slots 10
+    expect(computeFullCrew(damselfly())).toBe(11); // min 5 x2 = 10, slots 11
     expect(computeFullCrew(starMoth())).toBe(24); // min 11 x2 = 22, slots 24
+  });
+
+  it('sail and rudder share one crew pool (1 crew = 4 sails or 2 rudders)', () => {
+    expect(computeSailRudderCrew(0, 0)).toBe(0);
+    expect(computeSailRudderCrew(2, 1)).toBe(1); // the same crew covers both
+    expect(computeSailRudderCrew(6, 5)).toBe(4);
+    expect(computeSailRudderCrew(1, 0)).toBe(1);
+    expect(computeSailRudderCrew(0, 1)).toBe(1);
+  });
+
+  it('effective counts allocate spare crew capacity to the other group', () => {
+    // One crew on Sail covers 2 sails and also the 1 rudder.
+    expect(effectiveSailRudderCounts(2, 1, 1, 0)).toEqual({ sails: 2, rudders: 1 });
+    // The same crew placed on Rudder covers 1 rudder and the 2 sails.
+    expect(effectiveSailRudderCounts(2, 1, 0, 1)).toEqual({ sails: 2, rudders: 1 });
+    // Six sails with one crew leaves two sails uncrewed.
+    expect(effectiveSailRudderCounts(6, 5, 1, 0)).toEqual({ sails: 4, rudders: 0 });
+    // Two crew cover the two separate groups directly.
+    expect(effectiveSailRudderCounts(10, 5, 1, 1)).toEqual({ sails: 4, rudders: 2 });
+  });
+
+  it('surviving rudders use ceiling: a rudder dies only at 0 HP', () => {
+    // 7 rudders = 10.5 t; one ton destroys no full rudder.
+    expect(effectiveRuddersFromTons(7, 1.5, 10.5)).toBe(7);
+    expect(effectiveRuddersFromTons(7, 1.5, 9.5)).toBe(7); // 6.33 â†’ 7
+    expect(effectiveRuddersFromTons(7, 1.5, 8.5)).toBe(6); // 5.67 â†’ 6
+    expect(effectiveRuddersFromTons(7, 1.5, 7.5)).toBe(5); // 5 exactly
+  });
+
+  it('effective stats recalculate acceleration and MC from manned counts', () => {
+    const stats = computeShipBuild(buildBase({
+      armorId: 'wood', totalMass: 10, sails: 4, rudders: 2, cargoArea: 0,
+    }));
+    const full = withEffectiveSailsRudders(stats, 4, 2);
+    expect(full.accel).toBe(stats.accel);
+    const under = withEffectiveSailsRudders(stats, 2, 1);
+    expect(under.accel).toBe(4.5);
+    expect(under.mcRaw).toBe(3);
   });
 
   it('cargo capacity is the allocated hold plus any remaining tonnage', () => {
@@ -285,6 +334,29 @@ describe('crew', () => {
     expect(computeCrewWeeklyCost(3)).toBe(20);
   });
 
+  it('the Helmsman check takes the higher of Wisdom or Intelligence', () => {
+    const actor = { level: 1, str: 12, dex: 14, con: 14, int: 10, wis: 16, cha: 8 };
+    // Hero: WIS 16 (+3) beats INT 10 (0); proficiency +2.
+    expect(bestCheckBonus(actor, ['wis', 'int'])).toBe(5);
+    const clever = { ...actor, int: 18 };
+    expect(bestCheckBonus(clever, ['wis', 'int'])).toBe(6);
+    // Crew keep the +2 CrewSkill.
+    expect(bestCheckBonus(actor, ['wis', 'int'], true)).toBe(7);
+  });
+
+  it('Captaincy is Int + proficiency − 5 (crew keep CrewSkill)', () => {
+    const hero = { level: 1, str: 12, dex: 14, con: 14, int: 14, wis: 12, cha: 8 };
+    // INT 14 (+2) + PB 2 − 5 = −1.
+    expect(captaincyBonus(hero)).toBe(-1);
+    expect(captaincyBonus({ ...hero, int: 18 })).toBe(1);
+    // Crew add their CrewSkill +2.
+    expect(captaincyBonus(hero, true)).toBe(1);
+    // Display never doubles the sign.
+    expect(signedBonus(-1)).toBe('-1');
+    expect(signedBonus(0)).toBe('0');
+    expect(signedBonus(3)).toBe('+3');
+  });
+
   it('weekly operation cost is 0.4% of ship cost plus roster weekly pay', () => {
     const b = buildBase({ armorId: 'wood', totalMass: 40 });
     const crew: ShipCrew = {
@@ -292,7 +364,7 @@ describe('crew', () => {
       str: 12, dex: 14, con: 14, int: 10, wis: 14, cha: 10, cost: 20,
     };
     b.crews = [crew];
-    expect(computeWeeklyOperationCost(b)).toBe(180); // 40,000 × 0.4% + 20
+    expect(computeWeeklyOperationCost(b)).toBe(180); // 40,000 Ã— 0.4% + 20
   });
 });
 
@@ -337,7 +409,7 @@ describe('weapons', () => {
 });
 
 describe('HP', () => {
-  it('is totalMass × 3 + 40', () => {
+  it('is totalMass Ã— 3 + 40', () => {
     expect(computeShipHp(buildBase({ armorId: 'wood', totalMass: 20 }))).toBe(100);
     expect(computeShipHp(buildBase({ armorId: 'wood', totalMass: 100 }))).toBe(340);
   });
@@ -350,7 +422,7 @@ describe('HP', () => {
 });
 
 describe('acceleration', () => {
-  it('is (sails + rudders) / totalMass × 15, one decimal', () => {
+  it('is (sails + rudders) / totalMass Ã— 15, one decimal', () => {
     expect(computeAccel(buildBase({ armorId: 'wood', totalMass: 20, sails: 1, rudders: 6 }))).toBe(5.3);
     expect(computeAccel(racer())).toBe(9);
     expect(computeAccel(shuttle())).toBe(3);
@@ -365,17 +437,17 @@ describe('acceleration', () => {
 });
 
 describe('MC', () => {
-  it('uses x = rudders × 10 / totalMass and clamps at 0', () => {
-    expect(computeMCRaw(shuttle())).toBe(3);        // x = 1 → 4 − 1
-    expect(computeMCRaw(wasp())).toBe(1);          // x = 3 → 4 − 3
-    expect(computeMCRaw(damselfly())).toBe(3);     // x = 1 → 4 − 1
-    expect(computeMCRaw(starMoth())).toBe(1);      // x = 3 → 4 − 3
-    expect(computeMCRaw(racer())).toBe(0);         // x = 4 → 4 − 4
+  it('uses x = rudders Ã— 10 / totalMass and clamps at 0', () => {
+    expect(computeMCRaw(shuttle())).toBe(3);        // x = 1 â†’ 4 âˆ’ 1
+    expect(computeMCRaw(wasp())).toBe(1);          // x = 3 â†’ 4 âˆ’ 3
+    expect(computeMCRaw(damselfly())).toBe(3);     // x = 1 â†’ 4 âˆ’ 1
+    expect(computeMCRaw(starMoth())).toBe(1);      // x = 3 â†’ 4 âˆ’ 3
+    expect(computeMCRaw(racer())).toBe(0);         // x = 4 â†’ 4 âˆ’ 4
     expect(computeMCRaw(buildBase({ armorId: 'wood', totalMass: 100, rudders: 3 }))).toBe(5.3); // x = 0.3
   });
 
   it('clamps negative raw MC at 0', () => {
-    const heavyRudder = buildBase({ armorId: 'wood', totalMass: 10, rudders: 5 }); // x = 5 → −1
+    const heavyRudder = buildBase({ armorId: 'wood', totalMass: 10, rudders: 5 }); // x = 5 â†’ âˆ’1
     expect(computeMCRaw(heavyRudder)).toBe(0);
   });
 
@@ -435,7 +507,7 @@ describe('hit boxes', () => {
       armorId: 'wood', totalMass: 20, sails: 4, rudders: 2, cargoArea: 2,
     });
     const byId = Object.fromEntries(computeBoxGroups(b).map(g => [g.id, g]));
-    expect(byId.reserve.boxes).toBe(7); // 20 − (3 hull+deck +1 helm +4 sails +3 rudders +2 cargo)
+    expect(byId.reserve.boxes).toBe(7); // 20 âˆ’ (3 hull+deck +1 helm +4 sails +3 rudders +2 cargo)
   });
 });
 

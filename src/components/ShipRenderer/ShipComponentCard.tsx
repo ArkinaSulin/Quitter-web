@@ -30,10 +30,14 @@ export interface ShipComponentCardData {
   note?: string;
   kind?: 'component' | 'weapon';
   arcs?: WeaponArc[];
+  /** Ship-facing rotation for the firing-arc dial (degrees). */
+  arcRotation?: number;
   empty?: boolean;
   emptyGlyph?: string;
   /** Name + boundary only (viewer cannot see this card's details). */
   minimal?: boolean;
+  /** Pending Int captaincy bonus for this card's next d20 roll. */
+  commandBonus?: number;
   onAdd?: () => void;
   onContextMenu?: (event: React.MouseEvent, data: ShipComponentCardData) => void;
 }
@@ -108,8 +112,17 @@ export function ShipComponentCard({ data, weaponInfo, functions }: { data: ShipC
         <div className="min-w-0 text-[9px] font-semibold text-gray-200 break-words" title={data.name}>
           {data.name}
         </div>
-        {data.kind === 'weapon' && data.arcs && <WeaponArcDial arcs={data.arcs} />}
+        {data.kind === 'weapon' && data.arcs && <WeaponArcDial arcs={data.arcs} rotation={data.arcRotation ?? 0} />}
       </div>
+
+      {data.commandBonus !== undefined && (
+        <span
+          title={`Command bonus ${data.commandBonus > 0 ? '+' : ''}${data.commandBonus} on this card's next d20 roll`}
+          className="pointer-events-none absolute left-1/2 top-1 z-20 -translate-x-1/2 rounded border-2 border-amber-300 bg-amber-400 px-1 text-[9px] font-bold leading-tight text-gray-950 shadow"
+        >
+          {data.commandBonus > 0 ? '+' : ''}{data.commandBonus}
+        </span>
+      )}
 
       <div className="flex flex-wrap items-center gap-[2px] mt-0.5" title={`${boxes - destroyed}/${boxes} boxes intact`}>
         {Array.from({ length: shownBoxes }).map((_, i) => {

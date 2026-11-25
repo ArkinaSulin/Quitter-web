@@ -21,24 +21,28 @@ import {
   shipHeroesOnCard,
   shipCardCrewCount,
   shipCommandHero,
+  shipCaptainHero,
   canSpendCardStep,
   cardStepsRemaining,
-  effectiveMCForSpeed,
+  cardCommandBonus,
+  shipMC,
   shipHullCardKey,
   shipHullDestroyed,
   shipDamagedCards,
   shipHasRepairableDamage,
   shipStationCards,
   type ShipHitCard,
-  shipStationStat,
+  shipStationStats,
+  bestCheckBonus,
+  signedBonus,
   shipStationCheckLabel,
-  crewCheckBonus,
-  heroCheckBonus,
-  computeCargoCapacity,
+  cargoCapacityAfterDamage,
   cargoQuantity,
   supplyDays,
   type CheckStat,
   shipWeaponCards,
+  type ShipDerivedStats,
+  type ShipSailRudderManning,
 } from '@/packages/ships';
 import type { ShipCardFunction, ShipCardWeaponInfo } from '@/components/ShipRenderer/ShipComponentCard';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
@@ -61,6 +65,10 @@ export interface BoardedHero {
 
 export interface ShipWindowProps {
   ship: ShipRuntime;
+  /** Runtime stats with effective sail/rudder manning; defaults to the snapshot. */
+  runtimeStats?: ShipDerivedStats | null;
+  /** Surviving/effective counts for the undermanned note. */
+  manning?: ShipSailRudderManning | null;
   readOnly: boolean;
   shipMode: 'atmosphere' | 'wildspace';
   shipStep: number;
@@ -80,10 +88,17 @@ export interface ShipWindowProps {
   onLoadWeapon: (cardKey: string, approvedNegative?: boolean) => void;
   onAutoLoadWeapon: (cardKey: string) => void;
   canManageCrew: boolean;
+  /** Viewer may use the Bridge Command bonus control (captain or DM). */
+  canAwardCommandBonus?: boolean;
+  /** Int + PB − 5 for the current captain (may be negative). */
+  commandBonusValue?: number;
+  onAwardCommandBonus?: (cardKey: string, approvedNegative?: boolean) => void;
   onSetCrewTeam: (team: string | null) => void;
   teamAlliances: Record<string, AllianceGroup>;
   onMoveHeroToken: (heroId: string, toCardKey: string, xPct: number, yPct: number) => void;
   onHeroDropToMap: (heroId: string, clientX: number, clientY: number) => void;
+  /** DM: right-click a boarded hero token to assign its team. */
+  onHeroContextMenu?: (heroId: string, clientX: number, clientY: number) => void;
   onSailSpeed: (cardKey: string, delta: 1 | -1, approvedNegative?: boolean) => void;
   onRudderTrim: (cardKey: string, approvedNegative?: boolean) => void;
   onRepair: (cardKey: string, targetCardKey?: string | null, approvedNegative?: boolean) => void;
@@ -110,6 +125,8 @@ function crewDisplayName(crew: { name?: string | null } | undefined): string {
 
 export function ShipWindow({
   ship,
+  runtimeStats,
+  manning,
   readOnly,
   shipMode,
   shipStep,
@@ -125,10 +142,14 @@ export function ShipWindow({
   onLoadWeapon,
   onAutoLoadWeapon,
   canManageCrew,
+  canAwardCommandBonus,
+  commandBonusValue = 0,
+  onAwardCommandBonus,
   onSetCrewTeam,
   teamAlliances,
   onMoveHeroToken,
   onHeroDropToMap,
+  onHeroContextMenu,
   onSailSpeed,
   onRudderTrim,
   onRepair,
@@ -146,14 +167,17 @@ export function ShipWindow({
   visibleCardKeys,
   manageableCardKeys,
 }: ShipWindowProps) {
-  const stats = ship.snapshot?.stats;
+  const stats = runtimeStats ?? ship.snapshot?.stats;
   const template = ship.snapshot?.template;
   const build = ship.snapshot?.build;
   const boardedUnits = boardedHeroes.map(h => h.unit);
 
   const crewRows = template?.crews ?? [];
   const manifest = template?.manifest ?? [];
-  const cargoCapacity = build ? computeCargoCapacity(build) : 0;
+  const cargoCapacityInfo = build
+    ? cargoCapacityAfterDamage(build, ship.boxState)
+    : { designCapacity: 0, effectiveCapacity: 0, destroyedCargoBoxes: 0 };
+  const cargoCapacity = cargoCapacityInfo.effectiveCapacity;
   const hasRepairKit = cargoQuantity(manifest, 'ship_repair_kit') >= 1;
   const crewState = ship.crewState ?? {};
   // Roster shows only reserve crew: anyone on a station is already drawn on its card.
@@ -168,7 +192,7 @@ export function ShipWindow({
   const livingCrew = crewRows.filter(c => !crewState[c.id]?.dead).length;
   const livingHeroes = boardedHeroes.filter(h => (h.unit.currentUnitHp ?? 1) > 0).length;
   const foodWaterDays = supplyDays(manifest, livingCrew + livingHeroes);
-  const stationCards = build ? shipStationCards(build) : [];
+  const stationCards = build ? shipStationCards(build, { boxState: ship.boxState }) : [];
   const stations = stationCards.map(card => ({ key: card.key, name: card.name, crew: card.crewRequired }));
   // Runtime-only card-step ledger: one digit per deck card (0..5 left this turn).
   // Helm is excluded: its Dodge placeholder spends no card steps.
@@ -182,6 +206,8 @@ export function ShipWindow({
   }
   const [autoArmed, setAutoArmed] = useState(false);
   const [autoEnabled, setAutoEnabled] = useState<Record<string, boolean>>({});
+  /** Bridge Command bonus: true while the viewer is choosing a target card. */
+  const [commandTargetMode, setCommandTargetMode] = useState(false);
   const [cardMenu, setCardMenu] = useState<{
     x: number;
     y: number;
@@ -189,17 +215,18 @@ export function ShipWindow({
     capacity: number;
   } | null>(null);
   const cardMenuRef = useRef<HTMLDivElement | null>(null);
-  const [repairModal, setRepairModal] = useState<{
+  const [repairTargetMode, setRepairTargetMode] = useState<{
     cardKey: string;
     damaged: ShipHitCard[];
     needsActionApproval: boolean;
-    noCardSteps?: boolean;
+    noCardSteps: boolean;
   } | null>(null);
-  const [repairTarget, setRepairTarget] = useState<string | null>(null);
   const [cardActionConfirm, setCardActionConfirm] = useState<{
-    kind: 'sail' | 'rudder' | 'weapon-load' | 'weapon-fire';
+    kind: 'sail' | 'rudder' | 'weapon-load' | 'weapon-fire' | 'repair' | 'command-bonus';
     cardKey: string;
     delta?: 1 | -1;
+    /** Repair only: damaged card to restore, or null for hull HP only. */
+    repairTarget?: string | null;
     names: string[];
     noCardSteps?: boolean;
   } | null>(null);
@@ -294,7 +321,7 @@ export function ShipWindow({
     const station = ship.stations?.[key];
     return [...(station?.heroIds ?? []), ...(station?.heroId ? [station.heroId] : [])];
   };
-  const bestOnCard = (key: string, stat: CheckStat): { label: string; bonus: number; name: string } | null => {
+  const bestOnCard = (key: string, stats: CheckStat[]): { label: string; bonus: number; name: string } | null => {
     const station = ship.stations?.[key];
     if (!station) return null;
     let best: { bonus: number; name: string } | null = null;
@@ -302,13 +329,13 @@ export function ShipWindow({
       if (crewState[crewId]?.dead) continue;
       const crew = crewRows.find(c => c.id === crewId);
       if (!crew) continue;
-      const bonus = crewCheckBonus(crew, stat);
+      const bonus = bestCheckBonus(crew, stats, true);
       if (!best || bonus > best.bonus) best = { bonus, name: crewDisplayName(crew) };
     }
     for (const heroId of heroIdsOnCard(key)) {
       const hero = boardedHeroes.find(h => h.id === heroId);
       if (!hero) continue;
-      const bonus = heroCheckBonus(hero.unit, stat);
+      const bonus = bestCheckBonus(hero.unit, stats);
       if (!best || bonus > best.bonus) best = { bonus, name: hero.name };
     }
     return best ? { ...best, label: shipStationCheckLabel('weapon') } : null;
@@ -316,38 +343,43 @@ export function ShipWindow({
 
   const cardChecks: Record<string, { label: string; bonus: number; name: string }> = {};
   for (const card of stationCards) {
-    const best = bestOnCard(card.key, shipStationStat(card.kind));
-    if (best) cardChecks[card.key] = { ...best, label: shipStationCheckLabel(card.kind) };
+    const best = bestOnCard(card.key, shipStationStats(card.kind));
+    if (best) {
+      cardChecks[card.key] = {
+        ...best,
+        // Bridge / Captaincy is Int + PB − 5 (crew keep CrewSkill).
+        bonus: card.kind === 'bridge' ? best.bonus - 5 : best.bonus,
+        label: shipStationCheckLabel(card.kind),
+      };
+    }
   }
   if (build) {
     const hullKey = findCardKeyForComponent(build, 'Hull');
-    const best = hullKey ? bestOnCard(hullKey, 'str') : null;
+    const best = hullKey ? bestOnCard(hullKey, ['str']) : null;
     if (hullKey && best) cardChecks[hullKey] = { ...best, label: 'Repair' };
   }
 
-  const availableHeroes = boardedHeroes.filter(h =>
-    !h.shipStationKey || h.shipStationKey === deckCardKey || h.shipStationKey === cargoCardKey,
-  );
-  const leaderFor = (stat: CheckStat): { name: string; bonus: number } | null => {
+  const livingBoardedHeroes = boardedHeroes.filter(h => (h.unit.currentUnitHp ?? 1) > 0);
+  const leaderFor = (stats: CheckStat[], adjust = 0): { name: string; bonus: number } | null => {
     let best: { name: string; bonus: number } | null = null;
     for (const crew of crewRows) {
       if (crewState[crew.id]?.dead) continue;
-      const bonus = crewCheckBonus(crew, stat);
+      const bonus = bestCheckBonus(crew, stats, true);
       if (!best || bonus > best.bonus) best = { name: crewDisplayName(crew), bonus };
     }
-    for (const hero of availableHeroes) {
-      const bonus = heroCheckBonus(hero.unit, stat);
+    for (const hero of livingBoardedHeroes) {
+      const bonus = bestCheckBonus(hero.unit, stats);
       if (!best || bonus > best.bonus) best = { name: hero.name, bonus };
     }
-    return best;
+    return best ? { name: best.name, bonus: best.bonus + adjust } : null;
   };
-  const skillRows: { label: string; stat: CheckStat }[] = [
-    { label: 'Helmsmanship (Helm)', stat: 'wis' },
-    { label: 'Captaincy (Bridge)', stat: 'int' },
-    { label: 'Sail Trimming (Rudder)', stat: 'int' },
-    { label: 'Sail maxing (Sail)', stat: 'con' },
-    { label: 'Weapon handling', stat: 'dex' },
-    { label: 'Repair (Hull)', stat: 'str' },
+  const skillRows: { label: string; stats: CheckStat[]; adjust?: number }[] = [
+    { label: 'Repair (Hull)', stats: ['str'] },
+    { label: 'Weapon handling', stats: ['dex'] },
+    { label: 'Sail maxing (Sail)', stats: ['con'] },
+    { label: 'Captaincy (Bridge)', stats: ['int'], adjust: -5 },
+    { label: 'Sail trimming (Rudder)', stats: ['int'] },
+    { label: 'Helmsmanship (Helm)', stats: ['wis', 'int'] },
   ];
 
   const toggleCard = (key: string) => {
@@ -373,6 +405,8 @@ export function ShipWindow({
 
   const weaponInfoByCard: Record<string, ShipCardWeaponInfo> = {};
   const commandHero = build ? shipCommandHero(ship, boardedUnits) : null;
+  const commandCaptain = build ? shipCaptainHero(ship, boardedUnits) : null;
+  const commandCaptainHasAction = (commandCaptain?.actionsAvailable ?? 0) >= 1;
   for (const card of weaponCards) {
     const reload = ship.reload?.[card.key] ?? { progress: 0, armed: false };
     const armed = !!reload.armed || card.weapon.reloadSteps === 0;
@@ -440,6 +474,77 @@ export function ShipWindow({
     };
   }
 
+  const commandBonusByCard: Record<string, number> = {};
+  for (const key of Object.keys(ship.cardState ?? {})) {
+    const pending = cardCommandBonus(ship.cardState, key, turnNumber);
+    if (pending !== undefined) commandBonusByCard[key] = pending;
+  }
+  const hullKeyForCommands = build ? findCardKeyForComponent(build, 'Hull') : null;
+  const ramCardKeys = build
+    ? build.components.filter(c => c.isRam).flatMap(c => findCardKeysForComponent(build, c.name))
+    : [];
+  const commandTargetKeys = Array.from(new Set([
+    ...stationCards.filter(card => card.kind !== 'bridge').map(card => card.key),
+    ...(hullKeyForCommands ? [hullKeyForCommands] : []),
+    ...ramCardKeys,
+  ])).filter(key => commandBonusByCard[key] === undefined);
+  const commandBonusLabel = `${commandBonusValue > 0 ? '+' : ''}${commandBonusValue}`;
+  const repairTargetKeys = repairTargetMode
+    ? Array.from(new Set([
+        ...repairTargetMode.damaged.map(card => card.key),
+        ...(repairTargetMode.cardKey ? [repairTargetMode.cardKey] : []),
+      ]))
+    : [];
+  const targetOverlay = repairTargetMode
+    ? {
+        keys: repairTargetKeys,
+        label: (key: string) => key === repairTargetMode.cardKey ? 'Repair HP' : 'Repair',
+        title: (card: { cardKey?: string; name: string }) => (
+          card.cardKey === repairTargetMode.cardKey
+            ? 'Repair hull HP only'
+            : `Restore 1 ton of ${card.name}`
+        ),
+        onTarget: (key: string) => {
+          const mode = repairTargetMode;
+          setRepairTargetMode(null);
+          const target = key === mode.cardKey ? null : key;
+          const needsApproval = mode.needsActionApproval || mode.noCardSteps;
+          if (needsApproval) {
+            setCardActionConfirm({
+              kind: 'repair',
+              cardKey: mode.cardKey,
+              repairTarget: target,
+              names: hullActionHeroes
+                .filter(h => (h.unit.actionsAvailable ?? 0) < 1)
+                .map(h => h.name),
+              noCardSteps: mode.noCardSteps,
+            });
+            return;
+          }
+          onRepair(mode.cardKey, target);
+        },
+      }
+    : commandTargetMode
+      ? {
+          keys: commandTargetKeys,
+          label: () => `Award ${commandBonusLabel}`,
+          title: (card: { name: string }) => `Award command bonus to ${card.name} (1 Bridge card step + 1 captain action)`,
+          onTarget: (key: string) => {
+            setCommandTargetMode(false);
+            if (commandCaptainHasAction) {
+              onAwardCommandBonus?.(key);
+              return;
+            }
+            setCardActionConfirm({
+              kind: 'command-bonus',
+              cardKey: key,
+              names: [commandCaptain?.unitName ?? 'The captain'],
+              noCardSteps: false,
+            });
+          },
+        }
+      : null;
+
   const cardFunctions: Record<string, ShipCardFunction[]> = {};
   if (build?.deckLayout) {
     const deck = build.components.find(c => c.name === 'Deck');
@@ -495,13 +600,13 @@ export function ShipWindow({
         return shipActionNeedsCardStepTitle;
       };
       if (component.name === 'Sail') {
-        const title = shipActionTitle(ship.sailMaxStep === shipStep, 'Sail maxing already succeeded this turn.');
+        const title = shipActionTitle(turnNumber > 0 && ship.sailMaxStep === turnNumber, 'Sail maxing already succeeded this turn.');
         cardFunctions[key] = [
           { label: 'Speed +', enabled: canUse && !title, title, onClick: () => requestSail(1) },
           { label: 'Speed −', enabled: canUse && !title, title, onClick: () => requestSail(-1) },
         ];
       } else if (component.name === 'Rudder') {
-        const title = shipActionTitle(ship.sailTrimStep === shipStep, 'Sail trimming already succeeded this turn.');
+        const title = shipActionTitle(turnNumber > 0 && ship.sailTrimStep === turnNumber, 'Sail trimming already succeeded this turn.');
         cardFunctions[key] = [
           {
             label: 'Trim MC',
@@ -524,19 +629,21 @@ export function ShipWindow({
                   : shipActionNeedsCardStepTitle;
         cardFunctions[key] = [
           {
-            label: 'Repair',
-            enabled: !readOnly && !repairTitle,
-            title: repairTitle,
+            label: repairTargetMode ? 'Cancel repair' : 'Repair',
+            enabled: (!readOnly && !repairTitle) || !!repairTargetMode,
+            title: repairTargetMode
+              ? 'Click a highlighted card to restore one ton, or the Hull card for hull HP only (click Repair again to cancel).'
+              : repairTitle,
             onClick: () => {
               if (!build) return;
+              if (repairTargetMode) { setRepairTargetMode(null); return; }
               const damaged = shipDamagedCards(build, ship.boxState);
               const needsActionApproval = needsRepairActionApproval;
               if (damaged.length === 0 && !needsActionApproval && stepsAvailable) {
                 onRepair(key, null);
                 return;
               }
-              setRepairTarget(damaged[0]?.key ?? null);
-              setRepairModal({
+              setRepairTargetMode({
                 cardKey: key,
                 damaged,
                 needsActionApproval,
@@ -576,8 +683,28 @@ export function ShipWindow({
           },
         ];
       } else if (component.name === 'Command bridge' || component.name === 'Bridge') {
+        const canStart = !!canAwardCommandBonus && bridgeFull && !readOnly && stepsAvailable
+          && commandTargetKeys.length > 0;
+        const title = !canAwardCommandBonus
+          ? 'Only the captain’s player or the DM can award a command bonus.'
+          : !bridgeFull
+            ? 'Bridge needs its full crew complement'
+            : readOnly
+              ? 'Read only.'
+              : !stepsAvailable
+                ? 'No Bridge card steps left this turn.'
+                : commandTargetKeys.length === 0
+                  ? 'Every eligible card already has a pending command bonus.'
+                  : commandTargetMode
+                    ? 'Click a card to award the command bonus (click the button again to cancel).'
+                    : `Award ${commandBonusLabel} to one card’s next d20 card roll (costs one Bridge card step + ${commandCaptainHasAction ? 'one captain action' : 'a negative captain action (approval required)'}).`;
         cardFunctions[key] = [
-          { label: 'Command bonus', enabled: bridgeFull, title: bridgeFull ? 'Bridge fully crewed' : 'Bridge needs its full crew complement', onClick: () => {} },
+          {
+            label: commandTargetMode ? 'Cancel bonus' : 'Command bonus',
+            enabled: canStart || commandTargetMode,
+            title,
+            onClick: () => setCommandTargetMode(mode => !mode),
+          },
         ];
       }
     }
@@ -605,6 +732,7 @@ export function ShipWindow({
       title={`${ship.name}${ship.serialNumber > 0 ? ` ${alphaLabel(ship.serialNumber)}` : ''}`}
       subtitle={`${template?.role || 'No role'}${readOnly ? ' · read only' : ''} · Helm: ${helmLabel}`}
       onClose={onClose}
+      z={100}
       className="max-w-[96vw]"
       resizable
       persistKey="quitter.shipWindow.size"
@@ -628,7 +756,7 @@ export function ShipWindow({
                 <div className="flex justify-between"><span className="text-gray-400">Acceleration</span><span>{Math.max(0, Math.floor(stats.accel))}</span></div>
                 <div className="flex justify-between"><span className="text-gray-400">MC</span><span>{shipMode === 'atmosphere'
                   ? (() => {
-                      const mc = effectiveMCForSpeed(stats, stats.atmosphericSpeed);
+                      const mc = shipMC(stats, stats.atmosphericSpeed, 'atmosphere');
                       return Number.isFinite(mc) ? mc : '—';
                     })()
                   : stats.mcBands.map((b, i) => {
@@ -636,6 +764,11 @@ export function ShipWindow({
                       const value = Number.isFinite(b.mc) ? `(${Math.ceil(b.mc)})` : '—';
                       return `${band}: ${value}`;
                     }).join(' / ')}</span></div>
+                {manning?.undermanned && (
+                  <div className="rounded border border-amber-700/60 bg-amber-950/30 px-1.5 py-1 text-[10px] text-amber-200">
+                    Undermanned — sails {manning.effectiveSails}/{manning.survivingSails}, rudders {manning.effectiveRudders}/{manning.survivingRudders}
+                  </div>
+                )}
                 {shipMode === 'atmosphere' ? (
                   <div className="flex justify-between"><span className="text-gray-400">Speed</span><span>{stats.atmosphericSpeed}</span></div>
                 ) : (() => {
@@ -672,12 +805,12 @@ export function ShipWindow({
             <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Best in ship skill</div>
             <div className="space-y-0.5 text-[11px]">
               {skillRows.map(row => {
-                const best = leaderFor(row.stat);
+                const best = leaderFor(row.stats, row.adjust ?? 0);
                 return (
                   <div key={row.label} className="flex justify-between gap-2">
                     <span className="text-gray-400">{row.label}</span>
                     <span className="truncate text-right text-gray-200">
-                      {best ? <>{best.name} <span className="text-gray-500">+{best.bonus}</span></> : <span className="text-gray-500">-</span>}
+                      {best ? <>{best.name} <span className="text-gray-500">{signedBonus(best.bonus)}</span></> : <span className="text-gray-500">-</span>}
                     </span>
                   </div>
                 );
@@ -718,7 +851,9 @@ export function ShipWindow({
           <CargoManifest
             items={manifest}
             capacity={cargoCapacity}
+            designCapacity={cargoCapacityInfo.designCapacity}
             canEdit={canManageCrew && !readOnly}
+            readOnly={readOnly}
             foodWaterDays={foodWaterDays}
             people={livingCrew + livingHeroes}
             onChange={onUpdateManifest}
@@ -733,6 +868,7 @@ export function ShipWindow({
             <ShipLayout
               build={build}
               stats={stats}
+              facing={ship.facing}
               readOnly
               hideEmpty
               heroesByCard={heroesByCard}
@@ -744,9 +880,15 @@ export function ShipWindow({
               cardFunctions={cardFunctions}
               teamAlliances={teamAlliances}
               hideHeroTokens={hideHeroTokens}
+              onHeroContextMenu={(event, hero) => {
+                event.preventDefault();
+                onHeroContextMenu?.(hero.id, event.clientX, event.clientY);
+              }}
               cardToggles={autoArmed ? autoEnabled : undefined}
               onToggleCard={autoArmed ? toggleCard : undefined}
               cardChecks={cardChecks}
+              commandBonusByCard={commandBonusByCard}
+              targetOverlay={targetOverlay}
               revealAllCards={revealAllCards}
               visibleCardKeys={visibleCardKeys}
               onSlotContextMenu={(event, _region, _index, card) => {
@@ -819,9 +961,13 @@ export function ShipWindow({
               ? 'Trim the sails'
               : cardActionConfirm.kind === 'rudder'
                 ? 'Trim the rudder'
-                : cardActionConfirm.kind === 'weapon-fire'
-                  ? 'Fire the weapon'
-                  : 'Load the weapon'}
+                : cardActionConfirm.kind === 'repair'
+                  ? 'Repair the ship'
+                  : cardActionConfirm.kind === 'command-bonus'
+                    ? 'Grant command bonus'
+                    : cardActionConfirm.kind === 'weapon-fire'
+                      ? 'Fire the weapon'
+                      : 'Load the weapon'}
           </div>
           <p className="mb-2 rounded border border-amber-600/60 bg-amber-900/30 px-2 py-1 text-[11px] text-amber-200">
             {cardActionConfirm.noCardSteps
@@ -843,6 +989,8 @@ export function ShipWindow({
                 setCardActionConfirm(null);
                 if (confirm.kind === 'sail') onSailSpeed(confirm.cardKey, confirm.delta ?? 1, true);
                 else if (confirm.kind === 'rudder') onRudderTrim(confirm.cardKey, true);
+                else if (confirm.kind === 'repair') onRepair(confirm.cardKey, confirm.repairTarget ?? null, true);
+                else if (confirm.kind === 'command-bonus') onAwardCommandBonus?.(confirm.cardKey, true);
                 else if (confirm.kind === 'weapon-fire') onFireWeapon(confirm.cardKey, true);
                 else onLoadWeapon(confirm.cardKey, true);
               }}
@@ -854,80 +1002,6 @@ export function ShipWindow({
         </div>
       </div>
     )}
-    {repairModal && (() => {
-      const zeroHeroes = hullActionHeroes.filter(h => (h.unit.actionsAvailable ?? 0) < 1);
-      return (
-        <div
-          className="fixed inset-0 z-[260] grid place-items-center bg-black/60 p-4"
-          onMouseDown={() => setRepairModal(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-3 shadow-xl"
-            onMouseDown={e => e.stopPropagation()}
-          >
-            <div className="mb-1 text-sm font-semibold text-amber-200">Repair {ship.name}</div>
-            <p className="mb-2 text-[11px] text-gray-400">
-              One repair kit restores 4d8 + best repair bonus HP (up to 80% max) and one ton of damaged equipment.
-            </p>
-            {repairModal.damaged.length > 0 ? (
-              <>
-                <div className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Restore one damaged ton</div>
-                <div className="mb-2 max-h-48 space-y-1 overflow-y-auto">
-                  {repairModal.damaged.map(card => {
-                    const destroyed = Number((ship.boxState as Record<string, number> | undefined)?.[card.key] ?? 0);
-                    return (
-                      <button
-                        key={card.key}
-                        type="button"
-                        onClick={() => setRepairTarget(card.key)}
-                        className={`flex w-full items-center justify-between rounded border px-2 py-1 text-left text-xs ${
-                          repairTarget === card.key
-                            ? 'border-amber-500 bg-amber-900/30 text-amber-100'
-                            : 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                        }`}
-                      >
-                        <span className="font-medium">{card.name}</span>
-                        <span className="text-gray-400">{destroyed}/{card.tons}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <p className="mb-2 text-[11px] text-gray-400">No damaged equipment; this repair heals hull HP only.</p>
-            )}
-            {(repairModal.needsActionApproval || repairModal.noCardSteps) && (
-              <p className="mb-2 rounded border border-amber-600/60 bg-amber-900/30 px-2 py-1 text-[11px] text-amber-200">
-                {repairModal.noCardSteps
-                  ? 'No card steps left on the hull this turn. Approve to spend a negative hero action and repair anyway.'
-                  : `${zeroHeroes.map(h => h.name).join(', ')} ${zeroHeroes.length === 1 ? 'has' : 'have'} no actions left. Approve to repair and let the action go negative.`}
-              </p>
-            )}
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setRepairModal(null)}
-                className="rounded border border-gray-600 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={repairModal.damaged.length > 0 && !repairTarget}
-                onClick={() => {
-                  const modal = repairModal;
-                  setRepairModal(null);
-                  onRepair(modal.cardKey, repairTarget, !!(modal.needsActionApproval || modal.noCardSteps));
-                }}
-                className="rounded border border-amber-600 px-2 py-1 text-xs text-amber-200 hover:bg-amber-700/30 disabled:opacity-40"
-              >
-                Repair
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    })()}
     </>
   );
 }

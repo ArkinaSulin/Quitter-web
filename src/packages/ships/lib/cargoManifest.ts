@@ -3,7 +3,7 @@
 // window. Items have no owner/team and quantities use the category unit:
 // Food & water = person-days, Ship repair kit = kits, everything else = tons.
 
-import { CargoCategory, CargoManifestItem } from '@/types/ship';
+import { CargoCategory, CargoManifestItem, ShipCargoItem } from '@/types/ship';
 
 export const CARGO_CATEGORIES: CargoCategory[] = [
   'food_water',
@@ -36,6 +36,33 @@ const CATEGORY_UNIT_LABELS: Record<CargoCategory, string> = {
 
 export function cargoUnitLabel(category: CargoCategory): string {
   return CATEGORY_UNIT_LABELS[category];
+}
+
+/** Map a `ship_cargo` catalog row. */
+export function mapShipCargoRow(row: any): ShipCargoItem {
+  const category = CARGO_CATEGORIES.includes(row?.category as CargoCategory)
+    ? (row.category as CargoCategory)
+    : 'general_cargo';
+  return {
+    id: row.id,
+    name: row.name || CARGO_CATEGORY_LABELS[category],
+    category,
+    unit: row.unit || cargoUnitLabel(category),
+    unitMass: row.unit_mass != null ? Number(row.unit_mass) : cargoUnitMass(category),
+    unitCost: Number(row.unit_cost) || 0,
+    notes: row.notes || null,
+    ownerId: row.owner_id || null,
+  };
+}
+
+/** Case-insensitive catalog lookup by the manifest line's name. */
+export function findShipCargoItem(
+  catalog: ShipCargoItem[] | null | undefined,
+  name: string,
+): ShipCargoItem | null {
+  const key = (name || '').trim().toLowerCase();
+  if (!key) return null;
+  return (catalog ?? []).find(item => item.name.trim().toLowerCase() === key) ?? null;
 }
 
 /** Tons per one category unit. */

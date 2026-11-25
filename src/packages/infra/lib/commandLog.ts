@@ -35,6 +35,7 @@ export type ActionType =
   | 'WALL'
   | 'STRUCTURE'
   | 'SHIP'
+  | 'CAMPAIGN'
   | 'ARCHER_REACTION'
   | 'OTHER_ACTION'
   | 'ELEVATE';

@@ -182,11 +182,12 @@ The four flag kinds are also seeded into the library table by migration
   **transparent background** toggle, duration, tempo, and every modifier *before*
   applying. There is **no radius** — a zone drops on a single hex. There is no
   description field here (descriptions are authored only in the Effect Editor).
-- **Placed-effect edit**: right-clicking a hex with zones offers
-  **Move up / Move down / Edit / Clone / Drop**. *Edit* reopens
-  `EffectFormModal` for that zone (or a unit's own effect, via its context
-  menu). *Clone* arms a one-shot copy — the next left-click places it (Esc /
-  right-click cancels).
+- **Placed-effect edit**: right-clicking a hex with zones offers **Edit / Clone /
+  Drop**. *Edit* reopens `EffectFormModal` for that zone (or a unit's own effect,
+  via its context menu). *Clone* arms a one-shot copy — the next left-click places
+  it (Esc / right-click cancels). The full per-hex list (Edit / Clone / Remove /
+  Remove all) opens with Shift + double-click. Drawing order is automatic; there
+  are no Move up/down buttons.
 - **Zones ride the command log.** Every zone op (paint, drop, edit, clone, order,
   drop-effect) and the END_TURN tick/expiry are `ZONE` sub-steps
   (`apply_substeps`, migration 080) writing `scenarios.map_data.groundEffects`

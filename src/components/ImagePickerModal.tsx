@@ -179,7 +179,7 @@ export function ImagePickerModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[300]">
       <div className="bg-gray-800 p-6 rounded-lg w-[600px] max-h-[80vh] flex flex-col border border-gray-700">
         <h2 className="text-xl font-bold mb-4 text-white">{title}</h2>
         <div className="flex-1 overflow-y-auto">
@@ -277,7 +277,7 @@ export function ImagePickerModal({
       </div>
 
       {pendingDelete && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60]">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[310]">
           <div className="bg-gray-800 p-6 rounded-lg w-80 border border-gray-700 text-center">
             <h3 className="text-lg font-bold mb-3 text-white">Remove this image?</h3>
             <NextImage

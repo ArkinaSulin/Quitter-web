@@ -175,6 +175,8 @@ export interface EffectTemplate {
   modifiers: EffectModifier[];
   createdAt: string;
   updatedAt: string;
+  /** Authoring owner; null = seeded/system content (admin-only). */
+  ownerId?: string | null;
 }
 
 const KINDS: EffectModifierKind[] = ['ac', 'morale', 'movement', 'attack', 'damage', 'save_bonus', 'dot', 'hp_borrow', 'entry', 'mp_cost', 'max_org_level_allowed', 'range', ...FLAG_MODIFIER_KINDS];
@@ -244,6 +246,7 @@ export function mapEffectRow(row: any): EffectTemplate {
     modifiers: parseModifiers(row.modifiers),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ownerId: row.owner_id || null,
   };
 }
 

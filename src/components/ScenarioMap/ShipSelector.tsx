@@ -3,8 +3,13 @@
 
 import React, { useState } from 'react';
 import { ShipLibraryEntry, useShipTemplates } from '@/hooks/useShipTemplates';
-import { usePlayerShips } from '@/hooks/usePlayerShips';
-import { type PlayerShip } from '@/packages/ships';
+import { useCampaignShips } from '@/hooks/useCampaignShips';
+import {
+  campaignBaseName,
+  campaignFamily,
+  campaignRoots,
+  type CampaignShip,
+} from '@/packages/ships';
 import { alphaLabel } from '@/packages/units';
 import { ShipTemplateTooltip } from './ShipTemplateTooltip';
 
@@ -33,15 +38,23 @@ export function SailingShipIcon({ size = 16 }: { size?: number }) {
 
 interface ShipSelectorProps {
   scenarioId: string;
+  ownerId: string | null;
   canViewLibrary: boolean;
   onShipDragStart: (entry: ShipLibraryEntry) => void;
-  onPlayerShipDragStart: (playerShip: PlayerShip, entry: ShipLibraryEntry) => void;
+  /** Drag a campaign family root; the placement popup picks the version. */
+  onCampaignDragStart: (root: CampaignShip) => void;
 }
 
-export function ShipSelector({ scenarioId, canViewLibrary, onShipDragStart, onPlayerShipDragStart }: ShipSelectorProps) {
+export function ShipSelector({
+  scenarioId,
+  ownerId,
+  canViewLibrary,
+  onShipDragStart,
+  onCampaignDragStart,
+}: ShipSelectorProps) {
   const { ships, loading, error } = useShipTemplates();
-  const { ships: playerShips } = usePlayerShips(scenarioId, null);
-  const templateById = new Map(ships.map(entry => [entry.template.id, entry]));
+  const { mine: campaignShips } = useCampaignShips(scenarioId, ownerId);
+  const roots = campaignRoots(campaignShips);
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredShip, setHoveredShip] = useState<ShipLibraryEntry | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
@@ -96,41 +109,56 @@ export function ShipSelector({ scenarioId, canViewLibrary, onShipDragStart, onPl
         />
       </div>
 
-      {playerShips.length > 0 && (
-        <div className="px-2 pb-2 flex-shrink-0 space-y-1">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Player ships</div>
-          {playerShips.map(playerShip => {
-            const entry = templateById.get(playerShip.templateId);
-            const available = !playerShip.deployedScenarioId || playerShip.deployedScenarioId === scenarioId;
-            return (
-              <div
-                key={playerShip.id}
-                onMouseDown={(e) => {
-                  if (e.button !== 0 || !available || !entry) return;
-                  onPlayerShipDragStart(playerShip, entry);
-                }}
-                className={`rounded border p-1.5 text-xs ${
-                  available
-                    ? 'cursor-grab border-amber-700/70 bg-amber-900/10 text-amber-100 hover:bg-amber-900/25'
-                    : 'cursor-not-allowed border-gray-700 bg-gray-800/60 text-gray-500'
-                }`}
-                title={available ? 'Drag onto the map as this player ship' : 'Already deployed in another scenario'}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">
-                    {playerShip.name} {alphaLabel(playerShip.serialNumber)}
-                  </span>
-                  <span className="text-[10px] text-gray-400">
-                    HP {playerShip.shipHp}/{playerShip.shipHpMax}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-1">
+        {roots.length > 0 && (
+          <div className="pb-2 space-y-1">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Campaign ships</div>
+            {roots.map(root => {
+              const family = campaignFamily(root.id, campaignShips);
+              const latest = family[family.length - 1] ?? root;
+              const latestTemplate = latest.snapshot?.template ?? root.snapshot?.template;
+              const imageUrl = latestTemplate?.imageUrl ?? '';
+              const mass = latest.snapshot?.stats?.totalMass ?? latestTemplate?.totalMass ?? 0;
+              return (
+                <div
+                  key={root.id}
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    onCampaignDragStart(root);
+                  }}
+                  className="cursor-grab rounded border border-amber-700/70 bg-amber-900/10 p-1.5 text-xs text-amber-100 hover:bg-amber-900/25"
+                  title="Drag onto the map, then choose the version and state"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded border border-gray-600 bg-gray-800">
+                      {imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={imageUrl} alt="" className="max-h-full max-w-full object-contain" />
+                      ) : (
+                        <span className="text-gray-400"><SailingShipIcon size={20} /></span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">
+                          {campaignBaseName(root)}
+                          {root.serialNumber > 0 ? ` ${alphaLabel(root.serialNumber)}` : ''}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {family.length} version{family.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <div className="truncate text-[10px] text-gray-400">
+                        {root.scenarioLabel || 'No scenario'} · {mass}t
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="text-gray-400 text-sm text-center py-4">No ships match</div>
         ) : (

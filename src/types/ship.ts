@@ -14,7 +14,11 @@ export interface ShipArmor {
   ac: number;
   /** HP multiplier (ceramic/stone = 2, everything else = 1). */
   hpMult: number;
+  /** Dry-dock refit price per ton of armor mass (gp). */
+  costPerTon?: number;
   imageUrl?: string;
+  /** Authoring owner; null = seeded/system content (admin-only). */
+  ownerId?: string | null;
 }
 
 /** Component catalog row (`ship_components`). */
@@ -35,6 +39,7 @@ export interface ShipComponent {
   /** True for the two ram components (piercing/bludgeoning). */
   isRam?: boolean;
   imageUrl?: string;
+  ownerId?: string | null;
 }
 
 export type ShipAreaShape = 'circle' | 'cube' | 'cone' | 'line';
@@ -59,6 +64,8 @@ export interface ShipWeapon {
   ammoCost: number | null;
   /** Area-effect footprint (0 = single target); mirrors spell AoE. */
   magicDimension: number;
+  /** Maximum crew targets a penetrating hit can wound (1 = single crew). */
+  maxTargets: number;
   shape: ShipAreaShape;
   savingThrow: ShipSaveChoice;
   saveDC: number;
@@ -67,6 +74,7 @@ export interface ShipWeapon {
   special: string | null;
   ac?: number;
   imageUrl?: string;
+  ownerId?: string | null;
 }
 
 /** Unified row shape used by the Component Workshop list/form. */
@@ -89,6 +97,7 @@ export interface ShipComponentTemplate {
   maxRange: number;
   reloadSteps: number;
   magicDimension: number;
+  maxTargets: number;
   shape: ShipAreaShape;
   savingThrow: ShipSaveChoice;
   saveDC: number;
@@ -97,6 +106,7 @@ export interface ShipComponentTemplate {
   ac: number;
   imageUrl: string;
   isRam: boolean;
+  ownerId?: string | null;
 }
 
 /** Selected optional component on a template (`ship_template_components`). */
@@ -172,6 +182,21 @@ export interface CargoManifestItem {
   quantity: number;
 }
 
+/** Ship cargo price catalog row (`ship_cargo`). The manifest is separate. */
+export interface ShipCargoItem {
+  id: string;
+  name: string;
+  category: CargoCategory;
+  /** Category unit label used by the manifest (ton, kit, person-day). */
+  unit: string;
+  /** Tons per category unit. */
+  unitMass: number;
+  /** Current price per category unit (gp). */
+  unitCost: number;
+  notes: string | null;
+  ownerId?: string | null;
+}
+
 /** A built ship template (`ship_templates` + its two join tables). */
 export interface ShipTemplate {
   id: string;
@@ -214,4 +239,5 @@ export interface ShipTemplate {
   manifest: CargoManifestItem[];
   createdAt: string;
   updatedAt: string;
+  ownerId?: string | null;
 }

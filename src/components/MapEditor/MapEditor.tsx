@@ -4,7 +4,7 @@
 // entry costs), ScenarioMap-style: full-height canvas + a floating left panel
 // with Image / Movement cost tabs. Every edit autosaves to the `maps` table.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/packages/infra/supabase';
 import { useAuth } from '@/hooks/useAuth';
@@ -13,6 +13,7 @@ import { MAP_DEFAULTS } from '@/packages/world';
 import { edgeRef } from '@/packages/movement';
 import { MapStructures } from '@/packages/movement';
 import { edgeShowsLadder, structureSurfaceAt } from '@/packages/movement';
+import { structureTemplatesWithSnapshots } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { structureHasDoor } from '@/packages/movement';
@@ -20,6 +21,9 @@ import { EffectTemplate, mapEffectRow, modifierSummary, modifierAmount } from '@
 import { mpPairText } from '@/packages/world';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { MapCanvas } from './MapCanvas';
+import type { OwnershipFilter } from '@/packages/infra';
+import { useContentOwnership } from '@/hooks/useContentOwnership';
+import { OwnerChip, OwnerFilterSelect, OwnerLockNotice } from '@/components/shared/ContentOwnership';
 
 type Tab = 'image' | 'structures' | 'effects';
 
@@ -43,10 +47,12 @@ function blankMap(): MapEntity {
   };
 }
 
-export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) {
+export default function MapEditor({ readOnly: capabilityReadOnly = false }: { readOnly?: boolean }) {
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id ?? '';
+  const ownership = useContentOwnership();
+  const [ownerFilter, setOwnerFilter] = useState<OwnershipFilter>('all');
 
   const [maps, setMaps] = useState<MapEntity[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -59,6 +65,8 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
 
   const entity = selectedId ? maps.find(m => m.id === selectedId) ?? null : null;
+  const ownershipLocked = !!entity && !ownership.canEdit(entity.ownerId);
+  const readOnly = capabilityReadOnly || ownershipLocked;
 
   // Measure the selected image's natural size whenever it changes.
   useEffect(() => {
@@ -118,9 +126,11 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
   const flush = useCallback(async () => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     const e = entityRef.current;
-    if (!e || readOnly) return;
+    // Check the row's ownership, not the last render's flag: a freshly cloned
+    // map is already owned by this user even before React re-renders.
+    if (!e || !ownership.canEdit(e.ownerId)) return;
     setBusy(true);
-    const row = mapEntityToRow(e, userId || undefined);
+    const row = mapEntityToRow(e);
     const { data, error } = await supabase.from('maps').upsert({ id: e.id, ...row }).select('id').single();
     if (error) {
       console.error('[MapEditor] autosave failed:', error.message);
@@ -128,7 +138,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
       // ensure the list holds the saved row (id stable already)
     }
     setBusy(false);
-  }, [readOnly, userId]);
+  }, [ownership]);
   const scheduleSave = useCallback(() => {
     if (readOnly) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -144,14 +154,32 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
 
   // ---- actions ----
   const createNew = useCallback(async () => {
-    const m = blankMap();
+    const m = { ...blankMap(), ownerId: userId || null };
     setMaps(prev => [...prev, m]);
     setSelectedId(m.id);
     // persist immediately so New/Clone maps are on the server.
     await new Promise(r => setTimeout(r, 0));
     entityRef.current = m;
     await flush();
-  }, [flush]);
+  }, [flush, userId]);
+
+  /** Copy the selected map into a new one owned by you (also works read-only). */
+  const cloneMap = useCallback(async () => {
+    if (!entity) return;
+    const copy: MapEntity = {
+      ...entity,
+      id: crypto.randomUUID(),
+      name: `${entity.name} (copy)`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ownerId: userId || null,
+    };
+    setMaps(prev => [...prev, copy]);
+    setSelectedId(copy.id);
+    await new Promise(r => setTimeout(r, 0));
+    entityRef.current = copy;
+    await flush();
+  }, [entity, flush, userId]);
 
   const removeMap = useCallback(async () => {
     if (!entity) return;
@@ -229,6 +257,12 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     if (paletteId && !templates[paletteId]) setPaletteId(null);
   }, [templates, paletteId]);
 
+  /** Runtime template view: library + each placed instance's snapshot. */
+  const renderTemplates = useMemo(
+    () => structureTemplatesWithSnapshots(entity?.structures, templates),
+    [entity?.structures, templates],
+  );
+
   /** Click an edge structure: place a new one, select an existing one, or (already
    *  selected) flip its battlement/outside to the other side. */
   const paintStructureEdge = useCallback((q: number, r: number, dir: number) => {
@@ -236,15 +270,21 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     const ref = edgeRef(q, r, dir);
     const existing = entity.structures[ref.key];
     if (!existing) {
-      update({ structures: { ...entity.structures, [ref.key]: { templateId: paletteId } } });
+      const snapshot = templates[paletteId];
+      update({
+        structures: {
+          ...entity.structures,
+          [ref.key]: { templateId: paletteId, ...(snapshot ? { template: snapshot } : {}) },
+        },
+      });
       setSelectedStructureKey(ref.key);
     } else if (selectedStructureKey === ref.key) {
-      const t = templates[existing.templateId];
+      const t = renderTemplates[existing.templateId];
       if (edgeShowsLadder(existing, t)) {
         // Stairs edge: flip only the ladder's lean (the wall face stays as placed).
         const effSide = existing.ladderSide
-          ?? (structureSurfaceAt({ q: ref.bq, r: ref.br }, entity.structures, templates)
-              >= structureSurfaceAt({ q: ref.aq, r: ref.ar }, entity.structures, templates) ? 'b' : 'a');
+          ?? (structureSurfaceAt({ q: ref.bq, r: ref.br }, entity.structures, renderTemplates)
+              >= structureSurfaceAt({ q: ref.aq, r: ref.ar }, entity.structures, renderTemplates) ? 'b' : 'a');
         update({ structures: { ...entity.structures, [ref.key]: { ...existing, ladderSide: effSide === 'a' ? 'b' : 'a' } } });
         return;
       }
@@ -253,17 +293,23 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
     } else {
       setSelectedStructureKey(ref.key);
     }
-  }, [entity, paletteId, selectedStructureKey, update]);
+  }, [entity, paletteId, selectedStructureKey, renderTemplates, templates, update]);
 
   const paintStructureHex = useCallback((q: number, r: number) => {
     if (!entity || !paletteId) return;
     const key = `${q},${r}`;
     const existing = entity.structures[key];
     if (!existing) {
-      update({ structures: { ...entity.structures, [key]: { templateId: paletteId } } });
+      const snapshot = templates[paletteId];
+      update({
+        structures: {
+          ...entity.structures,
+          [key]: { templateId: paletteId, ...(snapshot ? { template: snapshot } : {}) },
+        },
+      });
     }
     setSelectedStructureKey(key);
-  }, [entity, paletteId, update]);
+  }, [entity, paletteId, templates, update]);
 
   const clearStructure = useCallback((key: string) => {
     if (!entity || !entity.structures[key]) return;
@@ -346,7 +392,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 bg-gray-900">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold text-yellow-300">Map Editor</h1>
-          {readOnly && (
+          {capabilityReadOnly && (
             <span className="text-xs bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-gray-300">
               Read-only — editing requires an author role
             </span>
@@ -354,12 +400,21 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
           {busy && <span className="text-xs text-gray-500">saving…</span>}
         </div>
         <div className="flex items-center gap-2 text-sm">
-          {!readOnly && (
+          {!capabilityReadOnly && (
             <>
               <button onClick={() => void createNew()} className="px-3 py-1 bg-green-800 border border-yellow-400 rounded hover:bg-green-700">New Map</button>
+              {entity && (
+                <button
+                  onClick={() => void cloneMap()}
+                  className="px-3 py-1 bg-gray-700 border border-gray-500 rounded hover:bg-gray-600"
+                  title="Copy this map into a new one you own"
+                >
+                  Clone
+                </button>
+              )}
               <button
                 onClick={() => void removeMap()}
-                disabled={!entity}
+                disabled={!entity || readOnly}
                 className="px-3 py-1 bg-red-900 border border-red-600 rounded hover:bg-red-800 disabled:opacity-40"
               >
                 Delete
@@ -377,20 +432,41 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
           {/* Map list */}
           <div className="px-3 py-2 border-b border-gray-700 max-h-44 overflow-y-auto">
             <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Maps</p>
+            <div className="mb-2">
+              <OwnerFilterSelect
+                ownership={ownership}
+                value={ownerFilter}
+                onChange={setOwnerFilter}
+                className="w-full"
+              />
+            </div>
             <div className="space-y-1">
               {maps.length === 0 && <p className="text-xs text-gray-500">No maps yet — create one.</p>}
-              {maps.map(m => (
+              {ownership.filter(maps, ownerFilter).map(m => (
                 <button
                   key={m.id}
                   onClick={() => { setSelectedId(m.id); }}
                   className={`w-full text-left text-xs px-2 py-1 rounded ${m.id === selectedId ? 'bg-yellow-700/40 border border-yellow-500' : 'bg-gray-800 border border-transparent hover:bg-gray-700'}`}
                 >
-                  {m.name}
+                  <span className="block truncate">{m.name}</span>
+                  <span className="mt-0.5 block">
+                    <OwnerChip ownership={ownership} ownerId={m.ownerId} />
+                  </span>
                   {m.imageUrl && <span className="text-gray-500 ml-1">· img</span>}
                 </button>
               ))}
             </div>
           </div>
+
+          {ownershipLocked && entity && (
+            <div className="px-3 pt-2">
+              <OwnerLockNotice
+                ownership={ownership}
+                ownerId={entity.ownerId}
+                onClone={() => void cloneMap()}
+              />
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="flex border-b border-gray-700">
@@ -582,7 +658,7 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
             scale={entity.scale}
             gridRadius={entity.gridRadius}
             structures={entity.structures}
-            templates={templates}
+            templates={renderTemplates}
             structureAnchors={tab === 'structures' ? armedAnchor : null}
             selectedStructureKey={selectedStructureKey}
             hexEffects={entity.hexEffects}
@@ -618,9 +694,9 @@ export default function MapEditor({ readOnly = false }: { readOnly?: boolean }) 
       )}
 
       {/* Shift + double-click a placed structure → instance editor. */}
-      {structureEditKey && entity?.structures[structureEditKey] && templates[entity.structures[structureEditKey].templateId] && (
+      {structureEditKey && entity?.structures[structureEditKey] && renderTemplates[entity.structures[structureEditKey].templateId] && (
         <StructureEditModal
-          template={templates[entity.structures[structureEditKey].templateId]}
+          template={renderTemplates[entity.structures[structureEditKey].templateId]}
           instance={entity.structures[structureEditKey]}
           onSave={(patch) => patchStructureAt(structureEditKey, patch)}
           onRemove={() => { clearStructure(structureEditKey); setStructureEditKey(null); }}

@@ -95,11 +95,10 @@ export function parseHalloweenSiegePresetRow(row: any): HalloweenSiegePreset {
 }
 
 /** Map a preset plan to a snake_case row for INSERT/UPDATE/upsert. */
-export function halloweenSiegePresetToRow(plan: HalloweenSiegePlan, name: string, creatorId?: string) {
+export function halloweenSiegePresetToRow(plan: HalloweenSiegePlan, name: string) {
   return {
     name: name.trim(),
     turns_per_wave: plan.turnsPerWave,
     waves: cloneWaves(plan.waves),
-    created_by: creatorId,
   };
 }

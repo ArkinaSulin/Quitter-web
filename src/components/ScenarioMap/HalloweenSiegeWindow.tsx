@@ -46,6 +46,7 @@ export function HalloweenSiegeWindow({
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const waveRefs = useRef(new Map<string, HTMLDivElement>());
+  const waveListRef = useRef<HTMLDivElement>(null);
   const pendingScrollWaveRef = useRef<string | null>(null);
 
   const clampPos = useCallback((p: { x: number; y: number }) => {
@@ -67,8 +68,12 @@ export function HalloweenSiegeWindow({
   useLayoutEffect(() => {
     const waveId = pendingScrollWaveRef.current;
     if (!waveId) return;
-    waveRefs.current.get(waveId)?.scrollIntoView({ block: 'nearest' });
     pendingScrollWaveRef.current = null;
+    const list = waveListRef.current;
+    const target = waveRefs.current.get(waveId);
+    if (!list || !target) return;
+    const delta = target.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    list.scrollTo({ top: list.scrollTop + delta, behavior: 'smooth' });
   }, [draft.waves]);
 
   const startDrag = (e: React.MouseEvent) => {
@@ -179,7 +184,7 @@ export function HalloweenSiegeWindow({
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 pointer-events-auto">
+    <div className="absolute inset-0 z-[260] flex items-center justify-center bg-black/40 pointer-events-auto">
       <div
         ref={modalRef}
         className="bg-gray-900 border border-gray-600 rounded-xl shadow-2xl w-[760px] h-[720px] max-h-[92vh] flex flex-col"
@@ -222,7 +227,7 @@ export function HalloweenSiegeWindow({
           />
 
           <div className="grid flex-1 min-h-0 grid-cols-[1fr_240px] gap-4">
-            <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
+            <div ref={waveListRef} className="min-h-0 space-y-3 overflow-y-auto overscroll-contain pr-1">
               {draft.waves.length === 0 ? (
                 <div className="rounded border border-dashed border-gray-700 p-6 text-center text-sm text-gray-400">
                   Add a wave, then drag monster templates into it.
@@ -238,6 +243,10 @@ export function HalloweenSiegeWindow({
                 return (
                   <div
                     key={wave.id}
+                    ref={el => {
+                      if (el) waveRefs.current.set(wave.id, el);
+                      else waveRefs.current.delete(wave.id);
+                    }}
                     onClick={() => setActiveWaveId(wave.id)}
                     className={`rounded border p-2 ${activeWaveId === wave.id ? 'border-amber-500/70' : 'border-gray-700'}`}
                   >

@@ -189,8 +189,16 @@ consumption tick: food/water is reduced when a cargo hit destroys supplies (comb
 time). Migration 167 seeds `ceil(full crew / 10)` tons of Food & water per
 template (≈20 days at full crew).
 
-**Cargo manifest.** A compact list below the crew reserve roster holds
-`{ name, category, quantity }` lines. Quantities use the category unit:
+**Cargo manifest.** A compact frame below the crew reserve roster holds
+`{ name, category, quantity }` lines. The header has **Cargo** / **manifest** on
+two lines on the left, the **used / total capacity** fraction centred between the
+title and the button, and **+ Add cargo** on the top right in the same style as
+**+ Add crew** / **+ Add component** / **+ Add weapon**; in a read-only preview
+the button stays visible but disabled. There is no separate full-width add row.
+The list shows the **name only**; the category lives in the Add/Edit dialog and
+the name's hover title, which keeps the fixed-width Ship Window readable. **Qty**
+shows the number without its unit (the unit is in the dialog and the Qty hover
+title). Quantities use the category unit:
 **Food & water** = person-days, **Ship repair kit** = kits (0.1 ton each),
 **Ammunition** / **General cargo** / **Mission cargo** = tons. Every line has its
 own name and category, so multiple lines can share a category (e.g. **Ore** and
@@ -247,8 +255,8 @@ values are still shown in the editor's formula panel.
 |---|---|---|---|
 | Helm | 1t | 1 | each helm needs its own crew; first helm is included in hull price, extra helms use catalog cost |
 | Command Bridge | 3t | 5 | +5 command per bridge |
-| Sail | 1t | 0 | spelljamming sails need no handling crew |
-| Rudder vane | 1.5t | 0.5 | determines MC; crew counts round up per group |
+| Sail | 1t | 0 | sails need no catalog handling crew; the operational requirement comes from the shared sail/rudder pool (1 crew per 4 sails) |
+| Rudder vane | 1.5t | 0.5 | determines MC; one rudder uses 2 sail-units in the shared pool, so 1 crew mans 2 rudders |
 | Weapon | authored | per weapon | each weapon uses its catalog mass; handling crew is **not** min crew |
 | Reinforcement | 1t | 0 | protects one card; first hit destroys the reinforcement, next hit damages the component |
 | Cargo | 1t | 0 | carries 1t cargo |
@@ -268,15 +276,34 @@ Ram restriction. The weapon child list uses deck terminology for direction:
 Bow, Body, Port, Starboard, Stern; there is no `mount_slot` column. Direction
 badges are shown only on weapon cards, never on component cards.
 
-**Minimum crew = one helm + the sail and rudder slots.** Command bridge,
+**Minimum crew = one helm + the shared sail/rudder pool.** Command bridge,
 optional components and weapon handling crew are excluded (weapons are not
-needed for spelljamming). Sail slots = `max(1, floor(sails / 4))`; rudder slots
-= `max(1, ceil(rudders / 2))`; the helm slot = the helm's catalog crew.
-**Full crew = max(minCrew × 2, every crew slot)** where every crew slot is all
-component crew (helm × count, bridge, sail, rudder, optional) plus weapon
-handling crew. Examples: Shuttle min 3, all slots 3 → full 6; Wasp min 5, all
-slots 7 → full 10; Damselfly min 4, all slots 10 → full 10; Star Moth min 11
+needed for spelljamming). One crew mans **4 sails or 2 rudders**, so sails and
+rudders draw on the same pool instead of needing one crew per card:
+
+```
+sailRudderCrew = (sails + 2 × rudders) > 0
+  ? max(1, ceil((sails + 2 × rudders) / 4))
+  : 0
+```
+
+The helm slot is the helm's catalog crew. **Full crew = max(minCrew × 2, every
+crew slot)** where every crew slot is all component crew (helm × count, bridge,
+the shared sail/rudder pool, optional) plus weapon handling crew. Examples:
+Shuttle min 2 (1 helm + ceil((1 + 2)/4)), all slots 2 → full 4; Wasp min 5, all
+slots 7 → full 10; Damselfly min 5, all slots 11 → full 11; Star Moth min 11
 (bridge excluded), all slots 24 → full 24.
+
+**Why one pool (and not one crew per card):** a single crew can work the sails
+and then the rudder, so charging separate minimums forced e.g. 2 sails (1 crew)
++ 1 rudder (1 crew) to need two crew even though one crew covers both. The same
+crew's capacity is 4 sail-units; a rudder counts as 2 sail-units. The math
+therefore charges one crew per **four units of work**, with each rudder worth
+two sails. Rounding is **ceiling**, because a partially manned group still
+needs a crew member at its station.
+
+**Worked example:** 2 sails + 1 rudder = 2 + 2 = 4 work units → 1 crew.
+6 sails + 5 rudders = 6 + 10 = 16 units → 4 crew.
 
 ### Performance
 
@@ -318,11 +345,11 @@ slots 7 → full 10; Damselfly min 4, all slots 10 → full 10; Star Moth min 11
 
 | Ship | Mass | Accel | MC | HP | AC | Min crew | Full crew | Quarters | Capacity |
 |---|---|---|---|---|---|---|---|---|---|
-| Racer | 10 | 9 | 0 | 70 | 15 | 3 | 6 | 0t | 0 |
+| Racer | 10 | 9 | 0 | 70 | 15 | 4 | 8 | 0t | 0 |
 | Shuttle | 10 | 3 | 3 | 70 | 15 | 2 | 4 | 4t | 20 |
-| Wasp | 20 | 5.3 | 1 | 100 | 15 | 4 | 8 | 2t | 10 |
-| Damselfly | 30 | 5 | 3 | 130 | 19 | 3 | 9 | 2t | 10 |
-| Star Moth | 60 | 5 | 1 | 440 | 13 | 15 | 30 | 5t | 25 |
+| Wasp | 20 | 5.3 | 1 | 100 | 15 | 5 | 10 | 2t | 10 |
+| Damselfly | 30 | 5 | 3 | 130 | 19 | 5 | 11 | 2t | 10 |
+| Star Moth | 60 | 5 | 1 | 440 | 13 | 11 | 24 | 5t | 25 |
 
 The template tonnage rows are asserted in `shipStats.test.ts`; they are the
 quickest way to catch rounding regressions.
@@ -414,10 +441,15 @@ Fields:
 - Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
   Effect, AC, DT, Image URL, **Can combine cards**.
 - Weapons: Name, Mass, Crew, Cost, Damage **and Fire Cycle on the same row**,
-  Damage formula, Min Range / Range / Max Range, Note, AC, DT, Image URL.
+  Damage formula, **Max crew targets**, Min Range / Range / Max Range, Note, AC,
+  DT, Image URL.
   Weapons are always hittable. The only supported formula is `{mass/10}d10`:
   it resolves against the carrying ship's total mass with the die count rounded
   up (75t → 8d10). Formula-only weapons leave the literal damage blank.
+  **Max crew targets** (`ship_weapons.max_targets`, default 1, minimum 1) is the
+  ceiling for the crew-wound roll on a penetrating ship hit: a Ballista is 1
+  (always one crew), a Mangonel is 3 (1d3 crew). It is separate from component
+  tons and never targets multiple ships.
 
 Crew requirements may be fractional (Rudder 0.5); every actual crew count is
 rounded up per component group. Sail crew is 0.
@@ -441,6 +473,34 @@ Shipyard capability, so the Ship Editor keeps reading the same catalogs.
 deletes cascade to `ship_template_components` / `ship_template_weapons`, so a
 deleted component/weapon is removed from those ships rather than blocked by an
 FK error.
+
+## Dry-dock mode (migration 176)
+
+`ShipEditor` has two modes. `library` is Archfar's Shipyard (template list,
+New/Clone/Delete). `dryDock` edits one campaign ship version inside the scenario:
+
+- the caller supplies `initialTemplate` (the frozen instance snapshot),
+  `lockedFields` (the dry dock locks `totalMass`), `renderLeftPanel` (the live
+  refit summary), `onSaveOverride` (Save refit in place), and
+  `onSaveAsNewVersionOverride` (commit a new campaign version);
+- the template list, New/Clone/Delete and Main Menu are hidden;
+- the builder is the same component, so deck/roster/cargo/weapon rules cannot
+  drift between the Shipyard and the dock.
+
+The dock's summary is player-facing and prices one rule for every part: **cost
+per ton × tons added**. Components/weapons derive it from their unit price and
+mass; armor authors `ship_armors.cost_per_ton`. Crew and cargo changes are listed
+but never charged, and no invoice is stored. The Component Workshop has an
+**Armors** tab for name, mass %, AC, HP multiplier and cost per ton. Armor rows
+are edit-only.
+
+A dry-dock Save keeps the current campaign version. **Save as new version**
+freezes the current row, creates a child version (asked-for base name, next
+numeral), and repoints the map instance; it is a committed transaction outside
+the undo log, so a refit cannot be undone.
+
+Catalog reads are open to authenticated players (the dock needs them); library
+templates and catalog writes keep their existing gates.
 
 ## Engine hand-off (pending work)
 

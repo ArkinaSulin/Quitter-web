@@ -30,6 +30,251 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Signed ship modifiers (2026-11-25)**: negative skill values display as
+  `-1` (never `+-1`) in hovers, Crew Adjust, card hovers and Best in ship skill;
+  added the `signedBonus` helper. No migration.
+- **Captaincy display, command-bonus action cost, space-only acceleration
+  (2026-11-25)**: Captaincy is `Int + PB − 5` on every surface (crew keep +2
+  CrewSkill); Command bonus also costs one captain action (negative-action
+  approval when none); ship hover shows Acceleration only in wildspace. No
+  migration.
+- **Ship hover tooltip (2026-11-24)**: hovering a ship image shows name,
+  HP current/max, effective acceleration, effective MC (after trim) and the mode’s
+  speed (Declared in wildspace / Atmosphere in atmosphere). Uses the rotated hull
+  hit box; units win on overlap, hidden/fogged ships are skipped. No migration.
+- **Ship skill checks say what they do and use DC (2026-11-24)**: sail max/trim,
+  repair’s component check and ram now name the action in the plain message and
+  use `vs DC` in verbose detail (attack rolls keep `vs AC`); command/undo
+  descriptions name the action too. No migration.
+- **Repair uses deck targeting (2026-11-24)**: Hull Repair enters a targeting
+  mode like Command bonus; damaged cards show a Repair overlay (one ton) and the
+  Hull card repairs HP only. Negative-action approval reuses the shared confirm
+  dialog; the old picker modal is gone. No migration.
+- **Scenario Statistics HP columns + resizable window (2026-11-24)**: Starting,
+  Lost and Kills now show Troop / Lv / HP per unit and per alliance; intro HP
+  snapshots with intro troops, `hpLost` is gross, `killHp` uses the killer
+  payload. The shared text mirrors it. The modal has a bottom-right resize
+  handle clamped to the viewport. No migration.
+- **Spelljammer Int captaincy + Helmsman max(Wis, Int) (2026-11-24)**: the Bridge
+  **Command bonus** button awards `Int + PB − 5` (may be negative) to a card for
+  one Bridge card step; one pending gold badge per card, consumed by its next d20
+  roll and expiring at end of turn. Helm control, ram, barrel dodge, crew fill
+  priority and Best-in-ship Helmsmanship use `max(Wis, Int)`. Sail trimming DC is
+  now `20 − effective MC`; sail max/trim succeed once per turn and `mcReduction`
+  lasts until end of turn. Cha captaincy is documented only. No migration.
+- **Station names in undo/redo messages (2026-11-24)**: silent hero station
+  moves, Fill and Empty now name the station in their command descriptions;
+  duplicate weapon names include the deck region (and an ordinal when needed).
+  No migration.
+- **Silent free station actions (2026-11-24)**: hero card moves, Fill station and
+  Empty station no longer post Messages entries (`execute` gained `silent`);
+  server writes/undo/replay remain. No migration.
+- **Scenario banner reserved for Halloween Siege (2026-11-24)**: removed bottom
+  toasts from sail maxing, rudder trim, repair, ram, and weapon load; those now
+  use Messages only. The toast banner remains only for Halloween Siege wave
+  completion. No migration.
+- **Campaign ships in the Ship Selector (2026-11-24)**: campaign cards stay first
+  but scroll with the library (not pinned) and now show the latest version's ship
+  image plus total mass, matching library ship cards. No migration.
+- **Repair dice + DC 15 component checks (2026-11-24)**: repair verbose shows
+  `4d8` faces/bonus and a `D20 vs DC 15` component check; failure consumes the
+  kit/card step but restores no ton. Sail maxing, rudder trim, ram and barrel
+  dodge/collision verbose notes now show their `D20`/damage faces. No migration.
+- **No-crew max-target roll + effective cargo display (2026-11-24)**: ship
+  weapons only roll `max_targets` when living crew are on the struck card;
+  cargo shows `used / effective (design)t` after Cargo-card damage (window live,
+  dry dock from the version's damage, library editor full). Cargo boxes are
+  sampled without replacement (6/12, 5/11, 4/10 in the 6-in-12 example); empty
+  boxes still consume a hit. No migration.
+- **Reordered verbose ship-fire report (2026-11-24)**: verbose messages now list
+  hit header, attack roll, damage roll, boxes destroyed, card destroyed,
+  crew roll/hits/kills, then cargo; crew uses
+  `{1d3: 3} → 3 crew hit (names) 3 killed`. Plain messages unchanged. No
+  migration.
+- **Barrel contents in the right-click menu (2026-11-24)**: cargo-debris hexes
+  show “Floating cargo” plus `50% of [merged items]` in the right-click menu;
+  removed the Manage all… header and Move up/down buttons. Full per-hex editing
+  remains on Shift + double-click. No migration.
+- **Merged floating-cargo barrels (2026-11-24)**: cargo boxes destroyed in one
+  hex merge into one `cargo_debris` zone with summed same-name contents and a
+  `barrelCount`; the marker draws 1/2/3 barrels (3 in a triangle) with rotations
+  seeded by the hex coordinate. One collision check per hex and no count badge.
+  No migration.
+- **Shared unsaved-changes guard for every library editor (2026-11-24)**: added
+  `useUnsavedChanges` + `UnsavedChangesModal`; Component Workshop (components/
+  weapons/armors), Structure Editor, Effect Editor and Weapon Editor now prompt
+  Save/Discard/Cancel on tab/row/New/Clone/Main Menu and warn on reload. Ship and
+  Unit editors retain their existing dirty dialogs. Map Editor autosaves. No
+  migration.
+- **90° firing sectors + destroyed-card occupant cleanup (2026-11-24)**:
+  `shipTargetArc` now uses four ~90° bearing sectors (bow ±45°, starboard,
+  stern, port) matching the dial. A card losing its last box clears its crew to
+  reserve and hero station keys (heroes fall back to Deck/Cargo), zeroes its crew
+  slots, and blocks Fill/movement/auto-assign; cleanup is part of the damage
+  command. No migration.
+- **Larger ship-window hero tokens (2026-11-24)**: hero tokens on the ship deck
+  are 20% larger (`min(card width, card height) × 1.2`) and keep the 200%-zoom ×
+  DPR backing canvas, so they are easier to read and stay crisp at max zoom. No
+  migration.
+- **Cargo barrels + crisp hero tokens + free-fire preview (2026-11-24)**:
+  floating cargo draws as a barrel; hero-token canvases render at 200% max deck
+  zoom × DPR so they are crisp at max zoom and scale down with the deck; selecting
+  a ship weapon paints the free-fire area (white normal, amber disadvantage,
+  nothing below min range/out of arc/beyond max). No migration.
+- **Destroyed Bridge/Helm access, non-shrinking deck, arc dial (2026-11-24)**:
+  destroyed Bridge/Helm cards grant no captain/helmsman role, no reveal-all/
+  manage-all, and no command fallback; the hero sees only that card. Deck rotation
+  no longer scales down (cards keep size, use pan/zoom) and the weapon firing-arc
+  dial rotates with facing while card text stays upright. No migration.
+- **Ship no-op moves, serial labels, facing-rotated deck (2026-11-24)**: dropping
+  a ship back on its current hex does nothing (no command/message/crate dodge).
+  Every ship message uses `name + alphaLabel(serialNumber)` (e.g. Gunboat E).
+  The runtime deck rotates in 60° steps with `ship.facing` while cards and region
+  labels counter-rotate to stay upright; the editor/dry dock stays north-up.
+  No migration.
+- **Panel lists no longer scroll the map (2026-11-24)**: moving a hero between
+  ship cards posted a message, and `MessagesPanel`'s `scrollIntoView` could scroll
+  the document up by the top-bar height (banner disappeared until F11 reset).
+  `MessagesPanel`/`UndoDebugPanel` now scroll their own containers directly, and
+  the Halloween Siege wave list scrolls within its list. `docs/dev/19` records the
+  no-`scrollIntoView` rule. No migration.
+- **Hero tooltip actions (2026-11-24)**: the ship-window hero token tooltip now
+  replaces the raw STR/DEX/CON/INT/WIS/CHA line with `Actions: unused/total`
+  (red at 0, `hero_actions_per_turn`) and keeps the six skill bonuses. No
+  migration.
+- **All-hero Best in ship skill + canonical skill order (2026-11-24)**: Best in
+  ship skill now includes every living boarded hero (not only Deck/Cargo), and
+  Captaincy (INT) appears in hero/NPC hover summaries and the Crew Adjust block.
+  Every surface uses one order — Repair (STR), Weapon (DEX), Sail maxing (CON),
+  Captaincy (INT), Sail trimming (INT), Helm (WIS) — with the 2-column grids
+  ordered Repair/Captaincy, Weapon/Sail trimming, Sail maxing/Helm. Crew cost and
+  Proficiency/CrewSkill moved to their own rows. No migration.
+- **Verbose ship-fire dice breakdown (2026-11-24)**: ship shots always record a
+  verbose message; verbose mode shows the d20 attack roll(s) (both dice on
+  disadvantage), damage faces/total, the `max_targets` roll with capped crew
+  count and names, component tons, cargo lost, and floating crates. Plain
+  messages are unchanged; unit targets omit the ship-only max-target roll. No
+  migration.
+- **Ship weapon component/crew damage + cargo loss/crates (2026-11-24)**: a
+  penetrating hit destroys `floor(damage/10)` tons on the struck card (capped at
+  its remaining boxes) and independently rolls `1..max_targets` living occupants,
+  each taking the full shot damage. `ship_weapons.max_targets` defaults to 1
+  (Mangonel seeded to 3; migration 180 pending). Cargo packs into
+  `capacity − destroyed Cargo boxes`, full one-ton groups first with leftovers
+  last; each cargo ton rolls a shrinking box pool, lost cargo is named in the
+  message, and each non-empty destroyed box leaves a `cargo_debris` ground zone
+  showing `50% of [items]`. Ships entering a crate hex roll Helm dodge
+  (`d20 + best helm Dex`) vs DC 15; failure takes `mass d speed` and destroys the
+  crates, which never stop the ship. DM removes crates from the hex-effects list;
+  recovery is manual. **Apply 180 in Supabase.**
+- **Compact cargo header/rows for the Ship Window (2026-11-23)**: the shared
+  cargo frame renders **Cargo** / **manifest** on two lines so the capacity badge
+  and Add cargo button stay vertically centred and un-squeezed in the fixed 210px
+  Ship Window panel. The Category column is gone (dialog + name hover title), and
+  Qty shows only the number (unit in the dialog/Qty title), freeing width for the
+  name. Crew roster header and rows share one grid gap, with the **Level** label
+  nudged left over its values. No migration.
+- **Unified crew/cargo add buttons (2026-11-23)**: the shared crew frame now has
+  a single **+ Add crew** in its header (green/yellow, disabled when read-only);
+  the editor's duplicate header button and the full-width row add are gone, so
+  editor, dry dock, and Ship Window share one control. Ship Window **Auto**/
+  **Clear** moved to a footer row. The shared cargo frame has **+ Add cargo** top
+  right, the **used / total capacity** fraction centred between the title and the
+  button, and no row add; the over-capacity warning is inline in the load badge.
+  No migration.
+- **Shared sail/rudder manning + damage-scaled hardware (2026-11-23)**: minimum
+  crew is one helm plus `max(1, ceil((sails + 2 × rudders) / 4))` — one crew mans
+  4 sails or 2 rudders, and spare capacity covers the other group (2 sails + 1
+  rudder needs 1 crew). Card capacity uses `ceil` for sails. Auto assign fills
+  only the combined demand (empty Sail → empty Rudder → Rudder), while card slots
+  remain the manual maximum. Destroyed boxes shrink hardware: a Sail box is one
+  sail; combined Rudder cards use `ceil(survivingTons / 1.5)` so a rudder is not
+  destroyed until its full mass is gone (10.5 t − 1 t → 9.5/1.5 = 6.33 → 7;
+  requirement drops only at 7.5/1.5 = 5). New `shipManning.ts` derives effective
+  counts and `effectiveShipStats` (acceleration **and** MC), wired into
+  ScenarioMap move/turn/declare checks and SpeedDeclarationPanel; the Ship Window
+  shows an **Undermanned** note. No migration.
+- **Station crew: per-card capacity + exactly-one-vacancy pull (2026-11-22)**:
+  Helm/Command bridge card capacity now uses the card's own crew (not the
+  ship-wide helm/bridge count), fixing hero-plus-crew and two-crew Helm states.
+  Auto-pull fires only with a living reserve **and exactly one empty slot**
+  (`needsStationReplacement`); hero entry trims excess crew to capacity. No
+  migration.
+- **Browse campaign versions in the dry dock (2026-11-22)**: the version
+  ‹ ›/dropdown loads a historical version’s stored design into the middle/right
+  panels in **read-only preview** (save bar hidden); the left panel shows its
+  details and a **diff/cost against the previous version** (labour + equipment;
+  the root shows no comparison). The current version stays editable; leaving a
+  dirty current version asks before switching; after a fork the view jumps to the
+  new current version. New `campaignPreviousVersion` helper + tests. No migration.
+- **Toasts at the map bottom + top-bar-aware left panel + DM auto-editor
+  (2026-11-22)**: toasts are bottom-centre (above the reaction toolbar), have a
+  **×**, and stay until dismissed/replaced (no auto-hide). `TopBar` reports its
+  measured height; the left panel sits at `topBarHeight + 8`, so it drops when
+  the bar wraps instead of being covered. The DM auto-acquires the dry-dock editor
+  lease when it is free, so the builder starts editable. No migration.
+- **Dry-dock success messages use the Messages log (2026-11-22)**: “Save refit”,
+  “Save as new version” and “Make/Convert Campaign Ship” post `addMessage`
+  instead of a centered toast, so they no longer cover the top banner bar. Toasts
+  remain for exceptional events. No migration.
+- **Fix ambiguous `numeral` in `fork_campaign_version` (2026-11-22, migration
+  179)**: “Save as new version” failed with `column reference "numeral" is
+  ambiguous` because the PL/pgSQL variable matched `ship_campaign.numeral` inside
+  the family CTE. Renamed the variable to `new_numeral` and the CTE column to
+  `family_numeral`; behaviour unchanged. **Apply 179 in Supabase.**
+- **Dry dock keeps the left panel + both lower resize handles (2026-11-22)**: the
+  game left panel is hidden only for replay / DM-gone, not for the dry-dock pause,
+  so Messages/participants stay usable. Unit/ship/campaign-ship drags are refused
+  with “The table is paused while the dry dock is open.” The dry-dock window now
+  defaults beside the panel (side-aware) and `DraggablePanel` has a bottom-left
+  resize handle (right edge fixed) alongside the bottom-right one, covering both
+  the dry dock and the ship window. No migration.
+- **Windowed dry dock, no local hide (2026-11-22)**: `DryDockWindow` is now a
+  movable/resizable `DraggablePanel` (z 150, per-client `quitter.dryDock.size`,
+  viewport-clamped restore/resize) with **End dry dock** in the title bar. The
+  local dismissed state and Reshare are removed: the window is visible for the
+  whole session, the DM's close/Cancel ends it for everyone, and players see
+  “The DM ends the dry dock”. Fixes Cancel hiding the window while leaving the
+  table locked. `DraggablePanel` gained `closeLabel`, `bodyClassName`,
+  `initialSize` and size clamping. No migration.
+- **Server-authoritative campaign numbering (2026-11-22, migration 178)**: the
+  dry dock now receives the whole family (`campaignFamilyOf`), not the current
+  version, fixing a second refit reusing “II”. `fork_campaign_version` derives
+  the numeral (`max(family)+1`, or 1 when renamed) and builds the display name
+  with a new SQL `roman_numeral`; the family label is the root’s base name with
+  no scenario. The Campaign Ship Manager gained an owner-only **Renumber** repair
+  (creation order 1..N + carrier name refresh). **Apply 178 in Supabase.**
+- **Structure instances snapshot their template (2026-11-22)**: every placed
+  structure stores a full `template` snapshot, written by the Map Editor brush and
+  the in-scenario Structure brush and copied into `scenarios.map_data.structures`
+  on map assignment. Runtime lookups use
+  `structureTemplatesWithSnapshots(structures, library)`, so editing or deleting a
+  library template cannot change or break structures already placed on another
+  DM's map. Legacy instances without a snapshot fall back to the live library. No
+  migration (jsonb only).
+- **Creator-locked editor content (2026-11-22, migration 177)**: every
+  authoring table now stores `owner_id` (unit templates + lookups, ship
+  templates/catalogs, maps, effect/structure templates, siege presets). A row
+  trigger allows only the creator or an admin to update/delete; `owner_id NULL`
+  (legacy/seed/system) is admin-only; inserts force `auth.uid()` and ownership
+  cannot transfer. Scenario tokens are exempt — map editing keeps its turn/team
+  rules. Each editor gained an owner filter (default **All content**), owner
+  chips, a read-only notice with **Clone to edit**, and an admin-only “Owner
+  deleted” filter. **177 applied.**
+- **Campaign ships (2026-11-22, migration 176)**: `ship_player*` is dropped and
+  replaced by `ship_campaign`, where a row **is a version** of a ship family
+  (`parent_id` tree, root = family name). A scenario copy lives in
+  `ship_spelljammer`; only the instance flagged `campaign_carrier` mirrors its
+  runtime into the campaign row via a trigger. Deployment opens a popup (version
+  + Full/Latest + “make this a new campaign ship”); Yes adds a `CAMPAIGN` sub-step
+  to the placement command, No creates an instance only. A version may have one
+  un-superseded child per scenario (`occupies_slot` + partial unique index).
+  Dry dock has Save / Save as new version (sealed, non-undoable: the old row
+  freezes) / Cancel, shows a live labour+equipment summary with no stored invoice,
+  and excludes crew/cargo cost. The declaring DM owns the family; a new
+  `/campaign-ships` **Campaign Ship Manager** lists Active / Frozen / Orphaned
+  versions with rename and delete. `release_idle_player_ships` is gone, so a
+  reload can no longer make a ship generic. **176 applied.**
 - **Weapon firing arcs + header messages (2026-10-31, migration 150)**: weapon
   cards carry a four-sector firing-arc dial (Bow/Port/Starboard/Stern). Non-Body
   frames protect their default arc; Body starts at 360° and any arc can be
@@ -400,7 +645,7 @@ Defensive reserves hold a **central station ~2
   some elevation nuances, per-team doctrine toggles; the AI never controls
   heroes.
 - **Turn counter desync reported in playtest** (separate from AI roles): reproduce with End Turn / undo-redo before changing turn advancement.
-- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–150; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), and 134–145 are applied; **apply 146–150 in Supabase**.
+- **Spelljammer module implementation** (mass-first builder/stats/renderer + Ship Editor v2 + Component Workshop + card v2 done in migrations 134–150; no engine code yet): ship engine files (`src/packages/ships/lib/shipMoveCost.ts`/`shipCombat.ts`, `src/hooks/useShipEngine.ts`), scenario instance table `spelljammer_ships` (already in migration 066), `src/components/ScenarioMap/ShipPanel.tsx`, sub-turn toggle engine setting, ship token rendering, reinforcement assignment/combat behavior, command-bridge bonus wiring. Migrations 068 (`ship_*` RLS), 069 (`ship_crews`), 070 (`extra_crew`→`crew_count`), 134–145, 176 and 177 are applied; **apply 146–150 in Supabase**.
 - Migration `013_turn_tracking.sql` — applied to the DB (done).
 - Migrations 010/011/012 — user applied to the DB.
 - `UnitEditor.tsx`: `isHero` toggle should force `'Hero'` formation — postponed until the consolidated interface update.

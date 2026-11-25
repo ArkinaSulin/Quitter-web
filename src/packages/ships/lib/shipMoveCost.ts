@@ -23,6 +23,36 @@ export function facingChangeDistance(stats: Pick<ShipDerivedStats, 'mcBands'> | 
   return effectiveMCForSpeed(stats, speed);
 }
 
+export type ShipMoveMode = 'atmosphere' | 'wildspace';
+
+/**
+ * Gameplay MC. Wildspace reads the three speed bands. Atmosphere uses the
+ * single base MC (`mcRaw`) because its speed is fixed and the wildspace band
+ * modifier does not apply there.
+ */
+export function shipMC(
+  stats: Pick<ShipDerivedStats, 'mcBands' | 'mcRaw'> | null | undefined,
+  speed: number,
+  mode: ShipMoveMode,
+): number {
+  const base = mode === 'atmosphere'
+    ? Math.max(0, Math.ceil(Number(stats?.mcRaw ?? 0)))
+    : effectiveMCForSpeed(stats, speed);
+  return Number.isFinite(base) ? base : Number.POSITIVE_INFINITY;
+}
+
+/** MC turn gate after the rudder trim, using the mode's single MC rule. */
+export function shipTurnDistance(
+  stats: Pick<ShipDerivedStats, 'mcBands' | 'mcRaw'> | null | undefined,
+  speed: number,
+  mode: ShipMoveMode,
+  mcReduction = 0,
+): number {
+  const base = shipMC(stats, speed, mode);
+  if (!Number.isFinite(base)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, base - Math.max(0, Math.floor(mcReduction)));
+}
+
 /** Canvas rotation for a ship facing (0 = nose north, +1 = 60° clockwise). */
 export function shipFacingRadians(facing: number | null | undefined): number {
   const step = ((Math.floor(Number(facing) || 0) % 6) + 6) % 6;

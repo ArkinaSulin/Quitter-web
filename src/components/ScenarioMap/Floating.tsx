@@ -36,7 +36,7 @@ interface FloatingProps {
 }
 
 export const Floating = forwardRef<HTMLDivElement, FloatingProps>(function Floating(
-  { x, y, offset = 12, z = 50, interactive = false, className = '', children },
+  { x, y, offset = 12, z = 200, interactive = false, className = '', children },
   forwardedRef,
 ) {
   const { ref, style } = useFloatingPosition(x, y, { offset });

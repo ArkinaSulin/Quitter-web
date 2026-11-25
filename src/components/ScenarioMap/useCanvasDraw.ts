@@ -118,6 +118,60 @@ function drawShipBackReadout(
   ctx.restore();
 }
 
+/** Stable 32-bit hash for a hex coordinate (barrel cluster seed). */
+function hexSeed(q: number, r: number): number {
+  let h = (Math.imul(q, 374761393) + Math.imul(r, 668265263)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+function seededBarrelAngle(seed: number, index: number): number {
+  const value = Math.imul(seed ^ Math.imul(index + 1, 2654435761), 2246822519) >>> 0;
+  return ((value % 360) * Math.PI) / 180;
+}
+
+/** Draw one small floating-cargo barrel. `scale` is the barrel's visual size. */
+function drawCargoBarrel(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  scale: number,
+  rotation: number,
+): void {
+  const bw = scale * 0.62;
+  const bh = scale;
+  const rim = bw * 0.22;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.fillStyle = '#7c2d12';
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = Math.max(1, scale * 0.10);
+  const x = -bw / 2;
+  const top = -bh / 2;
+  ctx.beginPath();
+  ctx.moveTo(x, top + rim);
+  ctx.quadraticCurveTo(x - bw * 0.12, 0, x, top + bh - rim);
+  ctx.quadraticCurveTo(0, top + bh, x + bw, top + bh - rim);
+  ctx.quadraticCurveTo(x + bw + bw * 0.12, 0, x + bw, top + rim);
+  ctx.quadraticCurveTo(0, top, x, top + rim);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(0, top + rim, bw / 2, rim * 0.55, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#92400e';
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + bw * 0.02, top + bh * 0.34);
+  ctx.quadraticCurveTo(0, top + bh * 0.40, x + bw * 0.98, top + bh * 0.34);
+  ctx.moveTo(x + bw * 0.02, top + bh * 0.70);
+  ctx.quadraticCurveTo(0, top + bh * 0.76, x + bw * 0.98, top + bh * 0.70);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function useCanvasDraw(deps: CanvasDrawDeps) {
   const {
     canvasRef,
@@ -314,12 +368,47 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     })();
     if (groundZones && groundZones.length > 0) {
       for (const z of [...groundZones].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))) {
+        if (z.kind === 'cargo_debris') continue;
         const key = `${z.q},${z.r}`;
         if (isFogHidden(key)) continue;
         const c = z.color || '#ff7043';
         const { cx, cy } = hexCenter({ q: z.q, r: z.r, s: -z.q - z.r });
         // Shared tint + centre-dot (also used by the Map Editor).
         drawEffectMark(ctx, { cx, cy, unit: 1, zoom: currentZoom, color: c, transparentBackground: z.transparentBackground });
+      }
+      // Floating cargo: up to three barrels in a deterministic hex-seeded cluster.
+      const barrelHexes = new Map<string, { q: number; r: number; count: number }>();
+      for (const z of groundZones) {
+        if (z.kind !== 'cargo_debris') continue;
+        const key = `${z.q},${z.r}`;
+        if (isFogHidden(key)) continue;
+        const current = barrelHexes.get(key);
+        const added = Math.max(1, Number(z.barrelCount ?? 1));
+        if (current) current.count += added;
+        else barrelHexes.set(key, { q: z.q, r: z.r, count: added });
+      }
+      for (const barrel of Array.from(barrelHexes.values())) {
+        const { cx, cy } = hexCenter({ q: barrel.q, r: barrel.r, s: -barrel.q - barrel.r });
+        const count = Math.min(3, Math.max(1, barrel.count));
+        const size = Math.max(6, 11 * currentZoom);
+        const spread = size * 1.25;
+        const positions: [number, number][] = count === 1
+          ? [[0, 0]]
+          : count === 2
+            ? [[-spread * 0.5, 0], [spread * 0.5, 0]]
+            : [[-spread * 0.55, spread * 0.35], [spread * 0.55, spread * 0.35], [0, -spread * 0.55]];
+        const seed = hexSeed(barrel.q, barrel.r);
+        const baseAngle = seededBarrelAngle(seed, 0);
+        for (let i = 0; i < count; i += 1) {
+          const [dx, dy] = positions[i];
+          drawCargoBarrel(
+            ctx,
+            cx + dx,
+            cy + dy,
+            size,
+            baseAngle + (i * Math.PI * 2) / 3,
+          );
+        }
       }
     }
     // MP-cost numbers (foot/mounted) from hex structures + mp_cost zones — the

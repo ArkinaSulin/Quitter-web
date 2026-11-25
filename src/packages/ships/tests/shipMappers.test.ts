@@ -1,7 +1,7 @@
 // src/packages/ships/tests/shipMappers.test.ts
 // Locks the snake_case -> camelCase catalog mapping + numeric coercion (PostgREST
 // returns `numeric` columns as strings). A raw row fed straight into the editor was
-// the NaN bug — camelCase reads of snake_case keys are undefined.
+// the NaN bug â€” camelCase reads of snake_case keys are undefined.
 
 import { describe, expect, it } from 'vitest';
 import { bodySlotCount } from '@/packages/ships';
@@ -16,8 +16,8 @@ import {
 
 describe('mapShipArmorRow', () => {
   it('maps id/name/mass_pct/hp_mult and coerces numerics', () => {
-    const a = mapShipArmorRow({ id: 'armor-1', name: 'stone', mass_pct: '0.3', ac: 17, hp_mult: '2' });
-    expect(a).toEqual({ id: 'armor-1', name: 'stone', massPct: 0.3, ac: 17, hpMult: 2, imageUrl: '' });
+    const a = mapShipArmorRow({ id: 'armor-1', name: 'stone', mass_pct: '0.3', ac: 17, hp_mult: '2', cost_per_ton: '450' });
+    expect(a).toEqual({ id: 'armor-1', name: 'stone', massPct: 0.3, ac: 17, hpMult: 2, costPerTon: 450, imageUrl: '', ownerId: null });
     expect(typeof a.massPct).toBe('number');
   });
 
@@ -37,6 +37,7 @@ describe('mapShipComponentRow', () => {
     expect(c).toEqual({
       id: 'comp-1', name: 'sail', mass: 1, crew: 0.5, cost: 0,
       hittable: true, effect: 'wind', dt: 15, builtIn: true, canCombine: true, ac: 10, isRam: false, imageUrl: '',
+      ownerId: null,
     });
   });
 
@@ -58,9 +59,11 @@ describe('mapShipWeaponRow', () => {
     });
     expect(w).toEqual({
       id: 'wpn-1', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: '{mass/10}d10', minRange: 0,
-      range: 3, maxRange: 10, reloadSteps: 2, dt: 15, crew: 2, cost: 500,
+      range: 3, maxRange: 10, reloadSteps: 2,
+    maxTargets: 1, dt: 15, crew: 2, cost: 500,
       ammoCost: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
       special: 'ammo 1gp', ac: 10, imageUrl: '',
+      ownerId: null,
     });
   });
 

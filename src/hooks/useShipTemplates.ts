@@ -20,6 +20,29 @@ export interface ShipLibraryEntry {
   stats: ShipDerivedStats | null;
 }
 
+export interface ShipCatalogs {
+  armors: ShipArmor[];
+  components: ShipComponent[];
+  weapons: ShipWeapon[];
+}
+
+/** Load the three ship-part catalogs (armor, components, weapons). */
+export async function fetchShipCatalogs(): Promise<ShipCatalogs> {
+  const [armorsRes, componentsRes, weaponsRes] = await Promise.all([
+    supabase.from('ship_armors').select('*').order('id'),
+    supabase.from('ship_components').select('*').order('id'),
+    supabase.from('ship_weapons').select('*').order('id'),
+  ]);
+  if (armorsRes.error) throw armorsRes.error;
+  if (componentsRes.error) throw componentsRes.error;
+  if (weaponsRes.error) throw weaponsRes.error;
+  return {
+    armors: (armorsRes.data || []).map(mapShipArmorRow),
+    components: (componentsRes.data || []).map(mapShipComponentRow),
+    weapons: (weaponsRes.data || []).map(mapShipWeaponRow),
+  };
+}
+
 /**
  * Loads every ship template with its derived build/stats for the scenario Ship
  * Selector. Flat queries + a client-side join mirror the Ship Editor's fetch so

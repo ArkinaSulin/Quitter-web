@@ -27,8 +27,8 @@ const ARC_SPANS: Record<WeaponArc, [number, number]> = {
 
 const ARC_ORDER: WeaponArc[] = ['bow', 'starboard', 'stern', 'port'];
 
-/** Display-only firing-arc dial for a weapon card. */
-export function WeaponArcDial({ arcs }: { arcs?: WeaponArc[] }) {
+/** Display-only firing-arc dial for a weapon card. `rotation` follows ship facing. */
+export function WeaponArcDial({ arcs, rotation = 0 }: { arcs?: WeaponArc[]; rotation?: number }) {
   if (!arcs) return null;
   const active = new Set(arcs);
   const label = arcs.length === 0 ? 'No firing arc' : arcs.map(a => WEAPON_ARC_LABELS[a]).join(' · ');
@@ -42,17 +42,19 @@ export function WeaponArcDial({ arcs }: { arcs?: WeaponArc[] }) {
     <svg viewBox="0 0 24 24" className="h-4 w-4 flex-none" aria-label={label}>
       <title>{label}</title>
       <circle cx="12" cy="12" r="10" fill="#111827" stroke="#9ca3af" strokeWidth="1.4" />
-      {ARC_ORDER.map(arc => {
-        const [start, end] = ARC_SPANS[arc];
-        return (
-          <path
-            key={arc}
-            d={sectorPath(12, 12, 10, start, end)}
-            fill={active.has(arc) ? '#f8fafc' : 'transparent'}
-          />
-        );
-      })}
-      <path d={separatorPath} stroke="#374151" strokeWidth="1" pointerEvents="none" />
+      <g transform={`rotate(${rotation} 12 12)`}>
+        {ARC_ORDER.map(arc => {
+          const [start, end] = ARC_SPANS[arc];
+          return (
+            <path
+              key={arc}
+              d={sectorPath(12, 12, 10, start, end)}
+              fill={active.has(arc) ? '#f8fafc' : 'transparent'}
+            />
+          );
+        })}
+        <path d={separatorPath} stroke="#374151" strokeWidth="1" pointerEvents="none" />
+      </g>
     </svg>
   );
 }
