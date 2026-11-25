@@ -88,7 +88,9 @@ hardware also lowers the crew needed.
 `scenarios.ship_mode` (DM-only, migration 152):
 
 - **`wildspace`**: speed declaration, 5 steps per round, no elevation.
-- **`atmosphere`**: atmospheric speed is a flying-point pool; normal turn order;
+- **`atmosphere`**: atmospheric speed is a flying-point pool; its value defaults
+  to the ship’s acceleration unless the DM authored an override in the Ship Editor
+  (0 = use acceleration, written on save); normal turn order;
   elevation uses the flying-unit rules (climb and dive both cost 10 ft/hex).
 
 `scenarios.ship_firing_arcs` (default on) toggles per-weapon arcs; off = every
@@ -671,8 +673,10 @@ helm/bridge hero plus **1 card step**, and has **no once-per-turn limit**. The
 chosen target must stay hostile and in the two forward hexes at resolution.
 Contest
 attacker Wis+PB(+CS) vs defender Wis+PB+8. Damage is
-`min(floor(currentMass/10),16)d(speed)`; with a ram the target takes full and the
-attacker half, without a ram both take half. Random per-card box damage; movement
+`min(floor(effectiveMass/10),16)d(traveled distance without turning)`, with the
+faces clamped 1–12 (effective mass is the manning/cargo-adjusted performance
+mass; the distance is `turnsSinceFacing`). With a ram the target takes full and
+the attacker half, without a ram both take half. Random per-card box damage; movement
 forfeited; both shift along the heading according to the ram type (piercing
 shifts both, bludgeoning shifts only the target).
 
@@ -870,6 +874,15 @@ below the requirement for the remaining capacity (rudder 1.5 t/unit + 1 crew per
 are hidden. Hero tokens use the scenario-map `drawToken` renderer (32×24), with
 percentage positions in `stations[cardKey].heroPositions`; Shift/1 hides them.
 
+**Area ship weapons.** A ship weapon with `magic_dimension > 0` uses the shared
+magic window when it fires at a **unit token**. The normal ship attack is rolled
+first; a miss resolves as usual, a hit opens the window (same realtime channel,
+so every client sees it). Place one blast marker (circle/cube/cone/line from the
+weapon), edit save stat/DC/half-on-save, then resolve: each covered troop rolls a
+save and takes the weapon’s authored **Damage** (halved or negated per the save
+rule). The shot spends the normal card step, hero actions and reload. Target
+**ships** still take the direct single-target hit.
+
 **Weapon reload.** Each weapon card has **5 card steps per turn** (a turn is one
 full alliance cycle; wildspace breaks it into 5 steps). Auto-load, manual load,
 and fire all spend card steps. `ship_weapons.reload_steps`: `0` = always armed,
@@ -970,8 +983,8 @@ hex on the movement path.
 
 **Ram / collision.**
 
-- Collision (no ram): `floor(50%)` of `min(floor(ton/10), 16)d(speed)` to both.
-- Ram: full `min(floor(ton/10), 16)d(speed)` to the target; attacker takes
+- Collision (no ram): `floor(50%)` of `min(floor(ton/10), 16)d(distance)` to both.
+- Ram: full `min(floor(ton/10), 16)d(distance)` to the target; attacker takes
   `floor(50%)`.
 - Piercing: both lose remaining speed + both shift one hex.
 - Bludgeoning: attacker loses speed; target shifts and keeps movement.

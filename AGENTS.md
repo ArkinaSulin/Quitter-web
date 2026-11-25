@@ -30,6 +30,12 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship area weapons, ram formula, Damage-only weapons, atmosphere speed
+  (2026-11-25)**: area ship weapons open the shared magic window on a unit hit
+  (attack first, editable saves, realtime); ram is `floor(effectiveMass/10)d
+  (turnsSinceFacing)` (dice 1–16, faces 1–12); the weapon damage formula field is
+  removed (migration 181) so all other weapons use Damage; atmospheric speed
+  defaults to acceleration and is written on Ship Editor save when 0.
 - **Signed ship modifiers (2026-11-25)**: negative skill values display as
   `-1` (never `+-1`) in hovers, Crew Adjust, card hovers and Best in ship skill;
   added the `signedBonus` helper. No migration.

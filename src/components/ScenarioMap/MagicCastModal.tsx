@@ -335,6 +335,7 @@ export function MagicCastModal({
         >
           <div className="text-white text-sm font-semibold truncate">
             {cast.weapon.name} on {cast.targetUnitName || 'target'}
+            {cast.shipShot ? <span className="text-gray-400 font-normal"> · {cast.casterName}</span> : null}
           </div>
           <div className="text-xs text-yellow-400 whitespace-nowrap ml-3">
             {areaShape === 'circle' ? 'radius' : areaShape === 'cube' ? 'side' : areaShape === 'line' ? 'line' : 'cone'} {cast.weapon.magicDimension}ft

@@ -464,7 +464,7 @@ export function ShipWindow({
       else onAutoLoadWeapon(card.key);
     };
     weaponInfoByCard[card.key] = {
-      damage: resolveShipWeaponDamage(card.weapon, stats?.totalMass ?? 0),
+      damage: resolveShipWeaponDamage(card.weapon),
       reloadLabel: armed ? 'Armed' : `load ${reload.progress ?? 0}/${card.weapon.reloadSteps}`,
       armed,
       label,

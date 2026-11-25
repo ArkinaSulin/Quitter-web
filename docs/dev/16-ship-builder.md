@@ -320,8 +320,10 @@ needs a crew member at its station.
   - speed 8–12: `MC + 1`
 - No rudder → cannot turn (`∞`, shown as `—`).
 - Command bonus = `command_bridge × 5`.
-- **Atmospheric speed** (0–12) is an authored field for future Quiver use; it
-  does not feed the formulas yet.
+- **Atmospheric speed** defaults to the ship’s **acceleration** (floored). The
+  Ship Editor field is an override: `0` means “use acceleration” and is written
+  as the derived acceleration when the ship is saved; a non-zero authored value
+  is never re-checked or overwritten.
 - **Damage Threshold** is the ship minimum (default 15). A card displays
   `max(ship DT, component/weapon DT)`.
 
@@ -441,11 +443,9 @@ Fields:
 - Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
   Effect, AC, DT, Image URL, **Can combine cards**.
 - Weapons: Name, Mass, Crew, Cost, Damage **and Fire Cycle on the same row**,
-  Damage formula, **Max crew targets**, Min Range / Range / Max Range, Note, AC,
-  DT, Image URL.
-  Weapons are always hittable. The only supported formula is `{mass/10}d10`:
-  it resolves against the carrying ship's total mass with the die count rounded
-  up (75t → 8d10). Formula-only weapons leave the literal damage blank.
+  **Max crew targets**, Min Range / Range / Max Range, Note, AC, DT, Image URL.
+  Weapons are always hittable. Every ship weapon uses its authored **Damage**
+  string; the old mass-scaled formula field was removed (migration 181).
   **Max crew targets** (`ship_weapons.max_targets`, default 1, minimum 1) is the
   ceiling for the crew-wound roll on a penetrating ship hit: a Ballista is 1
   (always one crew), a Mangonel is 3 (1d3 crew). It is separate from component

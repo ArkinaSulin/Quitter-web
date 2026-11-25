@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Ship area weapons, ram damage, Damage-only weapons, atmosphere speed (2026-11-25)
+**Files:** src/hooks/useMagicCast.ts, src/components/ScenarioMap/{ScenarioMap.tsx,useCastActions.ts,MagicCastModal.tsx}, src/packages/ships/lib/{shipDamage.ts,shipStats.ts,componentMappers.ts,shipMappers.ts}, src/types/ship.ts, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/ShipEditor/ShipEditor.tsx, supabase/migrations/181_ship_weapon_drop_damage_formula.sql, docs/dev/{02,16,21,changelog}.md, AGENTS.md
+
+- **Ship area weapons** (`magic_dimension > 0`) now open the shared, realtime
+  magic window when they hit a **unit token**. The normal ship attack rolls first;
+  on a hit the blast shape/rotation, affected troops and editable save stat/DC are
+  placed, then per-troop saves resolve the weapon’s Damage. The shot spends the
+  usual card step, hero actions and reload. Ship targets stay direct.
+- **Ram damage** is now `floor(effectiveMass/10)d(traveled distance without
+  turning)`, dice 1–16 and faces 1–12; target full / attacker half.
+- **Weapon damage formula removed**: every non-ram ship weapon uses its authored
+  **Damage**; migration 181 drops `ship_weapons.damage_formula`.
+- **Atmospheric speed** defaults to acceleration. Ship Editor `0` means “use
+  acceleration” and is persisted as the derived acceleration on save; an authored
+  non-zero value is never re-checked.
+- No other migration.
+
 ## Signed ship skill modifiers (2026-11-25)
 **Files:** src/packages/ships/lib/shipStats.ts, src/packages/ships/tests/shipStats.test.ts, src/components/ShipRenderer/{ShipLayout,CrewRoster,CrewAdjustDialog}.tsx, src/components/ScenarioMap/{ShipWindow,ScenarioMap}.tsx, docs/dev/changelog.md, AGENTS.md
 

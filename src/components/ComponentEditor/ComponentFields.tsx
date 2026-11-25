@@ -139,15 +139,6 @@ export function ComponentFields({
               <NumInput value={value.maxTargets} min={1} integer onChange={v => patch({ maxTargets: v })} />
             </Cell>
           </div>
-          <Cell label="Damage formula (optional)">
-            <input
-              type="text"
-              value={value.damageFormula}
-              onChange={e => patch({ damageFormula: e.target.value })}
-              className={INPUT}
-              placeholder="{mass/10}d10"
-            />
-          </Cell>
           <div className="grid grid-cols-3 gap-2">
             <Cell label="Min range">
               <NumInput value={value.minRange} min={0} integer onChange={v => patch({ minRange: v })} />

@@ -51,8 +51,6 @@ export interface ShipWeapon {
   name: string;
   mass: number;
   damage: string;
-  /** Optional mass-scaled damage formula, e.g. `{mass/10}d10`. */
-  damageFormula: string | null;
   minRange: number;
   range: number;
   maxRange: number;
@@ -91,7 +89,6 @@ export interface ShipComponentTemplate {
   canCombine: boolean;
   dt: number;
   damage: string;
-  damageFormula: string;
   minRange: number;
   range: number;
   maxRange: number;

@@ -699,6 +699,7 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
   const buildCost = computeBuildCost(build);
   const crewWeeklyCost = computeCrewWeeklyCostTotal(build);
   const hullDef = componentByName(build.components, COMPONENT_NAMES.hull);
+  const acceleration = computeAccel(build);
   return {
     totalMass: build.totalMass,
     hullMass: m.hull,
@@ -712,7 +713,9 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     weaponCapacity: m.weapons,
     weaponPlacedTons: computeWeaponMass(build),
     weaponCrew: computeWeaponCrew(build),
-    atmosphericSpeed: Math.max(0, build.atmosphericSpeed ?? 0),
+    atmosphericSpeed: (build.atmosphericSpeed ?? 0) > 0
+      ? Math.max(0, build.atmosphericSpeed ?? 0)
+      : Math.max(0, Math.floor(acceleration)),
     damageThreshold: Math.max(0, build.damageThreshold ?? 15),
     usedMass: m.used,
     remainingMass: m.remaining,
@@ -725,7 +728,7 @@ export function computeShipBuild(build: ShipBuild): ShipDerivedStats {
     performanceMass: performanceMassOf(build),
     ac: computeArmorClass(build),
     shipHp: computeShipHp(build),
-    accel: computeAccel(build),
+    accel: acceleration,
     mcRaw: computeMCRaw(build),
     mcBands: computeMCBands(build),
     commandBonus: computeCommandBonus(build),

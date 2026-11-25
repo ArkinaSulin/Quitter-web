@@ -63,7 +63,6 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     canCombine: true,
     dt: 15,
     damage: kind === 'weapon' ? '1d6' : '',
-    damageFormula: '',
     minRange: 0,
     range: 1,
     maxRange: 1,
@@ -453,7 +452,7 @@ export default function ComponentEditor({ readOnly: capabilityReadOnly }: { read
                   <span className="block text-[10px] text-gray-400">
                     {row.builtIn ? 'Built-in' : KIND_SINGULAR[row.kind]}
                     {' · '}{row.mass} ton{row.mass === 1 ? '' : 's'} · {row.cost}gp
-                    {row.kind === 'weapon' ? ` · ${row.damageFormula || row.damage}` : ''}
+                    {row.kind === 'weapon' ? ` · ${row.damage}` : ''}
                   </span>
                   <span className="mt-0.5 block">
                     <OwnerChip ownership={ownership} ownerId={row.ownerId} />

@@ -46,6 +46,17 @@ export interface MagicCastResult {
   description: string;
 }
 
+/** Pending ship shot attached to a ship area window. */
+export interface ShipAreaShot {
+  shipId: string;
+  cardKey: string;
+  approvedNegative: boolean;
+  attackRolls: number[];
+  attackBonus: number;
+  targetAc: number;
+  disadvantage: boolean;
+}
+
 export interface MagicCastState {
   id: string;
   open: boolean;
@@ -55,6 +66,8 @@ export interface MagicCastState {
   targetUnitId: string;
   targetUnitName: string;
   weapon: Weapon;
+  /** Ship area shot: a ship weapon opened this window instead of a unit caster. */
+  shipShot?: ShipAreaShot;
   /** Snapshot of the target's troop layout so every client draws the same token. */
   snapshot: SpellCastTokenSnapshot;
   /** Placed area markers (each = a covered circle + its troop count). */
@@ -81,7 +94,7 @@ export interface MagicCastState {
 }
 
 type MagicCastEvent =
-  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; warMachine?: { toHit: number[]; attackBonus: number; ac: number }; reaction?: boolean }
+  | { type: 'open'; id: string; casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; warMachine?: { toHit: number[]; attackBonus: number; ac: number }; reaction?: boolean; shipShot?: ShipAreaShot }
   | { type: 'cancel'; id: string }
   | { type: 'markers'; id: string; markers: MagicMarker[] }
   | { type: 'rotate'; id: string; rotation: number }
@@ -165,6 +178,7 @@ export function useMagicCast(scenarioId: string) {
               targetUnitId: event.targetUnitId,
               targetUnitName: event.targetUnitName,
               weapon: event.weapon,
+              shipShot: event.shipShot,
               snapshot: event.snapshot,
               targetStats: event.targetStats,
               markers: [],
@@ -228,7 +242,7 @@ export function useMagicCast(scenarioId: string) {
     }
   }, []);
 
-  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; warMachine?: { toHit: number[]; attackBonus: number; ac: number }; reaction?: boolean }) => {
+  const openCast = useCallback((opts: { casterId: string; casterName: string; casterUnitId: string; targetUnitId: string; targetUnitName: string; weapon: Weapon; snapshot: SpellCastTokenSnapshot; targetStats: UnitSaveStats; maxMarkers?: number; warMachine?: { toHit: number[]; attackBonus: number; ac: number }; reaction?: boolean; shipShot?: ShipAreaShot }) => {
     const id = crypto.randomUUID();
     const maxMarkers = Math.max(1, opts.maxMarkers ?? 1);
     const event: MagicCastEvent = {
@@ -245,6 +259,7 @@ export function useMagicCast(scenarioId: string) {
       maxMarkers,
       warMachine: opts.warMachine,
       reaction: opts.reaction,
+      shipShot: opts.shipShot,
     };
     setCast({
       id,
@@ -255,6 +270,7 @@ export function useMagicCast(scenarioId: string) {
       targetUnitId: opts.targetUnitId,
       targetUnitName: opts.targetUnitName,
       weapon: opts.weapon,
+      shipShot: opts.shipShot,
       snapshot: opts.snapshot,
       targetStats: opts.targetStats,
       markers: [],

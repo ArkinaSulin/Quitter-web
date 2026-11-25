@@ -58,7 +58,6 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     name: row.name || '',
     mass: Number(row.mass) || 0,
     damage: row.damage || '',
-    damageFormula: row.damage_formula || null,
     minRange: Number(row.min_range) || 0,
     range: Number(row.range) || 0,
     maxRange: Number(row.max_range) || 0,

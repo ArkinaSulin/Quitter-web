@@ -13,7 +13,7 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPON: ShipWeapon = {
-  id: 'wpn-ballista', name: 'Ballista', mass: 1, damage: '2d10', damageFormula: null,
+  id: 'wpn-ballista', name: 'Ballista', mass: 1, damage: '2d10',
   minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
     maxTargets: 1, magicDimension: 0, shape: 'circle',
   savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500,

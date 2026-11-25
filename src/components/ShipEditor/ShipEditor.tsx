@@ -716,6 +716,11 @@ export default function ShipEditor({
 
   const withSyncedDeck = (template: ShipTemplate): ShipTemplate => ({
     ...template,
+    // 0 = "use acceleration": persist the derived value once, then the DM's
+    // authored number is never overwritten (no more check after assignment).
+    atmosphericSpeed: template.atmosphericSpeed > 0
+      ? template.atmosphericSpeed
+      : Math.max(0, Math.floor(stats?.accel ?? 0)),
     deckLayout: build?.deckLayout ?? template.deckLayout,
     reinforcements: build?.reinforcements ?? template.reinforcements,
     weaponArcs: build?.weaponArcs ?? template.weaponArcs,
@@ -1167,7 +1172,7 @@ export default function ShipEditor({
 
                   {/* Authored parameters */}
                   <div className="flex items-end gap-2">
-                    <Cell label="Atmospheric speed (0–12)" widthClass="w-44">
+                    <Cell label="Atmospheric speed (0 = acceleration)" widthClass="w-52">
                       <NumInput
                         value={formData.atmosphericSpeed}
                         min={0}
@@ -1431,7 +1436,7 @@ export default function ShipEditor({
                                         >
                                           {weaponOptions.map(weap => (
                                             <option key={weap.id} value={weap.id}>
-                                              {weap.name} — {resolveShipWeaponDamage(weap, formData.totalMass)} ({weap.mass}t, crew {weap.crew}, reload {weap.reloadSteps} step{weap.reloadSteps === 1 ? '' : 's'})
+                                              {weap.name} — {resolveShipWeaponDamage(weap)} ({weap.mass}t, crew {weap.crew}, reload {weap.reloadSteps} step{weap.reloadSteps === 1 ? '' : 's'})
                                             </option>
                                           ))}
                                         </select>

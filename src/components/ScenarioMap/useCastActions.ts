@@ -13,6 +13,7 @@ import { SubStep, UnitChange } from '@/packages/infra';
 import { formatSpellRollLine, formatWarMachineToHit } from '@/packages/units';
 import { heroAuraBonus } from '@/packages/units';
 import { useMagicCast } from '@/hooks/useMagicCast';
+import type { MagicCastState } from '@/hooks/useMagicCast';
 import { ExecuteFn, routeUnit } from './routeUnit';
 
 interface CastActionsDeps {
@@ -24,6 +25,8 @@ interface CastActionsDeps {
   playerId: string;
   execute: ExecuteFn;
   addError: (msg: string) => void;
+  /** Ship area window resolution (implemented by ScenarioMap). */
+  resolveShipAreaCast?: (cast: MagicCastState) => Promise<void> | void;
 }
 
 export function useCastActions(deps: CastActionsDeps) {
@@ -36,6 +39,7 @@ export function useCastActions(deps: CastActionsDeps) {
     playerId,
     execute,
     addError,
+    resolveShipAreaCast,
   } = deps;
 
   // Over-budget spell resolve (soft enforcement): caster has no actions left.
@@ -47,6 +51,10 @@ export function useCastActions(deps: CastActionsDeps) {
     const cast = magicCast.cast;
     if (!cast || cast.resolved || cast.markers.length === 0) return;
     if (!isGM && playerId !== cast.casterId) return;
+    if (cast.shipShot) {
+      await resolveShipAreaCast?.(cast);
+      return;
+    }
 
     const totalAffected = cast.markers.reduce((a, m) => a + m.affectedCount, 0);
     if (totalAffected <= 0) return;
@@ -229,12 +237,13 @@ export function useCastActions(deps: CastActionsDeps) {
       failedCount,
       description: desc,
     });
-  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError]);
+  }, [magicCast, units, alliances, formationsMap, isGM, playerId, execute, addError, resolveShipAreaCast]);
 
   const requestResolveCast = useCallback(() => {
     const cast = magicCast.cast;
     if (!cast || cast.resolved || cast.markers.length === 0) return;
     if (!isGM && playerId !== cast.casterId) return;
+    if (cast.shipShot) { handleResolveCast(false); return; }
     const caster = units.find(u => u.id === cast.casterUnitId);
     // A war machine is gated BEFORE its window opens (whole-turn firing), so it
     // never re-prompts here; only spells use the cast over-budget confirm.

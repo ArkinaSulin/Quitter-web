@@ -55,10 +55,10 @@ describe('mapShipWeaponRow', () => {
     const w = mapShipWeaponRow({
       id: 'wpn-1', name: 'ballista_light', mass: '1', damage: '2d10', min_range: 0,
       range: 3, max_range: 10, reload_steps: '2', crew: '2', cost: 500,
-      ammo_cost: 1, special: 'ammo 1gp', damage_formula: '{mass/10}d10',
+      ammo_cost: 1, special: 'ammo 1gp',
     });
     expect(w).toEqual({
-      id: 'wpn-1', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: '{mass/10}d10', minRange: 0,
+      id: 'wpn-1', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0,
       range: 3, maxRange: 10, reloadSteps: 2,
     maxTargets: 1, dt: 15, crew: 2, cost: 500,
       ammoCost: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,

@@ -84,13 +84,13 @@ const COMPONENTS: ShipComponent[] = [
 ];
 
 const WEAPONS: ShipWeapon[] = [
-  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', damageFormula: null, minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
+  { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
     maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
-  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', damageFormula: null, minRange: 0, range: 4, maxRange: 16, reloadSteps: 5,
+  { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', minRange: 0, range: 4, maxRange: 16, reloadSteps: 5,
     maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
-  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
+  { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
     maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
-  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', damageFormula: null, minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
+  { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
     maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
 ];
 
@@ -574,7 +574,7 @@ describe('computeShipBuild aggregate', () => {
     expect(s.ac).toBe(15);
     expect(s.shipHp).toBe(100);
     expect(s.accel).toBe(4.5);
-    expect(s.atmosphericSpeed).toBe(0);
+    expect(s.atmosphericSpeed).toBe(4); // 0 = acceleration, floored
     expect(s.damageThreshold).toBe(15);
     expect(s.mcRaw).toBe(3);
     expect(s.mcBands.map(b => b.mc)).toEqual([2, 3, 4]);

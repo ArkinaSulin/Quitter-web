@@ -10,7 +10,7 @@ import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/u
 import { applyMoveCost, applyHeroMoveCost, moveBudgetUnit, isLooseUnit, canAdoptFormation } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
 import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost } from '@/packages/units';
-import { canReactWithWeapon } from '@/packages/combat';
+import { canReactWithWeapon, resolveSpellDamage } from '@/packages/combat';
 import { getFormations } from '@/packages/infra';
 import { loadSettings, getSetting } from '@/packages/infra';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
@@ -50,6 +50,7 @@ import {
   shipHasPilot,
   rebuildStepBudgetPreservingMoved,
   resolveShipWeaponDamage,
+  ramDamageDice,
   shipWeaponCards,
   fireShipWeapon,
   shipAttackMode,
@@ -156,6 +157,7 @@ import { supabase } from '@/packages/infra/supabase';
 import { getFormationMultiplier, getFormationModifier, computeEffectiveMovement, getRowCapacity } from '@/packages/units';
 import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
+import type { MagicCastState } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
 import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, makeCostOfHex, mpCostOverrides, isHexOnGrid } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
@@ -166,10 +168,11 @@ import { StructureTemplate, StructureInstance } from '@/types/structure';
 import { getStructureTemplates } from '@/packages/infra';
 import { wallAttackKind, resolveWallAttack, edgeHexes } from '@/packages/combat';
 import { hexStructureAttackKind, resolveHexStructureAttack, isAttackableHexStructure, structureDoorMax } from '@/packages/combat';
-import { formatStructureAttackRolls, formatStructureToHit } from '@/packages/units';
+import { formatStructureAttackRolls, formatStructureToHit, formatSpellRollLine, heroAuraBonus } from '@/packages/units';
+import type { SaveStat } from '@/packages/units';
 import { StructureEditModal, StructureInstancePatch } from '@/components/StructureEditModal';
 import { unitAttackCap } from '@/packages/combat';
-import { newEffectKey, rangeBonusAt } from '@/packages/effects';
+import { newEffectKey, rangeBonusAt, saveRollFlags, effectSaveBonus } from '@/packages/effects';
 import { canWeaponAttack } from '@/packages/combat';
 import { MapEntity } from '@/packages/world';
 import { getActiveGroups, advanceTurn, advanceShipStep } from '@/packages/world';
@@ -2912,10 +2915,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const total = roll + actor.bonus + (commandBonus ?? 0);
     const hit = total >= dc;
     const dir = facingToward(ship.hex, target.hex!);
-    const attackerMass = ship.snapshot.stats?.performanceMass ?? ship.snapshot.stats?.totalMass ?? 0;
-    const speed = Math.max(1, ship.declaredSpeed || ship.lastSpeed || 1);
-    const dice = Math.max(1, Math.min(16, Math.floor(attackerMass / 10)));
-    const ramRoll = rollDamageDetailed(`${dice}d${speed}`, Math.random);
+    const attackerStats = effectiveShipStats(ship, units);
+    const attackerMass = attackerStats?.performanceMass ?? ship.snapshot.stats?.performanceMass ?? ship.snapshot.stats?.totalMass ?? 0;
+    const ramDice = ramDamageDice(attackerMass, ship.turnsSinceFacing ?? 0);
+    const ramRoll = rollDamageDetailed(ramDice.dice, Math.random);
     const baseRoll = ramRoll.total;
     const ramComponent = ship.snapshot.build.components.find(c => c.isRam);
     const hasRam = !!ramComponent;
@@ -3043,7 +3046,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const ramText = hit
       ? `${shipDisplayName(ship)} rammed ${shipDisplayName(target)} for ${targetDamage}, self ${selfDamage}`
       : `${shipDisplayName(ship)} ram missed ${shipDisplayName(target)}`;
-    const ramVerbose = `${shipDisplayName(ship)} ram ${hit ? 'hit' : 'missed'} ${shipDisplayName(target)}: ram contest ${formatShipCheckDetail([roll], actor.bonus + (commandBonus ?? 0), dc)}${commandNote}${hit ? `; ${dice}d${speed}: ${ramRoll.faces.join(',')} = ${baseRoll}; target ${targetDamage}, self ${selfDamage}` : ''}`;
+    const ramVerbose = `${shipDisplayName(ship)} ram ${hit ? 'hit' : 'missed'} ${shipDisplayName(target)}: ram contest ${formatShipCheckDetail([roll], actor.bonus + (commandBonus ?? 0), dc)}${commandNote}${hit ? `; ${ramDice.dice}: ${ramRoll.faces.join(',')} = ${baseRoll}; target ${targetDamage}, self ${selfDamage}` : ''}`;
     await execute('ATTACK', subSteps, `${shipDisplayName(ship)} ram`, { message: ramText, verboseMessage: ramVerbose });
   }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, execute, addError, turnNumber, shipStep, shipMode]);
 
@@ -3438,7 +3441,67 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const attackRolls = secondRoll == null ? [firstRoll] : [firstRoll, secondRoll];
     const roll = secondRoll == null ? firstRoll : Math.min(firstRoll, secondRoll);
     const hit = roll !== 1 && (roll === 20 || roll + attackBonus >= targetAc);
-    const dice = resolveShipWeaponDamage(card.weapon, stats.totalMass);
+    const dice = resolveShipWeaponDamage(card.weapon);
+    // Area ship weapons: a hit on a unit token opens the shared magic window so
+    // the blast shape/rotation, affected troops and saves can be placed.
+    if (targetUnit && card.weapon.magicDimension > 0 && hit) {
+      magicCast.openCast({
+        casterId: playerId,
+        casterName: shipDisplayName(attacker),
+        casterUnitId: attacker.id,
+        targetUnitId: targetUnit.id,
+        targetUnitName: targetUnit.unitName,
+        weapon: {
+          name: card.weapon.name,
+          attackBonus: 0,
+          damageDice: dice,
+          isHealing: false,
+          range: card.weapon.range,
+          maxRange: card.weapon.maxRange,
+          magicDimension: card.weapon.magicDimension,
+          shape: card.weapon.shape,
+          reach: false,
+          noRetaliation: true,
+          freeAction: true,
+          isTwoHanded: false,
+          numberOfAttacks: 1,
+          onSaveHalfOrNeg: card.weapon.onSaveHalfOrNeg,
+          savingThrow: card.weapon.savingThrow as SaveStat,
+          saveDC: card.weapon.saveDC,
+        },
+        snapshot: {
+          team: targetUnit.team,
+          currentFormation: targetUnit.currentFormation,
+          currentTroopCount: targetUnit.currentTroopCount,
+          maxTroopCount: targetUnit.maxTroopCount,
+          sizeCategory: targetUnit.sizeCategory,
+          visualScale: targetUnit.visualScale,
+          mountId: targetUnit.mountId,
+          flySpeed: targetUnit.flySpeed ?? 0,
+        },
+        targetStats: {
+          str: targetUnit.strSav ?? 0,
+          dex: targetUnit.dexSav ?? 0,
+          con: targetUnit.conSav ?? 0,
+          int: targetUnit.intSav ?? 0,
+          wis: targetUnit.wisSav ?? 0,
+          cha: targetUnit.chaSav ?? 0,
+        },
+        maxMarkers: 1,
+        shipShot: {
+          shipId,
+          cardKey,
+          approvedNegative,
+          attackRolls,
+          attackBonus,
+          targetAc,
+          disadvantage: mode.mode === 'disadvantage',
+        },
+      });
+      addMessage(`${shipDisplayName(attacker)} hit ${targetUnit.unitName} with ${card.weapon.name} — place the ${card.weapon.magicDimension}ft blast.`);
+      setShipFireMode(null);
+      return;
+    }
     const damageRoll = hit ? rollDamageDetailed(dice, Math.random) : null;
     const damage = damageRoll?.total ?? 0;
     const reloadAfter = fireShipWeapon();
@@ -3752,6 +3815,123 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     if (approvedNegative) await logNegativeActions(text, payers);
     setShipFireMode(null);
   }, [shipRuntime, units, myTeam, effectiveIsGM, turnNumber, shipStep, shipMode, shipFiringArcs, alliances, currentTurnAlliance, execute, addError, logNegativeActions, groundZones, scenarioId]);
+
+  /** Resolve a ship area window (shared magic channel) through the ship flow. */
+  const resolveShipAreaCast = useCallback(async (cast: MagicCastState) => {
+    const shot = cast.shipShot;
+    if (!shot) return;
+    const attacker = shipRuntime.find(s => s.id === shot.shipId && !s.isDeleted);
+    const target = units.find(u => u.id === cast.targetUnitId && !u.isDeleted);
+    const build = attacker?.snapshot?.build;
+    if (!attacker || !target || !build) {
+      addError('Ship or target is no longer on the map — area shot cancelled.');
+      magicCast.cancelCast();
+      return;
+    }
+    const card = shipWeaponCards(build).find(c => c.key === shot.cardKey);
+    if (!card) {
+      addError('That weapon card is gone — area shot cancelled.');
+      magicCast.cancelCast();
+      return;
+    }
+    const marker = cast.markers[0];
+    const affected = marker?.affectedCount ?? 0;
+    if (affected <= 0) {
+      addError('Place the blast over at least one troop.');
+      return;
+    }
+    const cardUse = beginCardUse(attacker, shot.cardKey, turnNumber, shipStep, shipMode, shot.approvedNegative);
+    if (!cardUse) {
+      addError('No card steps left on that card this turn.');
+      magicCast.cancelCast();
+      return;
+    }
+    const noSave = cast.saveStat === 'none';
+    const flags = saveRollFlags(target);
+    const saveMode: 'advantage' | 'disadvantage' | 'normal' = flags.advantage && !flags.disadvantage
+      ? 'advantage'
+      : flags.disadvantage && !flags.advantage ? 'disadvantage' : 'normal';
+    const saveBonus = (noSave ? 0 : (cast.targetStats[cast.saveStat.toLowerCase() as keyof typeof cast.targetStats] ?? 0))
+      + effectSaveBonus(target)
+      + heroAuraBonus(target, units, alliances).save;
+    const damageDice = resolveShipWeaponDamage(card.weapon);
+    const result = resolveSpellDamage({
+      damageDice,
+      saveBonus,
+      saveDC: cast.saveDC,
+      halfOnSave: cast.halfOnSave,
+      noSave,
+      affectedCount: affected,
+      troopHp: target.troopHp,
+      saveMode,
+      rng: Math.random,
+    });
+    const newHp = Math.max(0, target.currentUnitHp - result.totalDamage);
+    const newTroops = Math.max(0, Math.ceil(newHp / Math.max(1, target.troopHp)));
+    const troopsKilled = Math.max(0, target.currentTroopCount - newTroops);
+    const payers = shipCardFunctionHeroes(attacker, units, shot.cardKey);
+    const pendingBonus = cardCommandBonus(attacker.cardState, shot.cardKey, turnNumber);
+    const nextCardState = pendingBonus != null
+      ? clearCardCommandBonus(cardUse.next, shot.cardKey, turnNumber)
+      : cardUse.next;
+    const subSteps: SubStep[] = [{
+      type: 'SHIP',
+      unitId: attacker.id,
+      description: `${shipDisplayName(attacker)} fired ${card.weapon.name}`,
+      changes: [
+        {
+          field: 'reload',
+          from: attacker.reload ?? {},
+          to: { ...(attacker.reload ?? {}), [shot.cardKey]: fireShipWeapon() },
+        },
+        ...(cardUse.spent || pendingBonus != null
+          ? [{ field: 'cardState', from: attacker.cardState ?? {}, to: nextCardState }]
+          : []),
+      ],
+    }];
+    if (!shot.approvedNegative) {
+      for (const hero of payers) {
+        subSteps.push({
+          type: 'OTHER_ACTION',
+          unitId: hero.id,
+          description: `${hero.unitName} spent an action firing ${card.weapon.name}`,
+          changes: [{ field: 'actionsAvailable', from: hero.actionsAvailable, to: hero.actionsAvailable - 1 }],
+        });
+      }
+    }
+    subSteps.push({
+      type: 'DAMAGE',
+      unitId: target.id,
+      description: `${target.unitName} took ${result.totalDamage} from ${card.weapon.name}`,
+      changes: [
+        { field: 'currentUnitHp', from: target.currentUnitHp, to: newHp },
+        { field: 'currentTroopCount', from: target.currentTroopCount, to: newTroops },
+      ],
+      payload: { killerUnitId: attacker.id, victimLevel: target.level },
+    });
+    const desc = `${shipDisplayName(attacker)} hit ${target.unitName} with ${card.weapon.name} — 1 blast, ${affected} troop${affected === 1 ? '' : 's'} caught, ${result.totalDamage} damage (${troopsKilled} killed)`;
+    const verbose = [
+      desc,
+      formatShipAttackDetail(
+        shot.attackRolls,
+        shot.attackBonus,
+        shot.targetAc,
+        shot.disadvantage,
+      ),
+      formatSpellRollLine(result, cast.saveDC),
+    ].join('\n');
+    await execute('ATTACK', subSteps, desc, { message: desc, verboseMessage: verbose });
+    if (shot.approvedNegative) await logNegativeActions(desc, payers);
+    magicCast.sendResolve({
+      baseDamage: result.baseDamage,
+      totalDamage: result.totalDamage,
+      troopsKilled,
+      newHp,
+      savedCount: result.perTroop.filter(t => t.success).length,
+      failedCount: result.perTroop.filter(t => !t.success).length,
+      description: desc,
+    });
+  }, [shipRuntime, units, alliances, magicCast, turnNumber, shipStep, shipMode, execute, addError, logNegativeActions]);
 
   const tryShipFire = useCallback((hex: Hex): boolean => {
     if (!shipFireMode) return false;
@@ -5567,6 +5747,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     playerId,
     execute,
     addError,
+    resolveShipAreaCast,
   });
 
   const {
