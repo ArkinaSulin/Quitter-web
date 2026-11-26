@@ -70,28 +70,28 @@ const ARMORS: ShipArmor[] = [
 ];
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
-  { id: 'comp-bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
-  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-weapon-capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, effect: 'Weapon capacity', builtIn: true, canCombine: true, dt: 15 },
-  { id: 'acc-ram', name: 'Ram', mass: 5, crew: 0, cost: 5000, hittable: true, effect: '16d10 ram', builtIn: false, canCombine: true, dt: 15 },
-  { id: 'acc-low-visibility', name: 'Low visibility', mass: 0, crew: 0, cost: 2000, hittable: false, effect: 'surprise', builtIn: false, canCombine: true, dt: 15 },
+  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'comp-bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-quarters', name: 'Crew quarters', mass: 1, crew: 5, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-weapon-capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'acc-ram', name: 'Ram', mass: 5, crew: 0, cost: 5000, hittable: true, builtIn: false, canCombine: true, dt: 15 },
+  { id: 'acc-low-visibility', name: 'Low visibility', mass: 0, crew: 0, cost: 2000, hittable: false, builtIn: false, canCombine: true, dt: 15 },
 ];
 
 const WEAPONS: ShipWeapon[] = [
   { id: 'wpn-ballista', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
-    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null },
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 2, cost: 500, ammoCost: 1, },
   { id: 'wpn-catapult', name: 'catapult_medium', mass: 2, damage: '5d10', minRange: 0, range: 4, maxRange: 16, reloadSteps: 5,
-    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 4, cost: 800, ammoCost: null, special: null },
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 4, cost: 800, ammoCost: null, },
   { id: 'wpn-claws', name: 'scorpion_claws', mass: 0, damage: '3d10', minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
-    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 0, ammoCost: null, special: 'melee' },
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 0, ammoCost: null },
   { id: 'wpn-heavy-ram', name: 'heavy_ram', mass: 3, damage: '6d10', minRange: 0, range: 1, maxRange: 1, reloadSteps: 1,
-    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 3, cost: 0, ammoCost: null, special: 'melee' },
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 3, cost: 0, ammoCost: null },
 ];
 
 const ARMOR = (id: string) => ARMORS.find(a => a.id === id)!;

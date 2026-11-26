@@ -429,7 +429,7 @@ export function ShipLayout({
       dt: cardDt(component.dt),
       crewRequired: crew,
       safe: opts.safe ?? !component.hittable,
-      note: component.effect || opts.note,
+      note: opts.note,
       kind: 'component',
       reinforced: reinforced(build, key),
     };
@@ -527,7 +527,7 @@ export function ShipLayout({
       // Hull circles only appear while occupied (heroes/crew placed by hand).
       crewSlots: [],
       safe: !hullComponent.hittable,
-      note: hullComponent.effect || 'structural',
+      note: 'structural',
       kind: 'component',
       reinforced: reinforced(build, hullKey),
     };
@@ -596,7 +596,7 @@ export function ShipLayout({
         ac: cardAc(weapon?.ac),
         dt: cardDt(weapon?.dt),
         crewRequired: weapon ? Math.ceil(weapon.crew) : 0,
-        note: weapon?.special || undefined,
+        note: undefined,
         kind: 'weapon',
         arcs: placed ? effectiveWeaponArcs(placed.region, build.weaponArcs?.[key]) : [],
         arcRotation: facingStep * 60,
@@ -618,7 +618,7 @@ export function ShipLayout({
         dt: cardDt(component.dt),
         crewRequired: combined ? Math.ceil(component.crew * count) : Math.ceil(component.crew),
         safe: !component.hittable,
-        note: component.effect || undefined,
+        note: undefined,
         kind: 'component',
         reinforced: reinforced(build, key),
       };

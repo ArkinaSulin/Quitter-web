@@ -1,15 +1,14 @@
 # QuiTTER Changelog
 
-## Remove unused ship catalog image URLs (2026-11-25)
-**Files:** src/types/ship.ts, src/packages/ships/lib/{componentMappers.ts,shipMappers.ts,shipRuntime.ts,shipStats.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/packages/ships/tests/{componentMappers,shipMappers}.test.ts, supabase/migrations/183_ship_catalog_drop_image_url.sql, docs/dev/{02,16,changelog}.md, AGENTS.md
+## Remove unused ship catalog image URLs and notes (2026-11-25)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{componentMappers.ts,shipMappers.ts,shipRuntime.ts,shipStats.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/ShipRenderer/ShipLayout.tsx, src/components/ShipEditor/ShipEditor.tsx, src/packages/ships/tests/{componentMappers,shipMappers,...}.test.ts, supabase/migrations/183_ship_catalog_drop_image_url.sql, docs/dev/{02,16,changelog}.md, AGENTS.md
 
-- Removed the unused **Image URL** field from component/weapon catalog rows, types,
-  mappers and the Component Workshop form. Component/weapon cards never rendered
-  catalog images; ship images remain on `ship_templates.image_url`/`ship_images`.
-- Kept **Effect / note** on components (it is the card note in the Ship Window and
-  Ship Editor) and weapon **Note** (weapon card note). Also removed the stale
-  mass-damage-formula help text.
-- Migration 183 drops `ship_components.image_url` and `ship_weapons.image_url`.
+- Removed the unused **Image URL** field and the free-form component
+  **Effect / note** and weapon **Note** fields from catalog rows, types, mappers,
+  the Component Workshop and the ship card/editor display. Ship images and
+  built-in card notes (e.g. command bridge, structural) remain.
+- Migration 183 drops `ship_components.image_url`/`effect` and
+  `ship_weapons.image_url`/`special`.
 - No other migration.
 
 ## Ship ground movement, MP/FP pools, terrain legs, claw threat (2026-11-25)

@@ -31,12 +31,12 @@ describe('mapShipArmorRow', () => {
 describe('mapShipComponentRow', () => {
   it('maps id/name/mass/crew/cost/hittable/effect', () => {
     const c = mapShipComponentRow({
-      id: 'comp-1', name: 'sail', mass: '1', crew: '0.5', cost: 0, hittable: true, effect: 'wind', built_in: true,
+      id: 'comp-1', name: 'sail', mass: '1', crew: '0.5', cost: 0, hittable: true, built_in: true,
       can_combine: true,
     });
     expect(c).toEqual({
       id: 'comp-1', name: 'sail', mass: 1, crew: 0.5, cost: 0,
-      hittable: true, effect: 'wind', dt: 15, builtIn: true, canCombine: true, ac: 10, isRam: false,
+      hittable: true, dt: 15, builtIn: true, canCombine: true, ac: 10, isRam: false,
       terrainLegs: false, groundMp: 0,
       ownerId: null,
     });
@@ -64,14 +64,13 @@ describe('mapShipWeaponRow', () => {
     const w = mapShipWeaponRow({
       id: 'wpn-1', name: 'ballista_light', mass: '1', damage: '2d10', min_range: 0,
       range: 3, max_range: 10, reload_steps: '2', crew: '2', cost: 500,
-      ammo_cost: 1, special: 'ammo 1gp',
+      ammo_cost: 1,
     });
     expect(w).toEqual({
       id: 'wpn-1', name: 'ballista_light', mass: 1, damage: '2d10', minRange: 0,
       range: 3, maxRange: 10, reloadSteps: 2,
     maxTargets: 1, dt: 15, crew: 2, cost: 500,
-      ammoCost: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
-      special: 'ammo 1gp', ac: 10,
+      ammoCost: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, ac: 10,
       threat: 0,
       ownerId: null,
     });
@@ -81,7 +80,7 @@ describe('mapShipWeaponRow', () => {
     const w = mapShipWeaponRow({
       id: 'wpn-2', name: 'cannon', mass: '3', damage: '6d10', min_range: 1,
       range: 5, max_range: 12, reload_steps: 10, crew: 4, cost: 7500,
-      ammo_cost: null, special: null,
+      ammo_cost: null,
     });
     expect(w.ammoCost).toBeNull();
     expect(w.maxRange).toBe(12);

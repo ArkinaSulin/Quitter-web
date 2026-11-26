@@ -5,10 +5,10 @@ import type { ShipRuntime } from '@/packages/ships/lib/shipRuntime';
 import { shipCardFunctionHeroes, shipCardLeaderTeam, shipCommandHero, shipHasPilot, shipHelmOwner, shipViewerAccess } from '@/packages/ships/lib/shipAccess';
 
 const COMPONENTS = [
-  { id: 'helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
-  { id: 'bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
-  { id: 'sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'helm', name: 'Helm', mass: 1, crew: 1, cost: 0, hittable: true, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 0, hittable: true, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
 ] as ShipBuild['components'];
 
 const WEAPON = {
@@ -16,7 +16,7 @@ const WEAPON = {
   minRange: 0, range: 3, maxRange: 10, reloadSteps: 2,
     maxTargets: 1, magicDimension: 0,
   shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
-  dt: 15, crew: 2, cost: 500, ammoCost: 1, special: null,
+  dt: 15, crew: 2, cost: 500, ammoCost: 1,
 } as any;
 
 function build(): ShipBuild {

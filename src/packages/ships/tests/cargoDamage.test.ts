@@ -104,7 +104,7 @@ describe('cargoCapacityAfterDamage', () => {
     const build = {
       armor: { id: 'wood', name: 'wood', massPct: 0, ac: 15, hpMult: 1 },
       components: [
-        { id: 'cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+        { id: 'cargo', name: 'Cargo', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
       ],
       weaponsCatalog: [],
       totalMass: 20,

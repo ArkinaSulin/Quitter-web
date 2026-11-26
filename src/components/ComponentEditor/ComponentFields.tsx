@@ -204,26 +204,7 @@ export function ComponentFields({
             Reload steps: 0 = fire every step, 4 = load four steps then fire on the fifth.
             Area dimension 0 = single target.
           </p>
-          <Cell label="Weapon note">
-            <textarea
-              value={value.special}
-              onChange={e => patch({ special: e.target.value })}
-              rows={2}
-              className={INPUT}
-            />
-          </Cell>
         </>
-      )}
-
-      {!isWeapon && (
-        <Cell label="Effect / note">
-          <textarea
-            value={value.effect}
-            onChange={e => patch({ effect: e.target.value })}
-            rows={2}
-            className={INPUT}
-          />
-        </Cell>
       )}
 
       <div className="grid grid-cols-2 gap-2">

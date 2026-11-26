@@ -5,9 +5,9 @@ import type { ShipComponent } from '@/types/ship';
 import type { Unit } from '@/types/gameProtocol';
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: false, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-sail', name: 'Sail', mass: 1, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'comp-rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
 ];
 
 function build(sails: number, rudders: number): ShipBuild {

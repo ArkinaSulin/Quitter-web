@@ -1391,7 +1391,6 @@ export default function ShipEditor({
                           <td className="text-right px-2">{stats?.weaponCapacity ?? 0}</td>
                           <td className="text-right px-2 text-gray-500">—</td>
                           <td className={`pl-2 ${weaponOverCapacity ? 'text-red-400' : 'text-gray-500'}`}>
-                            {weaponCapacityComponent?.effect ? `${weaponCapacityComponent.effect} · ` : ''}
                             Placed {stats?.weaponPlacedTons ?? 0}t / {stats?.weaponCapacity ?? 0}t · handling crew excluded from min crew
                           </td>
                           <td className="text-right pl-2 text-yellow-400">{capacityCost.toLocaleString()}gp</td>
@@ -1583,7 +1582,7 @@ export default function ShipEditor({
                               <td className="text-right px-2">{Math.ceil((component.crew || 0) * a.count)}</td>
                               <td className="pl-2 text-gray-500">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="break-words">{component.effect || `${component.mass}t each`}</span>
+                                  <span className="break-words">{`${component.mass}t each`}</span>
                                   <button
                                     type="button"
                                     onClick={() => setOptionalComponentCount(component.id, 0)}
@@ -1858,7 +1857,6 @@ export default function ShipEditor({
                         ({component.mass}t · {component.crew} crew · {component.cost ? `${component.cost}gp` : '0gp'} · {component.hittable ? 'hittable' : 'safe'})
                       </span>
                     </div>
-                    {component.effect && <div className="text-[10px] text-gray-400">{component.effect}</div>}
                   </div>
                   <button
                     type="button"

@@ -29,7 +29,6 @@ export interface ShipComponent {
   crew: number;
   cost: number;
   hittable: boolean;
-  effect: string | null;
   dt: number;
   /** Built-in rule component (hull/helm/.../weapon_capacity); optional rows are false. */
   builtIn: boolean;
@@ -73,8 +72,6 @@ export interface ShipWeapon {
   savingThrow: ShipSaveChoice;
   saveDC: number;
   onSaveHalfOrNeg: boolean;
-  /** Free-form weapon note. */
-  special: string | null;
   ac?: number;
   ownerId?: string | null;
 }
@@ -88,7 +85,6 @@ export interface ShipComponentTemplate {
   crew: number;
   hittable: boolean;
   cost: number;
-  effect: string;
   builtIn: boolean;
   canCombine: boolean;
   dt: number;
@@ -103,7 +99,6 @@ export interface ShipComponentTemplate {
   savingThrow: ShipSaveChoice;
   saveDC: number;
   onSaveHalfOrNeg: boolean;
-  special: string;
   ac: number;
   isRam: boolean;
   terrainLegs?: boolean;

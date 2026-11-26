@@ -17,22 +17,22 @@ const ARMORS: ShipArmor[] = [
 ];
 
 const COMPONENTS: ShipComponent[] = [
-  { id: 'hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'helm', name: 'Helm', mass: 1, crew: 1, cost: 1000, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
-  { id: 'bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 1500, hittable: true, effect: null, builtIn: true, canCombine: false, dt: 15 },
-  { id: 'sail', name: 'Sail', mass: 1, crew: 0, cost: 100, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 1000, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 200, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'cargo', name: 'Cargo', mass: 1, crew: 0, cost: 50, hittable: true, effect: null, builtIn: true, canCombine: true, dt: 15 },
-  { id: 'capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 100, hittable: true, effect: 'Weapon capacity', builtIn: true, canCombine: true, dt: 15 },
-  { id: 'armory', name: 'Armory', mass: 2, crew: 1, cost: 700, hittable: true, effect: '', builtIn: false, canCombine: true, dt: 15 },
+  { id: 'hull', name: 'Hull', mass: 0, crew: 0, cost: 0, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'helm', name: 'Helm', mass: 1, crew: 1, cost: 1000, hittable: true, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'bridge', name: 'Command bridge', mass: 3, crew: 5, cost: 1500, hittable: true, builtIn: true, canCombine: false, dt: 15 },
+  { id: 'sail', name: 'Sail', mass: 1, crew: 0, cost: 100, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'rudder', name: 'Rudder', mass: 1.5, crew: 0.5, cost: 1000, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'reinforcement', name: 'Reinforcement', mass: 1, crew: 0, cost: 200, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'cargo', name: 'Cargo', mass: 1, crew: 0, cost: 50, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'capacity', name: 'Weapon capacity', mass: 1, crew: 0, cost: 100, hittable: true, builtIn: true, canCombine: true, dt: 15 },
+  { id: 'armory', name: 'Armory', mass: 2, crew: 1, cost: 700, hittable: true, builtIn: false, canCombine: true, dt: 15 },
 ];
 
 const WEAPONS: ShipWeapon[] = [
   { id: 'ballista', name: 'Ballista light', mass: 1, damage: '1d10', minRange: 0, range: 5, maxRange: 10, reloadSteps: 1,
-    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 100, ammoCost: null, special: null, ac: 10 },
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 100, ammoCost: null, ac: 10 },
   { id: 'catapult', name: 'Catapult', mass: 1, damage: '2d6', minRange: 0, range: 4, maxRange: 8, reloadSteps: 2,
-    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 200, ammoCost: null, special: null, ac: 10 },
+    maxTargets: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true, dt: 15, crew: 1, cost: 200, ammoCost: null, ac: 10 },
 ];
 
 const CARGO: ShipCargoItem[] = [

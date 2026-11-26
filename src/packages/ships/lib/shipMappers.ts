@@ -40,7 +40,6 @@ export function mapShipComponentRow(row: any): ShipComponent {
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,
     hittable: !!row.hittable,
-    effect: row.effect || null,
     dt: Number(row.dt) || 15,
     builtIn: !!row.built_in,
     canCombine: row.can_combine !== false,
@@ -74,7 +73,6 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     savingThrow: (['Str', 'Dex', 'Con', 'Int', 'Wis', 'Cha', 'none'].includes(row.saving_throw) ? row.saving_throw : 'Dex'),
     saveDC: Number(row.save_dc) || 10,
     onSaveHalfOrNeg: row.on_save_half_or_neg !== false,
-    special: row.special || null,
     ac: row.ac != null ? Number(row.ac) : 10,
     ownerId: row.owner_id || null,
   };
