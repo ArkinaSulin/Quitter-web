@@ -170,6 +170,13 @@ same altitude slider used by flyers on drop. A ship may enter a structure hex
 when its elevation is **at or above the structure top**; it may pass through but
 not stack on an occupied elevated space. Wildspace remains 2D.
 
+**Occupancy.** Units and ships share one occupancy rule: same-surface units and
+landed ships block each other, airborne units/ships block at their height band,
+and a landed ship and an airborne ship may share a column. Neither can pass
+through the other. Heroes board a ship instead of occupying its hex; non-hero
+units cannot enter a ship hex. Airborne ships render with the flying-unit
+elevation offset and a ground shadow (atmosphere only; wildspace is centred).
+
 **Melee threat.** A ship weapon marked with `threat` (claws use 10 each) projects
 a one-hex melee ZoC only while the ship is **grounded**; catapults and sails add
 none. Ships themselves carry no base threat — they are floating castles, not

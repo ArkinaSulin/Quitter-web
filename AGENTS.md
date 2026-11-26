@@ -30,6 +30,11 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship occupancy, elevated rendering, ship stats (2026-11-26)**: units and
+  ships block each other (no stacking/pass-through; heroes board instead);
+  airborne atmosphere ships use the flying-unit offset + ground shadow; ships
+  appear in Scenario Statistics as one-troop level-less rows with ship HP and
+  ship weapon kills. Crew rows deferred.
 - **Unused ship catalog image URLs and notes removed (2026-11-25)**: dropped
   Image URL, component Effect/note and weapon Note from catalog rows, types,
   mappers, the Component Workshop and card/editor display; built-in card notes

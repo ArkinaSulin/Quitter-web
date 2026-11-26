@@ -90,6 +90,8 @@ interface MoveActionsDeps {
   groundZones?: GroundEffect[];
   /** Grounded claw ships contributing melee ZoC threat hexes. */
   threatShips?: ThreatShip[];
+  /** Visible ship hexes: blocks units from stacking with or passing through ships. */
+  shipObstacles?: { ground: Set<string>; air: Set<string> };
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
    *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
   pursuitsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
@@ -149,6 +151,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     structureTemplates,
     groundZones,
     threatShips,
+    shipObstacles,
     pursuitsRef,
     onBoardShip,
     onBoardShipFree,
@@ -156,7 +159,13 @@ export function useMoveActions(deps: MoveActionsDeps) {
     requestFreePlacement,
   } = deps;
 
-  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const withShipObstacles = (occupied: Set<string>, flying: boolean): Set<string> => {
+    const ships = flying ? shipObstacles?.air : shipObstacles?.ground;
+    if (!ships || ships.size === 0) return occupied;
+    const out = new Set(occupied);
+    ships.forEach(key => out.add(key));
+    return out;
+  };  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
   const [pendingDescent, setPendingDescent] = useState<PendingDescent | null>(null);
   const [pendingFormation, setPendingFormation] = useState<PendingFormation | null>(null);
   const [pendingHeroAttachConversion, setPendingHeroAttachConversion] = useState<PendingHeroAttachConversion | null>(null);
@@ -578,7 +587,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // above the flyer's height (it can't pass them at this elevation). The drop
     // DESTINATION is kept reachable so the elevation modal can clear it (checked
     // on confirm); blocked intermediate hexes are avoided.
-    const flyOccupied = computeOccupiedHexes(units, unitId, 1);
+    const flyOccupied = withShipObstacles(computeOccupiedHexes(units, unitId, 1), true);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) flyOccupied.add(k);
     // Friendly pass-through: a pass-eligible mover may TRAVERSE pass-eligible
     // friendly hexes (Open Order/Scattered/Routed, or a hero <= Large) — never
@@ -650,7 +659,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // the air layer (over terrain/walls, air-occupied only).
     const waiveClimb = unitIgnoresClimb(unit, groundZones);
     if (unit.isCharging) {
-      const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
+      const occupied = flying ? flyOccupied : withShipObstacles(computeOccupiedHexes(units, unitId, originSurface), false);
       const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
@@ -777,7 +786,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       // behavior (detach is handled above).
       const occupied = flying
         ? flyOccupied
-        : computeOccupiedHexes(units, unitId, raisedTarget ? 1 : 0);
+        : withShipObstacles(computeOccupiedHexes(units, unitId, raisedTarget ? 1 : 0), raisedTarget);
       if (occupied.has(`${targetHex.q},${targetHex.r}`)) {
         addMessage(`${unit.unitName} cannot move to (${targetHex.q}, ${targetHex.r}) — hex occupied`);
         return;
@@ -810,7 +819,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
-    const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
+    const occupied = flying ? flyOccupied : withShipObstacles(computeOccupiedHexes(units, unitId, originSurface), false);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
     const mounted = !!unit.mountId || !!unit.mountName;
     const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb });
@@ -1222,7 +1231,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const attachedHero = unit.attachedToUnitId ? null : (units.find(u => u.attachedToUnitId === unit.id && !u.isDeleted) ?? null);
     const maxMP = unit.flySpeed ?? 0;
     const budgetUnit = moveBudgetUnit(unit, 'fly');
-    const occupied = computeOccupiedHexes(units, unit.id, 1);
+    const occupied = withShipObstacles(computeOccupiedHexes(units, unit.id, 1), true);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) occupied.add(k);
     const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates, threatShips);
     const hopCap = unit.isHero ? computeHeroMovePool(budgetUnit, maxMP) : computeMovePool(budgetUnit, maxMP);

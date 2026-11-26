@@ -335,13 +335,28 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.globalAlpha = 0.3;
       }
       const { cx, cy } = hexCenter(ship.hex);
+      const shipElevated = !!ship.airborne;
+      const shipOffset = shipElevated
+        ? elevationOffset(ship.elevation, HEX_SIZE, true)
+        : { dx: 0, dy: 0 };
+      const shipCx = cx + shipOffset.dx * currentZoom;
+      const shipCy = cy + shipOffset.dy * currentZoom;
       const height = shipImageHeightPx(ship.keelLength, HEX_SIZE) * currentZoom;
       const width = height * (img.naturalWidth / Math.max(1, img.naturalHeight));
       const offset = shipImageOffsetPx(ship.imageOffsetY, HEX_SIZE) * currentZoom;
       const helmsmanColor = ship.alliance ? ALLIANCE_COLORS[ship.alliance] : null;
       const crewColor = ship.crewAlliance ? ALLIANCE_COLORS[ship.crewAlliance] : null;
+      if (shipElevated) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, width * 0.3, width * 0.12, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.save();
-      ctx.translate(cx, cy);
+      ctx.translate(shipCx, shipCy);
       ctx.rotate(shipFacingRadians(ship.facing));
       // Two glow passes trace the image alpha silhouette: the outer (larger)
       // ring is the helmsman's alliance, the inner (smaller) ring the crew's.
@@ -359,7 +374,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.shadowBlur = 0;
       ctx.drawImage(img, -width / 2, -height / 2 - offset, width, height);
       ctx.restore();
-      drawShipBackReadout(ctx, ship, cx, cy, height, offset);
+      drawShipBackReadout(ctx, ship, shipCx, shipCy, height, offset);
       if (hidden) ctx.restore();
     }
     const hoveredHexKey = (() => {

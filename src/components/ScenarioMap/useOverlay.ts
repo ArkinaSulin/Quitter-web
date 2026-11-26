@@ -68,6 +68,8 @@ export interface OverlayState {
   zones?: GroundEffect[];
   /** Grounded claw ships contributing melee ZoC threat hexes. */
   threatShips?: ThreatShip[];
+  /** Visible ship hexes: blocks units from stacking with or passing through ships. */
+  shipObstacles?: { ground: Set<string>; air: Set<string> };
   /** Aim facing for a loose (facing-less) charger's single front wedge (from the
    *  cursor hex). Ignored for formed units, which use their own facing. */
   chargeFacing?: number | null;
@@ -146,11 +148,20 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     templates,
     zones,
     threatShips,
+    shipObstacles,
     chargeFacing,
     reactiveArchery = false,
     showAllMoveMp = false,
     movePreviewMode = 'one',
   } = state;
+
+  const withShipObstacles = (occupied: Set<string>, flying: boolean): Set<string> => {
+    const ships = flying ? shipObstacles?.air : shipObstacles?.ground;
+    if (!ships || ships.size === 0) return occupied;
+    const out = new Set(occupied);
+    ships.forEach(key => out.add(key));
+    return out;
+  };
 
   const isMountedOf = (u: Unit) => !!u.mountId || !!u.mountName;
   const costOfHexFor = (u: Unit) => makeCostOfHex(terrainCosts, walls, { structures, templates, isMounted: isMountedOf(u), waiveClimb: unitIgnoresClimb(u, zones) });
@@ -189,7 +200,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
         const maxMP = computeEffectiveMovement(archer, getFormationMultiplier(formationsMap, archer.currentFormation, 'movement_multiplier'));
         const budget = reactionMovePool(archer, maxMP);
         const budgetUnit = moveBudgetUnit(archer, 'ground');
-        const occupied = computeOccupiedHexes(units, archer.id);
+        const occupied = withShipObstacles(computeOccupiedHexes(units, archer.id), false);
         // A reaction reposition stops BEFORE a hostile kill zone (enter on a later
         // move) — `stopBeforeThreat`; normal moves are unaffected.
         const reactionThreats = computeThreatHexes(units, archer.id, alliances, formationsMap, structures, templates, threatShips);
@@ -225,10 +236,10 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const flying = isAirborne(draggedUnit.elevation, surface);
     let occupied: Set<string>;
     if (flying) {
-      occupied = computeOccupiedHexes(units, undefined, 1);
+      occupied = withShipObstacles(computeOccupiedHexes(units, undefined, 1), true);
       for (const k of Array.from(flightBlockedHexes(structures, templates, draggedUnit.elevation ?? 0))) occupied.add(k);
     } else {
-      occupied = computeOccupiedHexes(units, undefined, surface);
+      occupied = withShipObstacles(computeOccupiedHexes(units, undefined, surface), false);
     }
 
     if (freeMove) {
@@ -393,7 +404,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     const canAffordWithdraw = freeMove || (draggedUnit.actionsAvailable ?? 0) >= WITHDRAW_ACTION_COST;
     let withdrawKeys: string[] = [];
     if (!flying && canAffordWithdraw && canWithdraw(draggedUnit)) {
-      const occupied = computeOccupiedHexes(units, draggedUnit.id, surface);
+      const occupied = withShipObstacles(computeOccupiedHexes(units, draggedUnit.id, surface), false);
       withdrawKeys = withdrawDestinations(draggedUnit, occupied, threatHexes).map(hx => `${hx.q},${hx.r}`);
       for (const key of withdrawKeys) combined[key] = 'rgba(255, 255, 255, 0.32)';
     }

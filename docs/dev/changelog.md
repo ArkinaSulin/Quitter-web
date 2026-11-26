@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Ship occupancy, elevated rendering, ship stats (2026-11-26)
+**Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts,useOverlay.ts,useReactionActions.ts,useCanvasDraw.ts,ScenarioStatsModal.tsx}, src/hooks/useHexGrid.ts, src/packages/world/lib/placedShips.ts, src/packages/battle/lib/battleStats.ts, docs/dev/{08,21,outstanding,changelog}.md, AGENTS.md
+
+- Units, heroes and ships now share one occupancy rule: no stacking and no
+  pass-through; landed/airborne bands separate; heroes board instead of
+  occupying a ship hex. Non-hero units can no longer move onto a ship.
+- Airborne atmosphere ships render with the flying-unit elevation offset and a
+  ground shadow; hover hit-testing follows the drawn position. Wildspace stays
+  centred.
+- Scenario Statistics adds each ship as a one-troop, level-less row (`—` Lv),
+  HP = ship HP, with ship-vs-ship/unit damage credited to the ship. Crew rows are
+  deferred (documented).
+- No migration.
+
 ## Remove unused ship catalog image URLs and notes (2026-11-25)
 **Files:** src/types/ship.ts, src/packages/ships/lib/{componentMappers.ts,shipMappers.ts,shipRuntime.ts,shipStats.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/ShipRenderer/ShipLayout.tsx, src/components/ShipEditor/ShipEditor.tsx, src/packages/ships/tests/{componentMappers,shipMappers,...}.test.ts, supabase/migrations/183_ship_catalog_drop_image_url.sql, docs/dev/{02,16,changelog}.md, AGENTS.md
 

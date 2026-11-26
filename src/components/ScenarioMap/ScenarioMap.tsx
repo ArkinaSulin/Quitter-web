@@ -1087,6 +1087,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         movementRemaining,
         speedThisTurn,
         elevation: s.elevation ?? 0,
+        airborne: shipMode === 'atmosphere' && (s.elevation ?? 0) > 0,
         turnsSinceFacing: s.turnsSinceFacing ?? 0,
         turnDistance,
       };
@@ -1108,6 +1109,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       threat: shipMeleeThreat(s),
     }))
     .filter(s => s.threat > 0);
+
+  const shipObstacles = (() => {
+    const ground = new Set<string>();
+    const air = new Set<string>();
+    for (const ship of interactiveShips) {
+      const surface = structureSurfaceAt(ship.hex, structures ?? {}, structureTemplates);
+      const key = `${ship.hex.q},${ship.hex.r}`;
+      if ((ship.elevation ?? 0) <= surface) ground.add(key);
+      else air.add(key);
+    }
+    return { ground, air };
+  })();
 
   // Player management + role capabilities (feature: teams, roles, room, kick).
   const participantsSync = useParticipants(scenarioId, currentUser?.id);
@@ -3796,6 +3809,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           unitId: targetShip.id,
           description: `${shipDisplayName(targetShip)} took ${damage}${targetHitCard ? ` (${targetHitCard.name})` : ''}`,
           changes,
+          payload: { killerUnitId: attacker.id, victimLevel: 0 },
         });
         subSteps.push(...crewSteps);
         if (cargoDebrisChanged) {
@@ -4195,6 +4209,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structureTemplates,
     groundZones: effectiveZones,
     threatShips,
+    shipObstacles,
     magicCast,
     playerId,
     playerName,
@@ -4476,6 +4491,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structureTemplates,
     groundZones: effectiveZones,
     threatShips,
+    shipObstacles,
     pursuitsRef,
     onBoardShip,
     onBoardShipFree,
@@ -6344,11 +6360,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
     }
-    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, threatShips, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
+    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, threatShips, shipObstacles, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, turnNumber, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, threatShips, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode, shipFireMode, shipFiringArcs]);
+  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, turnNumber, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, threatShips, shipObstacles, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode, shipFireMode, shipFiringArcs]);
 
   // Center map on initial load
   useEffect(() => {
@@ -9012,6 +9028,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         <ScenarioStatsModal
           rows={commandRows}
           units={units}
+          ships={shipRuntime}
           alliances={alliances}
           stats={sharedStats ?? undefined}
           onClose={() => {

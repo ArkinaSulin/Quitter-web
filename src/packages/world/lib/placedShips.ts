@@ -26,6 +26,8 @@ export interface PlacedShip {
   speedThisTurn?: number;
   /** Ship altitude in feet (atmosphere). */
   elevation?: number;
+  /** Render/hit-test with the flying-unit elevation offset (atmosphere only). */
+  airborne?: boolean;
   /** Hexes travelled since the last facing change. */
   turnsSinceFacing?: number;
   /** Effective MC turn gate (base MC − rudder trim). */

@@ -143,6 +143,17 @@ export function buildStats(rows: CommandLogRow[], units: Unit[], alliances: Reco
             }
           }
           hp.set(step.unitId, to);
+        } else if (change.field === 'shipHp' && typeof change.to === 'number') {
+          const from = typeof change.from === 'number' ? change.from : (hp.get(step.unitId) ?? 0);
+          const to = change.to;
+          const delta = from - to;
+          if (delta > 0 && !editorCommand) {
+            hpLost.set(step.unitId, (hpLost.get(step.unitId) ?? 0) + delta);
+            if (pl && typeof pl.killerUnitId === 'string') {
+              killHp.set(pl.killerUnitId, (killHp.get(pl.killerUnitId) ?? 0) + delta);
+            }
+          }
+          hp.set(step.unitId, to);
         } else if (change.field === 'currentTroopCount' && typeof change.to === 'number') {
           const from = typeof change.from === 'number' ? change.from : (troops.get(step.unitId) ?? 0);
           const to = change.to;

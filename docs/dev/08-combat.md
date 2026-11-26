@@ -524,3 +524,8 @@ same killer payload; attacks that only chip HP add lost/kill HP without changing
 the troop columns. `formatStatsText` mirrors the grouped layout for the "Share to
 all players" post. The modal has a bottom-right resize handle (clamped to the
 viewport); the table scrolls inside it.
+
+**Ships** join the roster as one-troop, level-less units (`—` in the Lv columns):
+HP is the ship HP, all ship weapon damage/kills credit the ship row, and ship
+`shipHp` changes feed lost/kill HP. Crew are not separate rows yet (future:
+one row per distinct crew line, starting/lost only, kills `—`).

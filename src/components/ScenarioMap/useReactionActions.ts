@@ -56,6 +56,8 @@ interface ReactionActionsDeps {
   groundZones?: GroundEffect[];
   /** Grounded claw ships contributing melee ZoC threat hexes. */
   threatShips?: ThreatShip[];
+  /** Visible ship hexes: blocks units from stacking with or passing through ships. */
+  shipObstacles?: { ground: Set<string>; air: Set<string> };
   /** Area-spell window (a reaction may cast a magic weapon). */
   magicCast: ReturnType<typeof useMagicCast>;
   playerId: string;
@@ -86,11 +88,20 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     structureTemplates,
     groundZones,
     threatShips,
+    shipObstacles,
     magicCast,
     playerId,
     playerName,
     gridRadius,
   } = deps;
+
+  const withShipObstacles = (occupied: Set<string>, flying: boolean): Set<string> => {
+    const ships = flying ? shipObstacles?.air : shipObstacles?.ground;
+    if (!ships || ships.size === 0) return occupied;
+    const out = new Set(occupied);
+    ships.forEach(key => out.add(key));
+    return out;
+  };
 
   const [reactionOffers, setReactionOffers] = useState<Map<string, string>>(new Map()); // archerId -> moverId
   // Locked reaction mode: only the reacting archer can act (drag-shoot / drag-move /
@@ -388,7 +399,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
   const getReactionReachable = useCallback((archer: Unit): Map<string, MovePathEntry> => {
     const maxMP = unitMaxMP(archer);
     const budget = reactionMovePool(archer, maxMP);
-    const occupied = computeOccupiedHexes(displayUnits, archer.id);
+    const occupied = withShipObstacles(computeOccupiedHexes(displayUnits, archer.id), false);
     const mounted = !!archer.mountId || !!archer.mountName;
     const waiveClimb = unitIgnoresClimb(archer, groundZones);
     const passThrough = new Set<string>(Array.from(doorPassThroughHexes(structures, structureTemplates, occupied)));

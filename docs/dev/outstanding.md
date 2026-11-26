@@ -62,6 +62,10 @@ through the command log. See `21-ship-runtime.md`.
 - **Later:** Charisma captaincy — encourage the crew to auto-load weapons up to
   Cha times per turn, likely with a skill check/limit; intentionally separate
   from the current automatic crew loading.
+- **Later:** Scenario Statistics crew rows — one row per distinct crew line under
+  its ship, starting/lost troop/HP only, kills shown as `—`; crew damage
+  attribution is intentionally deferred. Ships currently appear as one-troop,
+  level-less rows.
 - Ship-layout pure zoom/pan, pointer-anchored wheel zoom, correct ghost placement,
   and the shared crew roster/adjust/revive/discard UI are shipped.
 - Crew roster grouping (ignore HP), tactical summary Mass/Crew lines, Best-in-

@@ -10,6 +10,7 @@
 // alliance are hidden.
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Unit, AllianceGroup, ALLIANCE_COLORS } from '@/types/gameProtocol';
+import type { ShipRuntime } from '@/packages/ships';
 import { CommandLogRow } from '@/packages/infra';
 import { buildStats, type BattleStats } from '@/packages/battle';
 import { TEAM_COLORS } from '@/packages/units';
@@ -17,11 +18,32 @@ import { TEAM_COLORS } from '@/packages/units';
 interface Props {
   rows: CommandLogRow[];
   units: Unit[];
+  ships?: ShipRuntime[];
   alliances: Record<string, AllianceGroup>;
   /** A shared snapshot from another client. When present the table is read-only. */
   stats?: BattleStats;
   onClose: () => void;
   onShare: (stats: BattleStats) => void;
+}
+
+/** Ships join the stats roster as 1-troop, level-less units. */
+function shipAsUnit(ship: ShipRuntime): Unit {
+  return {
+    id: ship.id,
+    unitName: ship.name,
+    team: ship.crewTeam ?? '',
+    isHero: false,
+    level: 0,
+    maxTroopCount: 1,
+    currentTroopCount: ship.shipHp > 0 ? 1 : 0,
+    troopHp: Math.max(1, ship.shipHpMax),
+    maxUnitHp: Math.max(1, ship.shipHpMax),
+    currentUnitHp: ship.shipHp,
+    currentFormation: 'Open Order',
+    hex: ship.hex ?? { q: 0, r: 0, s: 0 },
+    hidden: ship.hidden,
+    isDeleted: ship.isDeleted,
+  } as unknown as Unit;
 }
 
 const btn = 'px-3 py-1.5 rounded text-sm font-semibold transition-colors';
@@ -32,11 +54,12 @@ const ALLIANCE_LABEL: Record<AllianceGroup, string> = {
   neutral: 'Neutral Alliance',
 };
 
-export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onShare }: Props) {
+export function ScenarioStatsModal({ rows, units, ships = [], alliances, stats, onClose, onShare }: Props) {
   const resolvedStats = useMemo(
-    () => stats ?? buildStats(rows, units, alliances),
-    [stats, rows, units, alliances],
+    () => stats ?? buildStats(rows, [...units, ...ships.filter(s => !s.isDeleted).map(shipAsUnit)], alliances),
+    [stats, rows, units, ships, alliances],
   );
+  const shipIds = useMemo(() => new Set(ships.map(s => s.id)), [ships]);
 
   const MIN_W = 700;
   const MIN_H = 300;
@@ -166,13 +189,13 @@ export function ScenarioStatsModal({ rows, units, alliances, stats, onClose, onS
                             </span>
                           </td>
                           <td className={`${num} border-l border-gray-800`}>{r.introTroopCount}</td>
-                          <td className={num}>{r.introLevels}</td>
+                          <td className={num}>{shipIds.has(r.unitId) ? '—' : r.introLevels}</td>
                           <td className={num}>{r.introHp ?? 0}</td>
                           <td className={`${num} border-l border-gray-800`}>{r.troopLost}</td>
-                          <td className={num}>{r.levelsLost}</td>
+                          <td className={num}>{shipIds.has(r.unitId) ? '—' : r.levelsLost}</td>
                           <td className={num}>{r.hpLost ?? 0}</td>
                           <td className={`${num} border-l border-gray-800`}>{r.kills}</td>
-                          <td className={num}>{r.killLevels}</td>
+                          <td className={num}>{shipIds.has(r.unitId) ? '—' : r.killLevels}</td>
                           <td className={num}>{r.killHp ?? 0}</td>
                         </tr>
                       ))}

@@ -33,6 +33,9 @@ export interface GrabbableShip {
   imageOffsetY?: number;
   /** Ship facing (0 = nose north; +1 = 60° clockwise). */
   facing?: number;
+  /** Ship altitude + whether the atmosphere elevation offset applies. */
+  elevation?: number;
+  airborne?: boolean;
 }
 
 /** Does `unit` pass the active target filter? (`structure` never passes a unit.) */
@@ -509,11 +512,14 @@ export function useHexGrid({
     let bestD = Infinity;
     for (const ship of ships) {
       const pos = hexToPixel(ship.hex, size);
+      const elev = ship.airborne
+        ? elevationOffset(ship.elevation, size, true)
+        : { dx: 0, dy: 0 };
       const h = (Math.max(1, ship.keelLength) * size) / 50;
       const half = Math.max(size * 0.7, h / 2);
       const offset = ((ship.imageOffsetY ?? 0) * size) / 50;
-      const dx = world.x - pos.x;
-      const dy = world.y - pos.y;
+      const dx = world.x - (pos.x + elev.dx);
+      const dy = world.y - (pos.y + elev.dy);
       // Rotate the cursor into ship-local space so the hit box follows facing.
       const angle = shipFacingRadians(ship.facing);
       const cos = Math.cos(-angle);
