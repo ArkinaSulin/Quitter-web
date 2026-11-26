@@ -63,6 +63,7 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     maxRange: Number(row.max_range) || 0,
     reloadSteps: Math.max(0, Number(row.reload_steps) || 0),
     maxTargets: Math.max(1, Number(row.max_targets) || 1),
+    threat: Math.max(0, Number(row.threat) || 0),
     dt: Number(row.dt) || 15,
     crew: Number(row.crew) || 0,
     cost: Number(row.cost) || 0,

@@ -17,6 +17,7 @@ export * from './lib/cardSteps';
 export * from './lib/shipRepair';
 export * from './lib/shipStations';
 export * from './lib/shipMoveCost';
+export * from './lib/shipGround';
 export * from './lib/shipCombat';
 export * from './lib/shipAccess';
 export * from './lib/cargoManifest';

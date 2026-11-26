@@ -24,7 +24,7 @@ import { isProtectedHero } from '@/packages/units';
 import { UnitChange, SubStep } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
 import { formatStrikeDetail } from '@/packages/units';
-import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, isHexOnGrid } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, TerrainCosts, isHexOnGrid, type ThreatShip } from '@/packages/world';
 import { Walls } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, loosePassThroughHexes, entryBreakFormation } from '@/packages/movement';
 import { attacksBlocked } from '@/packages/combat';
@@ -54,6 +54,8 @@ interface ReactionActionsDeps {
   structures?: MapStructures;
   structureTemplates?: Record<string, StructureTemplate>;
   groundZones?: GroundEffect[];
+  /** Grounded claw ships contributing melee ZoC threat hexes. */
+  threatShips?: ThreatShip[];
   /** Area-spell window (a reaction may cast a magic weapon). */
   magicCast: ReturnType<typeof useMagicCast>;
   playerId: string;
@@ -83,6 +85,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
     structures,
     structureTemplates,
     groundZones,
+    threatShips,
     magicCast,
     playerId,
     playerName,
@@ -396,7 +399,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       entryBreakFormation({ q: fq, r: fr }, { q: tq, r: tr }, formation, structures, structureTemplates, groundZones);
     // A reaction reposition stops BEFORE a hostile kill zone (it must enter on a
     // later move) — `stopBeforeThreat`. Normal moves are unaffected.
-    const threats = computeThreatHexes(displayUnits, archer.id, alliances, formationsMap, structures, structureTemplates);
+    const threats = computeThreatHexes(displayUnits, archer.id, alliances, formationsMap, structures, structureTemplates, threatShips);
     return computeReachableMap(archer, budget, occupied, threats, makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb }), false, makeBlockedEdge(walls, {
       structures,
       templates: structureTemplates,
@@ -404,7 +407,7 @@ export function useReactionActions(deps: ReactionActionsDeps) {
       isMounted: mounted,
       waiveClimb,
     }), undefined, passThrough, { movementMultipliers, breakOnEntry, orgLevels: formationOrgLevels(formationsMap) }, archerReactionEnabled);
-  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap, alliances]);
+  }, [displayUnits, unitMaxMP, terrainCosts, walls, structures, structureTemplates, groundZones, formationsMap, alliances, threatShips]);
 
   const handleReactionAttack = useCallback(async (
     attackerId: string,

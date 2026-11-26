@@ -36,6 +36,9 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
     isRam: !!row.isRam,
+    terrainLegs: !!row.terrainLegs,
+    groundMp: Math.max(0, Number(row.groundMp) || 0),
+    threat: 0,
     ownerId: row.ownerId ?? null,
   };
 }
@@ -68,6 +71,9 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     ac: row.ac ?? 10,
     imageUrl: row.imageUrl || '',
     isRam: false,
+    terrainLegs: false,
+    groundMp: 0,
+    threat: Math.max(0, Number(row.threat) || 0),
     ownerId: row.ownerId ?? null,
   };
 }
@@ -107,6 +113,8 @@ export function componentTemplateToComponentRow(t: ShipComponentTemplate) {
     dt: t.dt,
     ac: t.ac,
     image_url: t.imageUrl || '',
+    is_terrain_legs: !!t.terrainLegs,
+    ground_mp: Math.max(0, Math.floor(t.groundMp || 0)),
   };
 }
 
@@ -120,6 +128,7 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     max_range: t.maxRange,
     reload_steps: t.reloadSteps,
     max_targets: t.maxTargets,
+    threat: Math.max(0, t.threat || 0),
     dt: t.dt,
     crew: t.crew,
     cost: t.cost,

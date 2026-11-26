@@ -18,7 +18,7 @@ import { WITHDRAW_ACTION_COST } from '@/packages/movement';
 import { parseWeapons, damageDiceCount } from '@/packages/units';
 import { SubStep, UnitChange } from '@/packages/infra';
 import { findAttachedHero, heroRideMoveStep } from '@/packages/units';
-import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { computeOccupiedHexes, computeThreatHexes, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts, type ThreatShip } from '@/packages/world';
 import { canFly, elevationSliderRange, carryRule, moveBudgetUnit, movePoolMode, parseClimbTo, rollFallDamage, isAirborne, flyMax, usesFlyPool, loosePassThroughHexes, friendlyAirPassThroughHexes, formationOrgLevels } from '@/packages/movement';
 import { Walls, directionBetween, edgeRef } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, standingMaxOrg, structureSurfaceAt, flightBlockedHexes, climbPlan, CLIMB_MP_PER_STEP, unitStandingSurface, groundFloorAt, structureDoorState, structureHasDoor, edgeStructureHeightBetween, structureElevation, structureClimbCostBetween, structureClimbPerStep10, isClimbingUnit, isHorizontalClimbMove, type FreePlacementOption } from '@/packages/movement';
@@ -88,6 +88,8 @@ interface MoveActionsDeps {
   structures?: MapStructures;
   structureTemplates?: Record<string, StructureTemplate>;
   groundZones?: GroundEffect[];
+  /** Grounded claw ships contributing melee ZoC threat hexes. */
+  threatShips?: ThreatShip[];
   /** Late-bound opportunity-attack resolver (owned by useCombatActions, assigned
    *  via a ref to break the useMoveActions → useCombatActions hook-order cycle). */
   pursuitsRef: { current: ((mover: Unit, originHex: Hex, destHex: Hex) => Promise<void>) | null };
@@ -146,6 +148,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     structures,
     structureTemplates,
     groundZones,
+    threatShips,
     pursuitsRef,
     onBoardShip,
     onBoardShipFree,
@@ -241,7 +244,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     // Movement alone never routs — only an attack (combat or a spell) can break
     // a unit's morale into a rout, even when threat drops morale to zero.
     // Entering a hostile kill zone ends the move: the leftover MP is spent.
-    const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates).has(`${targetHex.q},${targetHex.r}`);
+    const stopInZoc = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates, threatShips).has(`${targetHex.q},${targetHex.r}`);
     await moveUnitRecorded(unit, targetHex, cost, maxMP, attachedHero, heroMaxMP, undefined, { stopInZoc, breakToFormation, elevation, surface });
     // The unit may have left every hostile kill zone — return to its primary
     // ranged weapon (only reverts a melee weapon, and never a manual pick).
@@ -648,7 +651,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const waiveClimb = unitIgnoresClimb(unit, groundZones);
     if (unit.isCharging) {
       const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
-      const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
+      const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
       const maxMP = originMax;
       const mounted = !!unit.mountId || !!unit.mountName;
       // A loose (facing-less) unit — e.g. a hero — has no front of its own, so its
@@ -808,7 +811,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
     const occupied = flying ? flyOccupied : computeOccupiedHexes(units, unitId, originSurface);
-    const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
+    const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
     const mounted = !!unit.mountId || !!unit.mountName;
     const costOfHex = flying ? undefined : makeCostOfHex(terrainCosts, walls, { structures, templates: structureTemplates, isMounted: mounted, waiveClimb });
     const blockedEdge = flying ? undefined : makeBlockedEdge(walls, {
@@ -1221,7 +1224,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     const budgetUnit = moveBudgetUnit(unit, 'fly');
     const occupied = computeOccupiedHexes(units, unit.id, 1);
     for (const k of Array.from(flightBlockedHexes(structures, structureTemplates, unit.elevation ?? 0, `${targetHex.q},${targetHex.r}`))) occupied.add(k);
-    const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates);
+    const threatHexes = computeThreatHexes(units, unit.id, alliances, formationsMap, structures, structureTemplates, threatShips);
     const hopCap = unit.isHero ? computeHeroMovePool(budgetUnit, maxMP) : computeMovePool(budgetUnit, maxMP);
     const budget = unit.isHero ? computeHeroMoveBudget(budgetUnit, maxMP) : computeMoveBudget(budgetUnit, maxMP);
     const reachable = computeReachableMap(unit, budget, occupied, threatHexes, undefined, false, undefined, hopCap, undefined, undefined);

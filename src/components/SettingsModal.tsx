@@ -71,6 +71,7 @@ const SETTING_GROUPS: SettingGroup[] = [
   {
     title: 'Threat & morale',
     fields: [
+      { key: 'ship_atmosphere_pool_ratio', label: 'Ship MP/FP drain ratio', hint: 'When a ship spends one atmosphere pool, the other drains by floor(spent × ratio). Default 1.' },
       { key: 'threat_increment_level', label: 'Threat by level (bands)', hint: 'Threat rating contributed by a unit level, as bands [{min,value}] evaluated highest-min first.' },
       { key: 'threat_increment_troop_count', label: 'Threat by troop count (bands)', hint: 'Threat rating contributed by the current troop count, as bands [{min,value}] evaluated highest-min first.' },
       { key: 'charging_threat_multiplier', label: 'Charging threat multiplier', hint: 'Threat-rating multiplier while a unit is charging (default 2).' },

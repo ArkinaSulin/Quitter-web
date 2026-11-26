@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Ship ground movement, MP/FP pools, terrain legs, claw threat (2026-11-25)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{shipGround.ts,shipRuntime.ts,componentMappers.ts,shipMappers.ts,shipCombat.ts}, src/packages/world/lib/mapGeometry.ts, src/components/ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx,ShipTooltip.tsx,useMoveActions.ts,useReactionActions.ts,useOverlay.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/SettingsModal.tsx, supabase/migrations/182_ship_ground_pools_threat.sql, docs/dev/{02,16,21,changelog}.md, AGENTS.md
+
+- All atmosphere ships now have **MP and FP**. MP is 0 without sails/legs; sails
+  set MP = FP with normal MC; a **Terrain legs** component sets authored MP and
+  **MC 0** while grounded (legs override sails). Both pools drain together at a
+  configurable ratio (default 1:1, floor, integer display).
+- **MP only for grounded start+end moves**; any takeoff/landing touch of the air
+  uses FP. Grounded legs turn freely at 1 pool point per face; sails/rudder trim
+  disabled on the ground. Structure hexes are enterable when ship elevation ≥ the
+  structure top (pass-through, no stacking).
+- **Melee claw threat**: ship weapons carry a `threat` rating (claws 10 each);
+  only a grounded ship projects a one-hex ZoC. No ship base threat.
+- Ship Window/tooltip show MP/FP. Migration **182** adds the component fields,
+  weapon threat, runtime pool counters and field mapping.
+- No other migration.
+
 ## Ship area weapons, ram damage, Damage-only weapons, atmosphere speed (2026-11-25)
 **Files:** src/hooks/useMagicCast.ts, src/components/ScenarioMap/{ScenarioMap.tsx,useCastActions.ts,MagicCastModal.tsx}, src/packages/ships/lib/{shipDamage.ts,shipStats.ts,componentMappers.ts,shipMappers.ts}, src/types/ship.ts, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/ShipEditor/ShipEditor.tsx, supabase/migrations/181_ship_weapon_drop_damage_formula.sql, docs/dev/{02,16,21,changelog}.md, AGENTS.md
 

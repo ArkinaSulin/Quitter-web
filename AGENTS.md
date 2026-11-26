@@ -30,6 +30,12 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Ship ground movement + MP/FP + claw threat (2026-11-25)**: atmosphere ships
+  get MP and FP (MP 0 without sails/legs; sails MP=FP; terrain-legs component MP
+  authored + MC 0 grounded). Ground moves use MP, takeoff/landing uses FP, pools
+  drain at a settings ratio; structure entry allowed when ship elevation ≥ top.
+  Claw weapons carry threat 10 each and project a grounded one-hex ZoC. Migration
+  182 adds component/weapon/runtime fields.
 - **Ship area weapons, ram formula, Damage-only weapons, atmosphere speed
   (2026-11-25)**: area ship weapons open the shared magic window on a unit hit
   (attack first, editable saves, realtime); ram is `floor(effectiveMass/10)d

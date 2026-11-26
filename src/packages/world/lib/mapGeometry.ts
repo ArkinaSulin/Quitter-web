@@ -304,6 +304,15 @@ export function computeOccupiedHexes(allUnits: Unit[], excludeUnitId?: string, s
   );
 }
 
+export interface ThreatShip {
+  team: string | null;
+  hex: Hex;
+  elevation: number;
+  surface: number;
+  hidden?: boolean;
+  threat: number;
+}
+
 export function computeThreatHexes(
   allUnits: Unit[],
   draggedUnitId: string,
@@ -311,6 +320,7 @@ export function computeThreatHexes(
   formationsMap: Record<string, Formation>,
   structures?: MapStructures,
   templates?: Record<string, StructureTemplate>,
+  threatShips?: ThreatShip[],
 ): Set<string> {
   const draggedUnit = allUnits.find(u => u.id === draggedUnitId);
   const moverElev = draggedUnit?.elevation ?? 0;
@@ -363,6 +373,22 @@ export function computeThreatHexes(
       hostileUnder(unit)
     ) {
       threats.add(`${ownHex.q},${ownHex.r}`);
+    }
+  }
+
+  // Grounded melee ships (terrain legs / claws): all six adjacent hexes while
+  // the ship sits on the surface and carries a melee threat component.
+  if (draggedUnit && threatShips) {
+    for (const ship of threatShips) {
+      if (!ship.team || ship.hidden || ship.threat <= 0) continue;
+      if (!isHostile(ship.team, draggedUnit.team, alliances)) continue;
+      if (ship.elevation > ship.surface) continue;
+      if ((draggedUnit.elevation ?? 0) > ship.surface) continue;
+      for (const dir of HEX_DIRS) {
+        const q = ship.hex.q + dir.q;
+        const r = ship.hex.r + dir.r;
+        threats.add(`${q},${r}`);
+      }
     }
   }
   return threats;

@@ -69,6 +69,7 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     reloadSteps: 0,
     maxTargets: 1,
     magicDimension: 0,
+    threat: 0,
     shape: 'circle',
     savingThrow: 'Dex',
     saveDC: 10,
@@ -77,6 +78,8 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     ac: 10,
     imageUrl: '',
     isRam: false,
+    terrainLegs: false,
+    groundMp: 0,
   };
 }
 

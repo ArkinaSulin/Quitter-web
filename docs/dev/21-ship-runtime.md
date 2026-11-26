@@ -145,20 +145,35 @@ Per-step action economy (`useGameEngine.endTurn`):
 
 ## 4. Movement pools
 
-A ship may have three pools (`shipMoveCost.ts`):
+A ship may have three pools (`shipMoveCost.ts`, `shipGround.ts`):
 
-- **Land MP** — on the ground / structure top, same unit movement/turning rules.
+- **Land MP** — ground movement. Ships with no sails/legs have **MP 0** and cannot
+  move horizontally on the ground (they can still take off). Sails set
+  **MP = FP** with normal MC. The **Terrain legs** component sets MP to its
+  authored `ground_mp` and **MC 0** while grounded, overriding sails.
 - **FP** — atmosphere airborne; fixed `atmosphericSpeed`. The pilot may spend
-  none, part, or all of it during the turn (formed-unit style). Implemented as
-  `atmosphericSpeed − speedSpent`; remaining FP is shown on the ship readout.
-- **Speed** — wildspace; the declared speed split over the five steps. The pilot
-  **must spend the whole current step budget** before the step can pass. The
-  whole-turn remaining movement is the current step remainder plus all later
-  step budgets.
+  none, part, or all of it during the turn (formed-unit style).
+- **Speed** — wildspace; the declared speed split over the five steps.
+
+MP and FP **drain together**: spending one also drains the other by
+`floor(spent × ratio)`, default ratio 1 (`ship_atmosphere_pool_ratio`). Both
+reset at end of turn; display floors fractions to integers.
+
+Movement uses **MP only when it starts and ends grounded** (on the hex surface,
+including structure tops). Any takeoff/landing move that touches the air uses
+**FP**. Grounded terrain legs ignore the MC gate; every 60° turn still costs 1
+from the active pool. Sails/rudder trim are disabled while grounded.
 
 Atmosphere moves may also change altitude: each hex moved allows up to **10 ft of
 free climb or dive** (never more than the path length in hexes), chosen with the
-same altitude slider used by flyers on drop. Wildspace remains 2D.
+same altitude slider used by flyers on drop. A ship may enter a structure hex
+when its elevation is **at or above the structure top**; it may pass through but
+not stack on an occupied elevated space. Wildspace remains 2D.
+
+**Melee threat.** A ship weapon marked with `threat` (claws use 10 each) projects
+a one-hex melee ZoC only while the ship is **grounded**; catapults and sails add
+none. Ships themselves carry no base threat — they are floating castles, not
+morale auras.
 
 ### Ship control
 

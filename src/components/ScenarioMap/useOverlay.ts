@@ -15,7 +15,7 @@ import { parseWeapons } from '@/packages/units';
 import { isRangedCapableWeapon, reactionMovePool, isMeleeReachable } from '@/packages/combat';
 import { canRangedTarget, loosePassThroughHexes, friendlyAirPassThroughHexes, formationOrgLevels, isLooseUnit } from '@/packages/movement';
 import { arcOfTarget } from '@/packages/primitives';
-import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts } from '@/packages/world';
+import { DEFAULT_GRID_RADIUS, HEX_DIRS, hexRing, computeOccupiedHexes, computeThreatHexes, MapBackgroundConfig, terrainCostOf, makeCostOfHex, makeBlockedEdge, makeChargeBlockedEdge, TerrainCosts, type ThreatShip } from '@/packages/world';
 import { Walls } from '@/packages/movement';
 import { MapStructures, doorPassThroughHexes, entryBreakFormation, structureSurfaceAt, flightBlockedHexes } from '@/packages/movement';
 import { StructureTemplate } from '@/types/structure';
@@ -66,6 +66,8 @@ export interface OverlayState {
   structures?: MapStructures;
   templates?: Record<string, StructureTemplate>;
   zones?: GroundEffect[];
+  /** Grounded claw ships contributing melee ZoC threat hexes. */
+  threatShips?: ThreatShip[];
   /** Aim facing for a loose (facing-less) charger's single front wedge (from the
    *  cursor hex). Ignored for formed units, which use their own facing. */
   chargeFacing?: number | null;
@@ -143,6 +145,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
     structures,
     templates,
     zones,
+    threatShips,
     chargeFacing,
     reactiveArchery = false,
     showAllMoveMp = false,
@@ -189,7 +192,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
         const occupied = computeOccupiedHexes(units, archer.id);
         // A reaction reposition stops BEFORE a hostile kill zone (enter on a later
         // move) — `stopBeforeThreat`; normal moves are unaffected.
-        const reactionThreats = computeThreatHexes(units, archer.id, alliances, formationsMap, structures, templates);
+        const reactionThreats = computeThreatHexes(units, archer.id, alliances, formationsMap, structures, templates, threatShips);
         const reachable = computeReachableMap(archer, budget, occupied, reactionThreats, costOfHexFor(archer), false, blockedEdgeFor(archer), undefined, undefined, org, reactiveArchery);
         reachable.forEach((entry, key) => {
           combined[key] = entry.needsTurn ? 'rgba(190, 190, 190, 0.55)' : 'rgba(255, 255, 255, 0.6)';
@@ -244,7 +247,7 @@ export function computeOverlayMap(state: OverlayState): OverlayData {
 
     // Charging units show their charge corridor: cost-1 hexes amber (charge
     // route — premature if you stop), cost 2+ white (full charge, free attack).
-    const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap, structures, templates);
+    const threatHexes = computeThreatHexes(units, draggingUnitId, alliances, formationsMap, structures, templates, threatShips);
     if (draggedUnit.isCharging) {
       const combined: Record<string, string> = {};
       const movementMult = getFormationMultiplier(formationsMap, draggedUnit.currentFormation, 'movement_multiplier');

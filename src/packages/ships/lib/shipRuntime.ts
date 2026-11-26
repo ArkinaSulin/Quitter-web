@@ -93,6 +93,10 @@ export interface ShipRuntime {
   /** Round number the current speed was declared for (0 = never). */
   declaredRound: number;
   speedSpent: number;
+  /** Atmosphere ground-movement points spent this turn (fractions allowed). */
+  mpSpent: number;
+  /** Atmosphere flight points spent this turn (fractions allowed). */
+  fpSpent: number;
   turnsSinceFacing: number;
   stepBudget: number[];
   stations: Record<string, ShipStationAssignment>;
@@ -273,6 +277,8 @@ export function mapShipRuntimeRow(row: any): ShipRuntime {
     declaredSpeed: num(row.declared_speed),
     declaredRound: num(row.declared_round),
     speedSpent: num(row.speed_spent),
+    mpSpent: num(row.mp_spent),
+    fpSpent: num(row.fp_spent),
     turnsSinceFacing: num(row.turns_since_facing),
     stepBudget: parseStepBudget(row.step_budget),
     stations: obj(row.stations),
@@ -395,6 +401,8 @@ export function shipRowFromParts(args: {
     declaredSpeed: 0,
     declaredRound: 0,
     speedSpent: 0,
+    mpSpent: 0,
+    fpSpent: 0,
     turnsSinceFacing: 0,
     stepBudget: [0, 0, 0, 0, 0],
     stations: {},

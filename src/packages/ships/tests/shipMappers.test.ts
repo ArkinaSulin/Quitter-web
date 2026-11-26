@@ -63,6 +63,7 @@ describe('mapShipWeaponRow', () => {
     maxTargets: 1, dt: 15, crew: 2, cost: 500,
       ammoCost: 1, magicDimension: 0, shape: 'circle', savingThrow: 'Dex', saveDC: 10, onSaveHalfOrNeg: true,
       special: 'ammo 1gp', ac: 10, imageUrl: '',
+      threat: 0,
       ownerId: null,
     });
   });

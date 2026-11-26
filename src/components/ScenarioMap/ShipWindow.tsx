@@ -43,6 +43,7 @@ import {
   shipWeaponCards,
   type ShipDerivedStats,
   type ShipSailRudderManning,
+  shipAtmospherePools,
 } from '@/packages/ships';
 import type { ShipCardFunction, ShipCardWeaponInfo } from '@/components/ShipRenderer/ShipComponentCard';
 import { ShipLayout } from '@/components/ShipRenderer/ShipLayout';
@@ -73,6 +74,8 @@ export interface ShipWindowProps {
   shipMode: 'atmosphere' | 'wildspace';
   shipStep: number;
   turnNumber: number;
+  /** Atmospheric ship sitting on the surface (sails/rudder disabled). */
+  grounded?: boolean;
   /** False when the viewer's alliance does not hold the current turn. */
   weaponActionsAllowed: boolean;
   /** True when the viewer controls this ship (helmsman/captain/DM). */
@@ -131,6 +134,7 @@ export function ShipWindow({
   shipMode,
   shipStep,
   turnNumber,
+  grounded = false,
   weaponActionsAllowed,
   canRam,
   ramTargetAvailable,
@@ -600,13 +604,17 @@ export function ShipWindow({
         return shipActionNeedsCardStepTitle;
       };
       if (component.name === 'Sail') {
-        const title = shipActionTitle(turnNumber > 0 && ship.sailMaxStep === turnNumber, 'Sail maxing already succeeded this turn.');
+        const title = grounded
+          ? 'Sails cannot be used while the ship is on the ground.'
+          : shipActionTitle(turnNumber > 0 && ship.sailMaxStep === turnNumber, 'Sail maxing already succeeded this turn.');
         cardFunctions[key] = [
           { label: 'Speed +', enabled: canUse && !title, title, onClick: () => requestSail(1) },
           { label: 'Speed −', enabled: canUse && !title, title, onClick: () => requestSail(-1) },
         ];
       } else if (component.name === 'Rudder') {
-        const title = shipActionTitle(turnNumber > 0 && ship.sailTrimStep === turnNumber, 'Sail trimming already succeeded this turn.');
+        const title = grounded
+          ? 'Rudder trim cannot be used while the ship is on the ground.'
+          : shipActionTitle(turnNumber > 0 && ship.sailTrimStep === turnNumber, 'Sail trimming already succeeded this turn.');
         cardFunctions[key] = [
           {
             label: 'Trim MC',
@@ -769,9 +777,16 @@ export function ShipWindow({
                     Undermanned — sails {manning.effectiveSails}/{manning.survivingSails}, rudders {manning.effectiveRudders}/{manning.survivingRudders}
                   </div>
                 )}
-                {shipMode === 'atmosphere' ? (
-                  <div className="flex justify-between"><span className="text-gray-400">Speed</span><span>{stats.atmosphericSpeed}</span></div>
-                ) : (() => {
+                {shipMode === 'atmosphere' ? (() => {
+                  const pools = shipAtmospherePools(ship, stats);
+                  return (
+                    <>
+                      <div className="flex justify-between"><span className="text-gray-400">Speed</span><span>{stats.atmosphericSpeed}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-400">MP</span><span>{Math.floor(pools.mpRemaining)}/{Math.floor(pools.mpMax)}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-400">FP</span><span>{Math.floor(pools.fpRemaining)}/{Math.floor(pools.fpMax)}</span></div>
+                    </>
+                  );
+                })() : (() => {
                   const declared = ship.declaredRound === turnNumber;
                   const label = declared ? ship.declaredSpeed : 'Not declared';
                   const title = declared

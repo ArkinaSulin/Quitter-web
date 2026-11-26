@@ -38,6 +38,10 @@ export interface ShipComponent {
   ac?: number;
   /** True for the two ram components (piercing/bludgeoning). */
   isRam?: boolean;
+  /** Terrain-legs component: grants ground movement while grounded. */
+  terrainLegs?: boolean;
+  /** Ground MP granted by a terrain-legs component (0 = none). */
+  groundMp?: number;
   imageUrl?: string;
   ownerId?: string | null;
 }
@@ -64,6 +68,8 @@ export interface ShipWeapon {
   magicDimension: number;
   /** Maximum crew targets a penetrating hit can wound (1 = single crew). */
   maxTargets: number;
+  /** Melee threat rating while grounded (0 = none; claws use 10 each). */
+  threat?: number;
   shape: ShipAreaShape;
   savingThrow: ShipSaveChoice;
   saveDC: number;
@@ -103,6 +109,10 @@ export interface ShipComponentTemplate {
   ac: number;
   imageUrl: string;
   isRam: boolean;
+  terrainLegs?: boolean;
+  groundMp?: number;
+  /** Melee threat rating while grounded (weapons; claws use 10 each). */
+  threat?: number;
   ownerId?: string | null;
 }
 

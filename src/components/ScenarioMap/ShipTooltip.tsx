@@ -4,6 +4,7 @@
 // speed). Kept intentionally compact — the Ship Window has the full detail.
 import { alphaLabel } from '@/packages/units';
 import {
+  shipAtmospherePools,
   shipTurnDistance,
   type ShipDerivedStats,
   type ShipRuntime,
@@ -29,6 +30,7 @@ export function ShipTooltip({ ship, stats, mode, turnNumber, x, y }: Props) {
     ? shipTurnDistance(stats, speed, mode, ship.mcReduction ?? 0)
     : null;
   const accel = stats ? Math.max(0, Math.floor(stats.accel)) : null;
+  const pools = shipAtmospherePools(ship, stats);
   const speedLabel = mode === 'wildspace' ? 'Declared speed' : 'Atmosphere speed';
 
   return (
@@ -50,6 +52,14 @@ export function ShipTooltip({ ship, stats, mode, turnNumber, x, y }: Props) {
         )}
         <span className="text-gray-400">MC</span>
         <span>{mc ?? '—'}</span>
+        {mode === 'atmosphere' && (
+          <>
+            <span className="text-gray-400">MP</span>
+            <span>{Math.floor(pools.mpRemaining)}/{Math.floor(pools.mpMax)}</span>
+            <span className="text-gray-400">FP</span>
+            <span>{Math.floor(pools.fpRemaining)}/{Math.floor(pools.fpMax)}</span>
+          </>
+        )}
         <span className="text-gray-400">{speedLabel}</span>
         <span>{stats ? speed : '—'}</span>
       </div>

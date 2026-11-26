@@ -117,6 +117,16 @@ export function ComponentFields({
             onChange={v => patch({ canCombine: v })}
             label="Can combine cards"
           />
+          <Switch
+            checked={!!value.terrainLegs}
+            onChange={v => patch({ terrainLegs: v, groundMp: v ? Math.max(1, value.groundMp || 1) : 0 })}
+            label="Terrain legs (ground movement)"
+          />
+          {value.terrainLegs && (
+            <Cell label="Ground MP">
+              <NumInput value={value.groundMp ?? 0} min={0} integer onChange={v => patch({ groundMp: Math.max(0, v) })} />
+            </Cell>
+          )}
         </>
       )}
 
@@ -137,6 +147,9 @@ export function ComponentFields({
             </Cell>
             <Cell label="Max crew targets">
               <NumInput value={value.maxTargets} min={1} integer onChange={v => patch({ maxTargets: v })} />
+            </Cell>
+            <Cell label="Melee threat">
+              <NumInput value={value.threat ?? 0} min={0} integer onChange={v => patch({ threat: Math.max(0, v) })} />
             </Cell>
           </div>
           <div className="grid grid-cols-3 gap-2">

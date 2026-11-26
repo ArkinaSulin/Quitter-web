@@ -68,7 +68,11 @@ import {
   needsStationReplacement,
   effectiveShipStats,
   shipSailRudderManning,
-  type ShipDerivedStats,
+  shipAtmospherePools,
+  shipAtmosphereSpend,
+  shipIsGrounded,
+  shipMeleeThreat,
+  type ShipReachEntry,  type ShipDerivedStats,
   shipHelmOwner,
   captaincyBonus,
   signedBonus,
@@ -159,7 +163,7 @@ import { computeAttackCount } from '@/packages/combat';
 import { useMagicCast } from '@/hooks/useMagicCast';
 import type { MagicCastState } from '@/hooks/useMagicCast';
 import { MagicCastModal } from './MagicCastModal';
-import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, makeCostOfHex, mpCostOverrides, isHexOnGrid } from '@/packages/world';
+import { HEX_SIZE, TOKEN_WIDTH, TOKEN_HEIGHT, DEFAULT_GRID_RADIUS, MapBackgroundConfig, TerrainCosts, PlacedShip, computeOccupiedHexes, computeThreatHexes, makeCostOfHex, mpCostOverrides, isHexOnGrid, type ThreatShip } from '@/packages/world';
 import { withdrawDestinations, canWithdraw, WITHDRAW_ACTION_COST, isRotationAffordable } from '@/packages/movement';
 import { canReachStructure, canFly, parseClimbTo, isAirborne, flyMax, elevationOffset, hexDirection } from '@/packages/movement';
 import { Walls, edgeRef, nearestEdge, isDestructibleWall, wallHp, type EdgeRef } from '@/packages/movement';
@@ -1092,6 +1096,19 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // so hidden ships can be unhidden/rotated/deleted.
   const interactiveShips: PlacedShip[] = effectiveIsGM ? ships : ships.filter(s => !s.hidden);
 
+  // Grounded claw ships for unit movement ZoC (threat ships are not units).
+  const threatShips: ThreatShip[] = shipRuntime
+    .filter(s => !!s.hex && !s.isDeleted)
+    .map(s => ({
+      team: shipControlTeam(s, units, alliances),
+      hex: s.hex!,
+      elevation: Math.max(0, Math.round(s.elevation ?? 0)),
+      surface: structureSurfaceAt(s.hex!, structures ?? {}, structureTemplates),
+      hidden: s.hidden,
+      threat: shipMeleeThreat(s),
+    }))
+    .filter(s => s.threat > 0);
+
   // Player management + role capabilities (feature: teams, roles, room, kick).
   const participantsSync = useParticipants(scenarioId, currentUser?.id);
   const { getRoleCapabilities } = useScenarioCapabilities();
@@ -1458,17 +1475,31 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       return;
     }
     const speedSpent = ship.speedSpent ?? 0;
+    const startSurface = structureSurfaceAt(ship.hex!, structures ?? {}, structureTemplates);
+    const startGrounded = shipIsGrounded(ship.elevation, startSurface);
+    const pools = shipAtmospherePools(ship, stats);
     const pool = shipMode === 'wildspace'
       ? shipStepRemaining({ stepBudget: ship.stepBudget, step: shipStep, speedSpent }, shipStep)
-      : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent);
-    if (pool <= 0) {
-      addError(shipMode === 'wildspace' ? 'No ship movement left this step.' : 'No ship movement left this turn.');
+      : Math.max(0, Math.floor(startGrounded ? pools.mpRemaining : pools.fpRemaining));
+    if (shipMode === 'wildspace' && pool <= 0) {
+      addError('No ship movement left this step.');
+      return;
+    }
+    if (shipMode !== 'wildspace' && pools.mpRemaining <= 0 && pools.fpRemaining <= 0) {
+      addError('No ship movement left this turn.');
       return;
     }
     const speedForMC = shipMode === 'wildspace'
       ? (ship.declaredRound === turnNumber ? ship.declaredSpeed : (ship.lastSpeed ?? 5))
       : (stats.atmosphericSpeed ?? 5);
-    const turnDistance = shipTurnDistance(stats, speedForMC, shipMode, ship.mcReduction ?? 0);
+    const airTurnDistance = shipTurnDistance(stats, speedForMC, shipMode, ship.mcReduction ?? 0);
+    const groundTurnDistance = startGrounded && pools.mcZero ? 0 : airTurnDistance;
+    const shipElevation = Math.max(0, Math.round(ship.elevation ?? 0));
+    const blocked = (q: number, r: number) => {
+      const inst = structures?.[`${q},${r}`];
+      if (!inst) return false;
+      return structureSurfaceAt({ q, r }, structures ?? {}, structureTemplates) > shipElevation;
+    };
     const occupied = new Set<string>();
     for (const u of units) {
       if (!u.isDeleted && !u.attachedToUnitId) occupied.add(`${u.hex.q},${u.hex.r}`);
@@ -1476,13 +1507,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     for (const s of shipRuntime) {
       if (s.id !== shipId && s.hex && !s.isDeleted) occupied.add(`${s.hex.q},${s.hex.r}`);
     }
-    const reach = computeShipReachable(
-      { hex: ship.hex, facing: ship.facing, turnsSinceFacing: ship.turnsSinceFacing },
-      pool,
-      turnDistance,
-      { occupied, blocked: (q, r) => !!structures?.[`${q},${r}`] },
-    );
-    const entry = reach.get(`${targetHex.q},${targetHex.r}`);
+    const start = { hex: ship.hex, facing: ship.facing, turnsSinceFacing: ship.turnsSinceFacing };
+    const groundReach: Map<string, ShipReachEntry> = shipMode !== 'wildspace' && startGrounded && pools.mpRemaining > 0
+      ? computeShipReachable(start, Math.floor(pools.mpRemaining), groundTurnDistance, { occupied, blocked })
+      : new Map();
+    const airReach: Map<string, ShipReachEntry> = shipMode !== 'wildspace' && pools.fpRemaining > 0
+      ? computeShipReachable(start, Math.floor(pools.fpRemaining), airTurnDistance, { occupied, blocked })
+      : new Map();
+    let reach: Map<string, ShipReachEntry>;
+    if (shipMode === 'wildspace') {
+      reach = computeShipReachable(start, pool, airTurnDistance, { occupied, blocked });
+    } else {
+      reach = new Map();
+      groundReach.forEach((v, k) => reach.set(k, v));
+      airReach.forEach((v, k) => reach.set(k, v));
+    }
+    let entry: ShipReachEntry | undefined = reach.get(`${targetHex.q},${targetHex.r}`);
     if (!entry || !entry.endable) {
       addError(shipMode === 'wildspace'
         ? 'That hex is beyond this stepâ€™s legal movement; turn-potential previews are not moveable until a later step.'
@@ -1507,6 +1547,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const nextElevation = shipMode === 'atmosphere'
       ? Math.max(minElevation, Math.min(maxElevation, Math.round(chosenElevation ?? currentElevation)))
       : currentElevation;
+    let atmosphereMode: 'mp' | 'fp' = 'fp';
+    if (shipMode === 'atmosphere') {
+      const endSurface = structureSurfaceAt(targetHex, structures ?? {}, structureTemplates);
+      const endGrounded = shipIsGrounded(nextElevation, endSurface);
+      atmosphereMode = startGrounded && endGrounded ? 'mp' : 'fp';
+      const modeEntry = atmosphereMode === 'mp'
+        ? groundReach.get(`${targetHex.q},${targetHex.r}`)
+        : airReach.get(`${targetHex.q},${targetHex.r}`);
+      if (!modeEntry || !modeEntry.endable) {
+        addError(atmosphereMode === 'mp'
+          ? 'That ground move exceeds this ship’s MP.'
+          : 'That flight exceeds this ship’s FP.');
+        return;
+      }
+      entry = modeEntry;
+    }
 
     // Floating cargo barrels: one Helm dodge per crate hex entered. A failed
     // dodge takes mass d speed damage and destroys every crate in that hex;
@@ -1568,10 +1624,18 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         : Math.max(0, (ship.shipHp || 0) - dodgeDamage))
       : ship.shipHp;
 
+    const spentPools = shipMode === 'atmosphere'
+      ? shipAtmosphereSpend(pools, atmosphereMode, entry.cost, Number(getSetting('ship_atmosphere_pool_ratio', 1)) || 1)
+      : null;
     const moveChanges: { field: string; from: unknown; to: unknown }[] = [
       { field: 'hex', from: ship.hex, to: targetHex },
       { field: 'facing', from: ship.facing, to: entry.finalFacing },
-      { field: 'speedSpent', from: speedSpent, to: speedSpent + entry.cost },
+      ...(spentPools
+        ? [
+            { field: 'mpSpent', from: ship.mpSpent ?? 0, to: spentPools.mpSpent },
+            { field: 'fpSpent', from: ship.fpSpent ?? 0, to: spentPools.fpSpent },
+          ]
+        : [{ field: 'speedSpent', from: speedSpent, to: speedSpent + entry.cost }]),
       { field: 'turnsSinceFacing', from: ship.turnsSinceFacing ?? 0, to: entry.distanceSinceFacing },
       ...(nextElevation !== currentElevation
         ? [{ field: 'elevation', from: currentElevation, to: nextElevation }]
@@ -1686,7 +1750,11 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const speedForMC = shipMode === 'wildspace'
       ? (ship.declaredRound === turnNumber ? ship.declaredSpeed : (ship.lastSpeed ?? 5))
       : (stats.atmosphericSpeed ?? 5);
-    const turnDistance = shipTurnDistance(stats, speedForMC, shipMode, ship.mcReduction ?? 0);
+    const startSurface = structureSurfaceAt(ship.hex!, structures ?? {}, structureTemplates);
+    const grounded = shipIsGrounded(ship.elevation, startSurface);
+    const pools = shipAtmospherePools(ship, stats);
+    const airTurnDistance = shipTurnDistance(stats, speedForMC, shipMode, ship.mcReduction ?? 0);
+    const turnDistance = shipMode === 'atmosphere' && grounded && pools.mcZero ? 0 : airTurnDistance;
     if (turnDistance > 0 && (ship.turnsSinceFacing ?? 0) < turnDistance) {
       addError(`Turn after travelling ${turnDistance} more hex${turnDistance === 1 ? '' : 'es'} (MC).`);
       return;
@@ -1694,19 +1762,27 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const speedSpent = ship.speedSpent ?? 0;
     const pool = shipMode === 'wildspace'
       ? shipStepRemaining({ stepBudget: ship.stepBudget, step: shipStep, speedSpent }, shipStep)
-      : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent);
+      : Math.max(0, Math.floor(grounded ? pools.mpRemaining : pools.fpRemaining));
     if (pool < 1) { addError('No ship movement left to turn.'); return; }
+    const spentPools = shipMode === 'atmosphere'
+      ? shipAtmosphereSpend(pools, grounded ? 'mp' : 'fp', 1, Number(getSetting('ship_atmosphere_pool_ratio', 1)) || 1)
+      : null;
     await execute('MOVE', [{
       type: 'SHIP',
       unitId: ship.id,
       description: `${shipDisplayName(ship)} turned ${direction}`,
       changes: [
         { field: 'facing', from: ship.facing, to: facing },
-        { field: 'speedSpent', from: speedSpent, to: speedSpent + 1 },
+        ...(spentPools
+          ? [
+              { field: 'mpSpent', from: ship.mpSpent ?? 0, to: spentPools.mpSpent },
+              { field: 'fpSpent', from: ship.fpSpent ?? 0, to: spentPools.fpSpent },
+            ]
+          : [{ field: 'speedSpent', from: speedSpent, to: speedSpent + 1 }]),
         { field: 'turnsSinceFacing', from: ship.turnsSinceFacing ?? 0, to: 0 },
       ],
     }], `${shipDisplayName(ship)} turned ${direction}`);
-  }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, freeMove, shipMode, shipStep, turnNumber, execute, addError]);
+  }, [shipRuntime, units, alliances, myTeam, effectiveIsGM, currentTurnAlliance, freeMove, shipMode, shipStep, turnNumber, execute, addError, structures, structureTemplates]);
 
   const handleToggleShipHidden = useCallback(async (shipId: string) => {
     const ship = shipRuntime.find(s => s.id === shipId);
@@ -2231,6 +2307,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError('Only a player with a hero on the sail card, the captain, a helmsman (when no captain exists), or the DM can trim the sails.');
       return;
     }
+    if (shipIsGrounded(ship.elevation, structureSurfaceAt(ship.hex!, structures ?? {}, structureTemplates))) {
+      addError('Sails cannot be used while the ship is on the ground.');
+      return;
+    }
     if (turnNumber > 0 && ship.sailMaxStep === turnNumber) {
       addMessage('Sail maxing already succeeded this turn.');
       return;
@@ -2292,7 +2372,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const verbose = `${shipDisplayName(ship)}: Sail maxing ${delta > 0 ? '+1 speed' : '−1 speed'} — ${actor.name}: ${formatShipCheckDetail([roll], actor.bonus + (commandBonus ?? 0), dc)}${commandNote} = ${total} ${success ? '(success)' : '(failed)'}`;
     await execute('SHIP', subSteps, `${shipDisplayName(ship)} sail check`, { message: summary, verboseMessage: verbose });
     if (approvedNegative) await logNegativeActions(`${shipDisplayName(ship)} sail check`, payers);
-  }, [shipRuntime, units, myTeam, effectiveIsGM, shipStep, turnNumber, shipMode, execute, addError, addMessage, logNegativeActions]);
+  }, [shipRuntime, units, myTeam, effectiveIsGM, shipStep, turnNumber, shipMode, execute, addError, addMessage, logNegativeActions, structures, structureTemplates]);
 
   const handleRudderTrim = useCallback(async (shipId: string, cardKey: string, approvedNegative = false) => {
     const ship = shipRuntime.find(s => s.id === shipId);
@@ -2300,6 +2380,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const access = shipViewerAccess(ship, units, myTeam, effectiveIsGM);
     if (!access.manageAllCards && !access.manageableCardKeys.includes(cardKey)) {
       addError('Only a player with a hero on the rudder card, the captain, a helmsman (when no captain exists), or the DM can trim the rudder.');
+      return;
+    }
+    if (shipIsGrounded(ship.elevation, structureSurfaceAt(ship.hex!, structures ?? {}, structureTemplates))) {
+      addError('Rudder trim cannot be used while the ship is on the ground.');
       return;
     }
     if (turnNumber > 0 && ship.sailTrimStep === turnNumber) {
@@ -2367,7 +2451,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       : '(trim check failed)'}`;
     await execute('SHIP', subSteps, `${shipDisplayName(ship)} sail trim check`, { message: summary, verboseMessage: verbose });
     if (approvedNegative) await logNegativeActions(`${shipDisplayName(ship)} sail trim check`, payers);
-  }, [shipRuntime, units, myTeam, effectiveIsGM, shipStep, turnNumber, shipMode, execute, addError, addMessage, logNegativeActions]);
+  }, [shipRuntime, units, myTeam, effectiveIsGM, shipStep, turnNumber, shipMode, execute, addError, addMessage, logNegativeActions, structures, structureTemplates]);
 
   const handleRepair = useCallback(async (shipId: string, cardKey: string, targetCardKey?: string | null, approvedNegative = false) => {
     const ship = shipRuntime.find(s => s.id === shipId);
@@ -4110,6 +4194,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structures,
     structureTemplates,
     groundZones: effectiveZones,
+    threatShips,
     magicCast,
     playerId,
     playerName,
@@ -4390,6 +4475,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     structures,
     structureTemplates,
     groundZones: effectiveZones,
+    threatShips,
     pursuitsRef,
     onBoardShip,
     onBoardShipFree,
@@ -5821,7 +5907,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             // hex reports the error instead of moving.
             if (isAirborne(u.elevation, structureSurfaceAt(u.hex, structures, structureTemplates)) && !freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
-              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
+              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
               const dests = withdrawDestinations(u, occupied, threatHexes);
               if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
                 addError('Cannot withdraw during flight.');
@@ -5833,7 +5919,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             // Under free-move there is no cost, so it is just a free move.
             if (!freeMove && canWithdraw(u) && !u.isCharging) {
               const occupied = computeOccupiedHexes(units, unitId);
-              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates);
+              const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
               const dests = withdrawDestinations(u, occupied, threatHexes);
               if (dests.some(hx => hx.q === targetHex.q && hx.r === targetHex.r)) {
                 setWithdrawConfirm({ unit: u, dest: targetHex });
@@ -6195,13 +6281,23 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (ship?.hex && ship.snapshot?.stats) {
         const stats = effectiveShipStats(ship, units) ?? ship.snapshot.stats;
         const speedSpent = ship.speedSpent ?? 0;
+        const startSurface = structureSurfaceAt(ship.hex!, structures ?? {}, structureTemplates);
+        const startGrounded = shipIsGrounded(ship.elevation, startSurface);
+        const pools = shipAtmospherePools(ship, stats);
         const legalPool = shipMode === 'wildspace'
           ? shipStepRemaining({ stepBudget: ship.stepBudget, step: shipStep, speedSpent }, shipStep)
-          : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent);
+          : Math.max(0, Math.floor(startGrounded ? pools.mpRemaining : pools.fpRemaining));
         const speedForMC = shipMode === 'wildspace'
           ? (ship.declaredRound === turnNumber ? ship.declaredSpeed : (ship.lastSpeed ?? 5))
           : (stats.atmosphericSpeed ?? 5);
-        const turnDistance = shipTurnDistance(stats, speedForMC, shipMode, ship.mcReduction ?? 0);
+        const airTurnDistance = shipTurnDistance(stats, speedForMC, shipMode, ship.mcReduction ?? 0);
+        const groundTurnDistance = startGrounded && pools.mcZero ? 0 : airTurnDistance;
+        const shipElevation = Math.max(0, Math.round(ship.elevation ?? 0));
+        const blocked = (q: number, r: number) => {
+          const inst = structures?.[`${q},${r}`];
+          if (!inst) return false;
+          return structureSurfaceAt({ q, r }, structures ?? {}, structureTemplates) > shipElevation;
+        };
         const occupied = new Set<string>();
         for (const u of units) {
           if (!u.isDeleted && !u.attachedToUnitId) occupied.add(`${u.hex.q},${u.hex.r}`);
@@ -6210,8 +6306,15 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (s.id !== ship.id && s.hex && !s.isDeleted) occupied.add(`${s.hex.q},${s.hex.r}`);
         }
         const start = { hex: ship.hex, facing: ship.facing, turnsSinceFacing: ship.turnsSinceFacing };
-        const opts = { occupied, blocked: (q: number, r: number) => !!structures?.[`${q},${r}`] };
-        const legal = computeShipReachable(start, legalPool, turnDistance, opts);
+        const opts = { occupied, blocked };
+        let legal: Map<string, ShipReachEntry>;
+        if (shipMode === 'wildspace') {
+          legal = computeShipReachable(start, legalPool, airTurnDistance, opts);
+        } else {
+          legal = new Map();
+          computeShipReachable(start, Math.floor(pools.mpRemaining), groundTurnDistance, opts).forEach((v, k) => legal.set(k, v));
+          computeShipReachable(start, Math.floor(pools.fpRemaining), airTurnDistance, opts).forEach((v, k) => legal.set(k, v));
+        }
         const shipFills: Record<string, string> = {};
         const shipLabels: Record<string, string> = {};
         if (shipMode === 'wildspace') {
@@ -6221,7 +6324,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             .reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
           const potentialPool = legalPool + future;
           if (potentialPool > legalPool) {
-            const potential = computeShipReachable(start, potentialPool, turnDistance, opts);
+            const potential = computeShipReachable(start, potentialPool, airTurnDistance, opts);
             for (const [key, entry] of Array.from(potential.entries())) {
               if (entry.cost === 0 || legal.has(key)) continue;
               shipFills[key] = 'rgba(90, 170, 255, 0.22)';
@@ -6232,18 +6335,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         for (const [key, entry] of Array.from(legal.entries())) {
           if (entry.cost === 0) continue;
           shipFills[key] = entry.endable ? 'rgba(255,255,255,0.32)' : 'rgba(255,170,60,0.4)';
-          shipLabels[key] = String(Math.max(0, legalPool - entry.cost));
+          shipLabels[key] = shipMode === 'wildspace'
+            ? String(Math.max(0, legalPool - entry.cost))
+            : `${startGrounded ? 'M' : 'F'}${Math.max(0, Math.floor((startGrounded ? pools.mpRemaining : pools.fpRemaining) - entry.cost))}`;
         }
         setOverlayMap(shipFills);
         setOverlayLabels(shipLabels);
         return;
       }
     }
-    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
+    const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, threatShips, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, turnNumber, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode, shipFireMode, shipFiringArcs]);
+  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, turnNumber, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, threatShips, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode, shipFireMode, shipFiringArcs]);
 
   // Center map on initial load
   useEffect(() => {
@@ -8647,6 +8752,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           shipMode={shipMode}
           shipStep={shipStep}
           turnNumber={turnNumber}
+          grounded={shipIsGrounded(shipWindow.elevation, structureSurfaceAt(shipWindow.hex!, structures ?? {}, structureTemplates))}
           weaponActionsAllowed={shipWeaponActionsAllowed}
           canRam={shipCanRam}
           ramTargetAvailable={shipRamTargetAvailable}

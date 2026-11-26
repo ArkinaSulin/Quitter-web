@@ -1195,6 +1195,8 @@ export function useGameEngine({
         if (ship.isDeleted) continue;
         const changes: { field: string; from: unknown; to: unknown }[] = [];
         if (ship.speedSpent) changes.push({ field: 'speedSpent', from: ship.speedSpent, to: 0 });
+        if (turnAdvanced && ship.mpSpent) changes.push({ field: 'mpSpent', from: ship.mpSpent, to: 0 });
+        if (turnAdvanced && ship.fpSpent) changes.push({ field: 'fpSpent', from: ship.fpSpent, to: 0 });
         if (turnAdvanced && ship.mcReduction) changes.push({ field: 'mcReduction', from: ship.mcReduction, to: 0 });
         // turnsSinceFacing is a pure "hexes since the last facing change"
         // counter. It persists across steps/turns; only a real turn resets it.

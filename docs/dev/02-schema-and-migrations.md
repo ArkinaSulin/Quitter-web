@@ -249,6 +249,7 @@ as applied in the notes — check the live DB before relying on it).
 | 179 | Fix ambiguous `numeral` in `fork_campaign_version` (rename the PL/pgSQL variable and CTE column) | pending |
 | 180 | Ship weapon `max_targets` (default 1, `>= 1`; Mangonel rows seeded to 3) | pending |
 | 181 | Drop `ship_weapons.damage_formula` (ship weapons use authored `damage`; ram uses a derived formula) | pending |
+| 182 | Ground movement + atmosphere pools + claw threat: `ship_components.is_terrain_legs`/`ground_mp`, `ship_weapons.threat`, `ship_spelljammer.mp_spent`/`fp_spent`, ship field mapping | pending |
 
 ### Verify what's actually applied
 
