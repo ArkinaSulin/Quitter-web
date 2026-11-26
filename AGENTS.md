@@ -30,6 +30,10 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Unused ship catalog image URLs removed (2026-11-25)**: dropped Image URL from
+  component/weapon catalog rows, types, mappers and the Component Workshop (cards
+  never rendered it); Effect/note and weapon Note stay because they are card
+  notes. Migration 183 drops the two catalog columns.
 - **Ship ground movement + MP/FP + claw threat (2026-11-25)**: atmosphere ships
   get MP and FP (MP 0 without sails/legs; sails MP=FP; terrain-legs component MP
   authored + MC 0 grounded). Ground moves use MP, takeoff/landing uses FP, pools

@@ -34,7 +34,6 @@ export function mapComponentToTemplate(row: ShipComponent): ShipComponentTemplat
     onSaveHalfOrNeg: true,
     special: '',
     ac: row.ac ?? 10,
-    imageUrl: row.imageUrl || '',
     isRam: !!row.isRam,
     terrainLegs: !!row.terrainLegs,
     groundMp: Math.max(0, Number(row.groundMp) || 0),
@@ -69,7 +68,6 @@ export function mapWeaponToTemplate(row: ShipWeapon): ShipComponentTemplate {
     onSaveHalfOrNeg: row.onSaveHalfOrNeg,
     special: row.special || '',
     ac: row.ac ?? 10,
-    imageUrl: row.imageUrl || '',
     isRam: false,
     terrainLegs: false,
     groundMp: 0,
@@ -112,7 +110,6 @@ export function componentTemplateToComponentRow(t: ShipComponentTemplate) {
     can_combine: t.canCombine,
     dt: t.dt,
     ac: t.ac,
-    image_url: t.imageUrl || '',
     is_terrain_legs: !!t.terrainLegs,
     ground_mp: Math.max(0, Math.floor(t.groundMp || 0)),
   };
@@ -139,6 +136,5 @@ export function componentTemplateToWeaponRow(t: ShipComponentTemplate) {
     on_save_half_or_neg: t.onSaveHalfOrNeg,
     special: t.special || null,
     ac: t.ac,
-    image_url: t.imageUrl || '',
   };
 }

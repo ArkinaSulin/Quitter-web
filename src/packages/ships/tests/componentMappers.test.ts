@@ -39,14 +39,13 @@ describe('component workshop mappers', () => {
   it('maps a built-in component row', () => {
     const t = mapComponentToTemplate({
       id: 'c1', name: 'helm', mass: 1, crew: 1, cost: 0,
-      hittable: true, effect: 'steering', builtIn: true, canCombine: false, dt: 15, ac: 10, imageUrl: 'x',
+      hittable: true, effect: 'steering', builtIn: true, canCombine: false, dt: 15, ac: 10,
     });
     expect(t.kind).toBe('component');
     expect(t.builtIn).toBe(true);
     expect(t.canCombine).toBe(false);
     expect(t.name).toBe('helm');
     expect(t.effect).toBe('steering');
-    expect(t.imageUrl).toBe('x');
   });
 
   it('maps an optional component row', () => {

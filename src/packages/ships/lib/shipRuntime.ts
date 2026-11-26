@@ -22,7 +22,6 @@ const DEFAULT_HULL_COMPONENT: ShipComponent = {
   canCombine: true,
   dt: 15,
   ac: 10,
-  imageUrl: '',
 };
 
 const DEFAULT_DECK_COMPONENT: ShipComponent = {
@@ -37,7 +36,6 @@ const DEFAULT_DECK_COMPONENT: ShipComponent = {
   canCombine: true,
   dt: 15,
   ac: 10,
-  imageUrl: '',
 };
 
 /** Frozen template + resolved build + derived stats at placement. */

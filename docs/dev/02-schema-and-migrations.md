@@ -250,6 +250,7 @@ as applied in the notes — check the live DB before relying on it).
 | 180 | Ship weapon `max_targets` (default 1, `>= 1`; Mangonel rows seeded to 3) | pending |
 | 181 | Drop `ship_weapons.damage_formula` (ship weapons use authored `damage`; ram uses a derived formula) | pending |
 | 182 | Ground movement + atmosphere pools + claw threat: `ship_components.is_terrain_legs`/`ground_mp`, `ship_weapons.threat`, `ship_spelljammer.mp_spent`/`fp_spent`, ship field mapping | pending |
+| 183 | Drop unused catalog `image_url` from `ship_components` and `ship_weapons` (ship images live on templates) | pending |
 
 ### Verify what's actually applied
 

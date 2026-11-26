@@ -441,11 +441,11 @@ left panel:
 
 Fields:
 - Components: Name (read-only for built-ins), Mass, Crew, Hittable, Cost,
-  Effect, AC, DT, Image URL, **Can combine cards**, **Terrain legs** +
+  Effect, AC, DT, **Can combine cards**, **Terrain legs** +
   **Ground MP** (legs grant MP and MC 0 while grounded).
 - Weapons: Name, Mass, Crew, Cost, Damage **and Fire Cycle on the same row**,
   **Max crew targets**, **Melee threat** (claws use 10 each; only grounded ships
-  project it), Min Range / Range / Max Range, Note, AC, DT, Image URL.
+  project it), Min Range / Range / Max Range, Note, AC, DT.
   Weapons are always hittable. Every ship weapon uses its authored **Damage**
   string; the old mass-scaled formula field was removed (migration 181).
   **Max crew targets** (`ship_weapons.max_targets`, default 1, minimum 1) is the

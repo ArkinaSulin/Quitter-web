@@ -76,7 +76,6 @@ function freshTemplate(kind: ShipCatalogKind): ShipComponentTemplate {
     onSaveHalfOrNeg: true,
     special: '',
     ac: 10,
-    imageUrl: '',
     isRam: false,
     terrainLegs: false,
     groundMp: 0,

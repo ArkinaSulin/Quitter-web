@@ -42,7 +42,6 @@ export interface ShipComponent {
   terrainLegs?: boolean;
   /** Ground MP granted by a terrain-legs component (0 = none). */
   groundMp?: number;
-  imageUrl?: string;
   ownerId?: string | null;
 }
 
@@ -77,7 +76,6 @@ export interface ShipWeapon {
   /** Free-form weapon note. */
   special: string | null;
   ac?: number;
-  imageUrl?: string;
   ownerId?: string | null;
 }
 
@@ -107,7 +105,6 @@ export interface ShipComponentTemplate {
   onSaveHalfOrNeg: boolean;
   special: string;
   ac: number;
-  imageUrl: string;
   isRam: boolean;
   terrainLegs?: boolean;
   groundMp?: number;

@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Remove unused ship catalog image URLs (2026-11-25)
+**Files:** src/types/ship.ts, src/packages/ships/lib/{componentMappers.ts,shipMappers.ts,shipRuntime.ts,shipStats.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/packages/ships/tests/{componentMappers,shipMappers}.test.ts, supabase/migrations/183_ship_catalog_drop_image_url.sql, docs/dev/{02,16,changelog}.md, AGENTS.md
+
+- Removed the unused **Image URL** field from component/weapon catalog rows, types,
+  mappers and the Component Workshop form. Component/weapon cards never rendered
+  catalog images; ship images remain on `ship_templates.image_url`/`ship_images`.
+- Kept **Effect / note** on components (it is the card note in the Ship Window and
+  Ship Editor) and weapon **Note** (weapon card note). Also removed the stale
+  mass-damage-formula help text.
+- Migration 183 drops `ship_components.image_url` and `ship_weapons.image_url`.
+- No other migration.
+
 ## Ship ground movement, MP/FP pools, terrain legs, claw threat (2026-11-25)
 **Files:** src/types/ship.ts, src/packages/ships/lib/{shipGround.ts,shipRuntime.ts,componentMappers.ts,shipMappers.ts,shipCombat.ts}, src/packages/world/lib/mapGeometry.ts, src/components/ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx,ShipTooltip.tsx,useMoveActions.ts,useReactionActions.ts,useOverlay.ts}, src/components/ComponentEditor/{ComponentEditor.tsx,ComponentFields.tsx}, src/components/SettingsModal.tsx, supabase/migrations/182_ship_ground_pools_threat.sql, docs/dev/{02,16,21,changelog}.md, AGENTS.md
 

@@ -201,9 +201,8 @@ export function ComponentFields({
             </label>
           </div>
           <p className="text-[10px] text-gray-500">
-            Damage formula overrides literal damage and resolves from the carrying ship's total mass,
-            rounded up. Example: {'{mass/10}d10'} → 70t = 7d10. Reload steps: 0 = fire every step,
-            4 = load four steps then fire on the fifth. Area dimension 0 = single target.
+            Reload steps: 0 = fire every step, 4 = load four steps then fire on the fifth.
+            Area dimension 0 = single target.
           </p>
           <Cell label="Weapon note">
             <textarea
@@ -227,21 +226,12 @@ export function ComponentFields({
         </Cell>
       )}
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <Cell label="AC">
           <NumInput value={value.ac} min={0} integer onChange={v => patch({ ac: v })} />
         </Cell>
         <Cell label="DT">
           <NumInput value={value.dt} min={0} integer onChange={v => patch({ dt: v })} />
-        </Cell>
-        <Cell label="Image URL">
-          <input
-            type="text"
-            value={value.imageUrl}
-            onChange={e => patch({ imageUrl: e.target.value })}
-            className={INPUT}
-            placeholder="https://…"
-          />
         </Cell>
       </div>
     </fieldset>

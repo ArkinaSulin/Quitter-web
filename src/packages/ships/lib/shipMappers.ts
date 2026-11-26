@@ -48,7 +48,6 @@ export function mapShipComponentRow(row: any): ShipComponent {
     isRam: !!row.is_ram,
     terrainLegs: !!row.is_terrain_legs,
     groundMp: Math.max(0, Number(row.ground_mp) || 0),
-    imageUrl: row.image_url || '',
     ownerId: row.owner_id || null,
   };
 }
@@ -77,7 +76,6 @@ export function mapShipWeaponRow(row: any): ShipWeapon {
     onSaveHalfOrNeg: row.on_save_half_or_neg !== false,
     special: row.special || null,
     ac: row.ac != null ? Number(row.ac) : 10,
-    imageUrl: row.image_url || '',
     ownerId: row.owner_id || null,
   };
 }
@@ -117,9 +115,9 @@ export function mapShipTemplateRow(row: any): ShipTemplate {
     deckLayout: normalizeDeckLayout(row.deck_layout),
     reinforcements: row.reinforcements || [],
     weaponArcs: row.weapon_arcs || {},
+    imageUrl: row.image_url || '',
     atmosphericSpeed: Number(row.atmospheric_speed) || 0,
     damageThreshold: row.damage_threshold != null ? Number(row.damage_threshold) : 15,
-    imageUrl: row.image_url || '',
     keelLength: row.keel_length != null ? Number(row.keel_length) : 100,
     imageOffsetY: row.image_offset_y != null ? Number(row.image_offset_y) : 0,
     cargoArea: Number(row.cargo_area) || 0,
