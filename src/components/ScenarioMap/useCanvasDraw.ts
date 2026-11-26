@@ -323,14 +323,13 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         if (e.imageUrl && !e.zoneHex) pushEffectImage(u.hex, e.imageUrl, e.layer ?? 'below', 0, e.imageScale ?? 100);
       }
     }
-    for (const im of belowImages) drawEffectImage(im.hex, im.url, im.scale, im.elevation, im.structTop);
-    for (const ship of ships ?? []) {
-      if (!ship.imageUrl || isFogHidden(`${ship.hex.q},${ship.hex.r}`)) continue;
+    const drawShip = (ship: PlacedShip) => {
+      if (!ship.imageUrl || isFogHidden(`${ship.hex.q},${ship.hex.r}`)) return;
       const img = getLoadedImage(ship.imageUrl);
-      if (!img) continue;
+      if (!img) return;
       const hidden = !!ship.hidden;
       if (hidden) {
-        if (!isGM) continue;
+        if (!isGM) return;
         ctx.save();
         ctx.globalAlpha = 0.3;
       }
@@ -376,7 +375,9 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.restore();
       drawShipBackReadout(ctx, ship, shipCx, shipCy, height, offset);
       if (hidden) ctx.restore();
-    }
+        };
+    for (const ship of ships ?? []) if (!ship.airborne) drawShip(ship);
+
     const hoveredHexKey = (() => {
       const hu = displayUnits.find(u => u.id === aiHoveredUnitId);
       return hu ? `${hu.hex.q},${hu.hex.r}` : null;
@@ -610,6 +611,7 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
       ctx.restore();
     }
 
+    for (const im of belowImages) drawEffectImage(im.hex, im.url, im.scale, im.elevation, im.structTop);
     // Hex-structure climb labels: a per-edge total on each of the 6 edges whose
     // neighbour top is LOWER (an edge structure overrides its own edge).
     if (structures) {
@@ -894,6 +896,8 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
     }
 
     // "Above unit" effect artwork (hides while the unit on its hex is hovered).
+    for (const ship of ships ?? []) if (ship.airborne) drawShip(ship);
+
     for (const im of aboveImages.sort((a, b) => a.z - b.z)) {
       if (hoveredHexKey && `${im.hex.q},${im.hex.r}` === hoveredHexKey) continue;
       drawEffectImage(im.hex, im.url, im.scale, im.elevation, im.structTop);
