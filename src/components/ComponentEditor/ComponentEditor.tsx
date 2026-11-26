@@ -113,10 +113,13 @@ export default function ComponentEditor({ readOnly: capabilityReadOnly }: { read
     usage: ComponentUsage[];
   } | null>(null);
 
+const COMPONENT_SELECT = 'id,name,mass,crew,cost,hittable,effect,built_in,can_combine,dt,ac,image_url,is_ram,is_terrain_legs,ground_mp,owner_id';
+const WEAPON_SELECT = 'id,name,mass,damage,min_range,range,max_range,reload_steps,max_targets,threat,dt,crew,cost,ammo_cost,magic_dimension,shape,saving_throw,save_dc,on_save_half_or_neg,special,ac,image_url,owner_id';
+
   const load = useCallback(async (): Promise<ShipComponentTemplate[]> => {
     const [componentsRes, weaponsRes, armorsRes] = await Promise.all([
-      supabase.from('ship_components').select('*').order('name'),
-      supabase.from('ship_weapons').select('*').order('name'),
+      supabase.from('ship_components').select(COMPONENT_SELECT).order('name'),
+      supabase.from('ship_weapons').select(WEAPON_SELECT).order('name'),
       supabase.from('ship_armors').select('*').order('name'),
     ]);
     if (componentsRes.error) throw componentsRes.error;
@@ -226,35 +229,51 @@ export default function ComponentEditor({ readOnly: capabilityReadOnly }: { read
     setStatus('');
     try {
       let savedId = draft.id;
+      let savedRow: any = null;
       if (draft.kind === 'component') {
         const row = componentTemplateToComponentRow(draft);
         if (draft.id) {
-          const { error: saveError } = await supabase.from('ship_components').update(row).eq('id', draft.id);
+          const { data, error: saveError } = await supabase.from('ship_components').update(row).eq('id', draft.id).select(COMPONENT_SELECT).single();
           if (saveError) throw saveError;
+          savedRow = data;
         } else {
-          const { data, error: saveError } = await supabase.from('ship_components').insert(row).select('id').single();
+          const { data, error: saveError } = await supabase.from('ship_components').insert(row).select(COMPONENT_SELECT).single();
           if (saveError) throw saveError;
+          savedRow = data;
           savedId = data.id;
         }
       } else {
         const row = componentTemplateToWeaponRow(draft);
         if (draft.id) {
-          const { error: saveError } = await supabase.from('ship_weapons').update(row).eq('id', draft.id);
+          const { data, error: saveError } = await supabase.from('ship_weapons').update(row).eq('id', draft.id).select(WEAPON_SELECT).single();
           if (saveError) throw saveError;
+          savedRow = data;
         } else {
-          const { data, error: saveError } = await supabase.from('ship_weapons').insert(row).select('id').single();
+          const { data, error: saveError } = await supabase.from('ship_weapons').insert(row).select(WEAPON_SELECT).single();
           if (saveError) throw saveError;
+          savedRow = data;
           savedId = data.id;
         }
       }
 
       const loaded = await load();
-      const saved = loaded.find(r => r.id === savedId);
+      const saved = loaded.find(r => r.id === savedId)
+        ?? (savedRow
+          ? (draft.kind === 'component'
+            ? mapComponentToTemplate(mapShipComponentRow(savedRow))
+            : mapWeaponToTemplate(mapShipWeaponRow(savedRow)))
+          : null);
       if (saved) {
+        if (draft.terrainLegs && !saved.terrainLegs) {
+          setStatus('Terrain legs did not persist — check the ship_components schema/cache.');
+        } else {
+          setStatus('Saved.');
+        }
         setDraft({ ...saved });
         savedSnapshotRef.current = JSON.stringify(saved);
+      } else {
+        setStatus('Saved.');
       }
-      setStatus('Saved.');
       return true;
     } catch (e: any) {
       setStatus('Save failed: ' + (e?.message || 'unknown'));

@@ -6,6 +6,7 @@ import {
   mapWeaponToTemplate,
   validateShipComponentTemplate,
 } from '@/packages/ships/lib/componentMappers';
+import { mapShipComponentRow } from '@/packages/ships/lib/shipMappers';
 
 const weaponTemplate = () => ({
   id: 'w1',
@@ -101,5 +102,18 @@ describe('component workshop validation', () => {
     expect(validateShipComponentTemplate({ ...weaponTemplate(), range: 2, maxRange: 1 })).toContain('Range');
     expect(validateShipComponentTemplate({ ...weaponTemplate(), reloadSteps: -1 })).toContain('Reload');
     expect(validateShipComponentTemplate(weaponTemplate())).toBeNull();
+  });
+});
+
+describe('terrain legs catalog round-trip', () => {
+  it('keeps terrain legs + ground MP from the DB row through to the editor template', () => {
+    const mapped = mapComponentToTemplate(mapShipComponentRow({
+      id: 'legs', name: 'Scorpion Legs', mass: 1, is_terrain_legs: true, ground_mp: '4',
+    }));
+    expect(mapped.terrainLegs).toBe(true);
+    expect(mapped.groundMp).toBe(4);
+    const row = componentTemplateToComponentRow(mapped);
+    expect(row.is_terrain_legs).toBe(true);
+    expect(row.ground_mp).toBe(4);
   });
 });

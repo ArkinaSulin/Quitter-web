@@ -46,6 +46,8 @@ export function mapShipComponentRow(row: any): ShipComponent {
     canCombine: row.can_combine !== false,
     ac: row.ac != null ? Number(row.ac) : 10,
     isRam: !!row.is_ram,
+    terrainLegs: !!row.is_terrain_legs,
+    groundMp: Math.max(0, Number(row.ground_mp) || 0),
     imageUrl: row.image_url || '',
     ownerId: row.owner_id || null,
   };

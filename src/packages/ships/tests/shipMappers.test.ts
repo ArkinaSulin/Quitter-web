@@ -37,8 +37,17 @@ describe('mapShipComponentRow', () => {
     expect(c).toEqual({
       id: 'comp-1', name: 'sail', mass: 1, crew: 0.5, cost: 0,
       hittable: true, effect: 'wind', dt: 15, builtIn: true, canCombine: true, ac: 10, isRam: false, imageUrl: '',
+      terrainLegs: false, groundMp: 0,
       ownerId: null,
     });
+  });
+
+  it('keeps terrain legs + ground MP from the catalog row', () => {
+    const c = mapShipComponentRow({
+      id: 'comp-legs', name: 'terrain legs', mass: '2', is_terrain_legs: true, ground_mp: '4',
+    });
+    expect(c.terrainLegs).toBe(true);
+    expect(c.groundMp).toBe(4);
   });
 
   it('keeps fractional rudder crew', () => {
