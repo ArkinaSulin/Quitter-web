@@ -110,8 +110,8 @@ export default function ComponentEditor({ readOnly: capabilityReadOnly }: { read
     usage: ComponentUsage[];
   } | null>(null);
 
-const COMPONENT_SELECT = 'id,name,mass,crew,cost,hittable,effect,built_in,can_combine,dt,ac,image_url,is_ram,is_terrain_legs,ground_mp,owner_id';
-const WEAPON_SELECT = 'id,name,mass,damage,min_range,range,max_range,reload_steps,max_targets,threat,dt,crew,cost,ammo_cost,magic_dimension,shape,saving_throw,save_dc,on_save_half_or_neg,special,ac,image_url,owner_id';
+const COMPONENT_SELECT = 'id,name,mass,crew,cost,hittable,built_in,can_combine,dt,ac,is_ram,is_terrain_legs,ground_mp,owner_id';
+const WEAPON_SELECT = 'id,name,mass,damage,min_range,range,max_range,reload_steps,max_targets,threat,dt,crew,cost,ammo_cost,magic_dimension,shape,saving_throw,save_dc,on_save_half_or_neg,ac,owner_id';
 
   const load = useCallback(async (): Promise<ShipComponentTemplate[]> => {
     const [componentsRes, weaponsRes, armorsRes] = await Promise.all([
