@@ -1098,7 +1098,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   const interactiveShips: PlacedShip[] = effectiveIsGM ? ships : ships.filter(s => !s.hidden);
 
   // Grounded claw ships for unit movement ZoC (threat ships are not units).
-  const threatShips: ThreatShip[] = shipRuntime
+  const threatShips: ThreatShip[] = useMemo(() => shipRuntime
     .filter(s => !!s.hex && !s.isDeleted)
     .map(s => ({
       team: shipControlTeam(s, units, alliances),
@@ -1108,19 +1108,21 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       hidden: s.hidden,
       threat: shipMeleeThreat(s),
     }))
-    .filter(s => s.threat > 0);
+    .filter(s => s.threat > 0), [shipRuntime, units, alliances, structures, structureTemplates]);
 
-  const shipObstacles = (() => {
+  const shipObstacles = useMemo(() => {
     const ground = new Set<string>();
     const air = new Set<string>();
-    for (const ship of interactiveShips) {
+    for (const ship of shipRuntime) {
+      if (!ship.hex || ship.isDeleted) continue;
+      if (ship.hidden && !effectiveIsGM) continue;
       const surface = structureSurfaceAt(ship.hex, structures ?? {}, structureTemplates);
       const key = `${ship.hex.q},${ship.hex.r}`;
       if ((ship.elevation ?? 0) <= surface) ground.add(key);
       else air.add(key);
     }
     return { ground, air };
-  })();
+  }, [shipRuntime, structures, structureTemplates, effectiveIsGM]);
 
   // Player management + role capabilities (feature: teams, roles, room, kick).
   const participantsSync = useParticipants(scenarioId, currentUser?.id);
