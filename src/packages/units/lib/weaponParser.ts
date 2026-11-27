@@ -39,7 +39,7 @@ export interface Weapon {
   minRange?: number;
   /** Explicit attack class for ship damage (old strings infer from warMachine /
    *  magicDimension). */
-  attackClass?: 'personal' | 'magic' | 'siege';
+  attackClass?: 'personal' | 'magic' | 'warmachine';
   /** Deployed war-machine reload steps (0 = fire immediately); default 1. */
   reloadSteps?: number;
   /** Crew needed to operate the weapon. Stored for later use (e.g. ships); no
@@ -205,11 +205,18 @@ export function parseWeapons(weaponString: string): Weapon[] {
       const savingThrow = (parts[13] || 'Dex') as SaveChoice;
       const shape = (parts[14] as AreaShape) || 'circle';
       const magicDimension = parseInt(parts[6]) || 0;
-      const warMachine = parts[16] === 'true';
+    const warMachine = parts[16] === 'true';
       const attackClassRaw = parts[19];
-      const attackClass = attackClassRaw === 'personal' || attackClassRaw === 'magic' || attackClassRaw === 'siege'
-        ? attackClassRaw
-        : undefined;
+      // `warmachine` is canonical; `siege` is the legacy stored value and the
+      // bare war-machine flag is the oldest form. Both normalize on read.
+      const attackClass: Weapon['attackClass'] | undefined =
+        attackClassRaw === 'warmachine' || attackClassRaw === 'siege'
+          ? 'warmachine'
+          : attackClassRaw === 'personal' || attackClassRaw === 'magic'
+            ? attackClassRaw
+            : warMachine
+              ? 'warmachine'
+              : undefined;
       const reloadSteps = Math.max(0, parseInt(parts[20]) || 1);
       return {
         name: parts[0] || 'Unknown',
@@ -230,7 +237,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         onSaveHalfOrNeg: parts[12] !== 'false',
         savingThrow: (SAVE_STATS.includes(savingThrow as SaveStat) || savingThrow === 'none') ? savingThrow : 'Dex',
         saveDC: parseInt(parts[15]) || 10,
-        warMachine,
+        warMachine: attackClass === 'warmachine',
         minRange: Math.max(0, parseInt(parts[17]) || 0),
         minCrew: Math.max(0, parseInt(parts[18]) || 0),
         ...(parts[20] ? { reloadSteps } : {}),
@@ -248,7 +255,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}${w.attackClass || w.reloadSteps != null ? `,${w.attackClass ?? ''}` : ''}${w.reloadSteps != null ? `,${w.reloadSteps}` : ''}`
+      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.attackClass === 'warmachine' || w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}${w.attackClass || w.reloadSteps != null ? `,${w.attackClass ?? ''}` : ''}${w.reloadSteps != null ? `,${w.reloadSteps}` : ''}`
     )
     .join(';');
 }

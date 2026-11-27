@@ -30,6 +30,14 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **War Machine attack class + ship pool readout (2026-11-27, migration 187)**: the
+  Weapon Editor's separate War Machine toggle is merged into **Attack class**
+  (Personal / Magic / War Machine); the stored value is now `warmachine`
+  (migration 187 renames `siege`, and parser/mapper normalize legacy `siege` and
+  the bare flag). Dimension/shape are never auto-changed. Ships' token readout now
+  uses atmosphere `mpSpent`/`fpSpent` (shows FP airborne, MP grounded) and the
+  hover tooltip reads the live row. Ship menu labels are **Send Crew** / **Recall
+  crew**. **Apply 187 in Supabase.**
 - **Weapon library attack class + reload steps (2026-11-26, migration 186)**: the
   Weapon Editor's attack class now persists (`unit_weapons.attack_class`, nullable
   personal/magic/siege) alongside `reload_steps` (default 1); the row mapper reads

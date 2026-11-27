@@ -1005,7 +1005,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
 
   // Tooltip
   const [hoveredUnit, setHoveredUnit] = useState<Unit | null>(null);
-  const [hoveredShip, setHoveredShip] = useState<{ ship: ShipRuntime; x: number; y: number } | null>(null);
+  const [hoveredShip, setHoveredShip] = useState<{ shipId: string; x: number; y: number } | null>(null);
   const [pendingShipDrop, setPendingShipDrop] = useState<{
     unit: Unit;
     ship: ShipRuntime;
@@ -1067,15 +1067,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     .map(s => {
       const stats = effectiveShipStats(s, units);
       const speedSpent = s.speedSpent ?? 0;
+      const atmosPools = shipMode === 'atmosphere' ? shipAtmospherePools(s, stats) : null;
+      const grounded = shipIsGrounded(
+        s.elevation,
+        structureSurfaceAt(s.hex!, structures ?? {}, structureTemplates),
+      );
       const movementRemaining = stats
         ? shipMode === 'wildspace'
           ? shipRoundRemaining({ stepBudget: s.stepBudget, step: shipStep, speedSpent }, shipStep)
-          : Math.max(0, Math.floor(stats.atmosphericSpeed) - speedSpent)
+          : Math.max(0, Math.floor(grounded ? (atmosPools?.mpRemaining ?? 0) : (atmosPools?.fpRemaining ?? 0)))
         : undefined;
       const speedThisTurn = stats
         ? shipMode === 'wildspace'
           ? (s.declaredRound === turnNumber ? s.declaredSpeed : (s.lastSpeed ?? 5))
-          : stats.atmosphericSpeed
+          : Math.max(0, Math.floor(grounded ? (atmosPools?.mpMax ?? 0) : (atmosPools?.fpMax ?? 0)))
         : undefined;
       const turnDistance = stats && speedThisTurn != null
         ? shipTurnDistance(stats, speedThisTurn, shipMode, s.mcReduction ?? 0)
@@ -2068,7 +2073,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const ac = ship.snapshot?.stats?.ac ?? 10;
     const dt = ship.snapshot?.stats?.damageThreshold ?? 15;
     const autoHit = cls === 'magic-aoe';
-    const attackCount = cls === 'siege' || cls === 'huge'
+    const attackCount = cls === 'warmachine' || cls === 'huge'
       ? Math.max(1, weapon.numberOfAttacks ?? 1)
       : 1;
     const attackRolls: number[] = [];
@@ -2087,7 +2092,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let cargoLost = '';
     let nextGroundZones = groundZones;
     let cargoDebrisChanged = false;
-    const componentHits = cls === 'siege' || cls === 'huge' || cls === 'magic-aoe';
+    const componentHits = cls === 'warmachine' || cls === 'huge' || cls === 'magic-aoe';
     const cards = ship.snapshot?.build
       ? shipHitCards(ship.snapshot.build)
         .map(c => ({ ...c, tons: Math.max(0, c.tons - Number(boxState[c.key] ?? 0)) }))
@@ -2217,7 +2222,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             const radius = weapon.magicDimension ?? 0;
             const crewCount = radius >= 20 ? 3 : radius <= 5 ? 1 : 2;
             hitCrewOnCard(card.key, crewCount, damageRoll.total);
-          } else if (cls === 'siege' || cls === 'huge') {
+          } else if (cls === 'warmachine' || cls === 'huge') {
             hitCrewOnCard(card.key, 1, damageRoll.total);
           }
         }
@@ -6458,7 +6463,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (ship.hidden && !effectiveIsGM) return;
       if (!effectiveIsGM && !canSeeHex(ship.hex)) return;
       setHoveredUnit(null);
-      setHoveredShip({ ship, x: screenX, y: screenY });
+      setHoveredShip({ shipId: ship.id, x: screenX, y: screenY });
     },
     onShipLeave: () => setHoveredShip(null),
     onAttack: controlsLocked ? undefined : (attackerId, targetId) => {
@@ -7783,16 +7788,20 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       })()}
 
       {/* Ship hover summary (hidden while the ship is being dragged). */}
-      {hoveredShip && !draggingShipId && (
-        <ShipTooltip
-          ship={hoveredShip.ship}
-          stats={effectiveShipStats(hoveredShip.ship, units)}
-          mode={shipMode}
-          turnNumber={turnNumber}
-          x={hoveredShip.x}
-          y={hoveredShip.y}
-        />
-      )}
+      {hoveredShip && !draggingShipId && (() => {
+        const live = shipRuntime.find(s => s.id === hoveredShip.shipId && !s.isDeleted);
+        if (!live) return null;
+        return (
+          <ShipTooltip
+            ship={live}
+            stats={effectiveShipStats(live, units)}
+            mode={shipMode}
+            turnNumber={turnNumber}
+            x={hoveredShip.x}
+            y={hoveredShip.y}
+          />
+        );
+      })()}
 
       {/* Hex/edge info tooltip (structures + effects). */}
       {infoHover && (

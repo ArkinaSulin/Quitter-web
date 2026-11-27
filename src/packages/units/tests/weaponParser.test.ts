@@ -364,9 +364,22 @@ describe('weapon attack class', () => {
 
 describe('war machine reload steps', () => {
   it('round-trips an explicit reload step count', () => {
-    const w: Weapon = { name: 'Ballista', attackBonus: 3, damageDice: '2d6', isHealing: false, range: 2, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10, warMachine: true, attackClass: 'siege', reloadSteps: 3 };
+    const w: Weapon = { name: 'Ballista', attackBonus: 3, damageDice: '2d6', isHealing: false, range: 2, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10, warMachine: true, attackClass: 'warmachine', reloadSteps: 3 };
     const s = stringifyWeapons([w]);
     expect(parseWeapons(s)[0].reloadSteps).toBe(3);
-    expect(parseWeapons(s)[0].attackClass).toBe('siege');
+    expect(parseWeapons(s)[0].attackClass).toBe('warmachine');
+    expect(parseWeapons(s)[0].warMachine).toBe(true);
+  });
+
+  it('normalizes the legacy siege value and the bare war-machine flag', () => {
+    const legacySiege = parseWeapons('Ballista,3,2d6,false,2,8,0,false,false,false,false,1,true,Dex,circle,10,true,0,0,siege')[0];
+    expect(legacySiege.attackClass).toBe('warmachine');
+    expect(legacySiege.warMachine).toBe(true);
+    const legacyFlag = parseWeapons('Ballista,3,2d6,false,2,8,0,false,false,false,false,1,true,Dex,circle,10,true,0,0')[0];
+    expect(legacyFlag.attackClass).toBe('warmachine');
+    expect(legacyFlag.warMachine).toBe(true);
+    // An explicit personal/magic class clears the legacy flag.
+    const personal = parseWeapons('Spear,3,1d6,false,1,0,0,false,false,false,false,1,true,Dex,circle,10,true,0,0,personal')[0];
+    expect(personal.warMachine).toBe(false);
   });
 });

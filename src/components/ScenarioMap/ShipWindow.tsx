@@ -949,7 +949,7 @@ export function ShipWindow({
             onClick={() => { setCardMenu(null); onFillStation(key); }}
             className="w-full text-left px-2 py-1.5 text-xs rounded hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Fill station
+            Send Crew
           </button>
           <button
             type="button"
@@ -957,7 +957,7 @@ export function ShipWindow({
             onClick={() => { setCardMenu(null); onEmptyStation(key); }}
             className="w-full text-left px-2 py-1.5 text-xs rounded text-red-300 hover:bg-red-900/40 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Empty station
+            Recall crew
           </button>
         </Floating>
       );

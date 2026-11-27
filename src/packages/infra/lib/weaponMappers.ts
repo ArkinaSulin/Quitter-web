@@ -14,6 +14,15 @@ export interface LibraryWeapon extends Weapon {
 export function mapWeaponRow(row: any): LibraryWeapon {
   const shape = row?.shape as AreaShape;
   const savingThrow = (row?.saving_throw as string) || 'Dex';
+  const attackClass: Weapon['attackClass'] | undefined =
+    row?.attack_class === 'personal' || row?.attack_class === 'magic' || row?.attack_class === 'warmachine'
+      ? row.attack_class
+      // Legacy stored value; normalize on read.
+      : row?.attack_class === 'siege'
+        ? 'warmachine'
+        : row?.war_machine
+          ? 'warmachine'
+          : undefined;
   return {
     id: row?.id,
     name: row?.name || '',
@@ -32,12 +41,10 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     onSaveHalfOrNeg: row?.on_save_half_or_neg ?? true,
     savingThrow: (SAVE_STATS.includes(savingThrow as SaveStat) || savingThrow === 'none') ? (savingThrow as SaveStat) : 'Dex',
     saveDC: Number(row?.save_dc) || 10,
-    warMachine: !!row?.war_machine,
+    warMachine: attackClass ? attackClass === 'warmachine' : !!row?.war_machine,
     minRange: Math.max(0, Number(row?.min_range) || 0),
     minCrew: Math.max(0, Number(row?.min_crew) || 0),
-    ...(row?.attack_class === 'personal' || row?.attack_class === 'magic' || row?.attack_class === 'siege'
-      ? { attackClass: row.attack_class as Weapon['attackClass'] }
-      : {}),
+    ...(attackClass ? { attackClass } : {}),
     ...(row?.reload_steps != null ? { reloadSteps: Math.max(0, Number(row.reload_steps) || 0) } : {}),
     notes: row?.notes || '',
     costGp: Number(row?.cost_gp) || 0,
@@ -68,7 +75,7 @@ export function mapWeaponToRow(w: LibraryWeapon) {
     war_machine: !!w.warMachine,
     min_range: Math.max(0, w.minRange || 0),
     min_crew: Math.max(0, w.minCrew || 0),
-    attack_class: w.attackClass ?? null,
+    attack_class: w.attackClass ?? (w.warMachine ? 'warmachine' : null),
     reload_steps: Math.max(0, Math.floor(w.reloadSteps ?? 1)),
     notes: w.notes || '',
     cost_gp: w.costGp || 0,

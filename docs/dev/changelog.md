@@ -1,5 +1,27 @@
 # QuiTTER Changelog
 
+## War Machine attack class, ship pool readout, station labels (2026-11-27, migration 187)
+**Files:** src/components/{WeaponEditor/WeaponFields.tsx,ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx}}, src/packages/{units/{lib/{weaponParser.ts,unitShipAttack.ts},tests/{weaponParser.test.ts,unitShipAttack.test.ts}},infra/{lib/weaponMappers.ts,tests/weaponMappers.test.ts}}, supabase/migrations/187_unit_weapon_attack_class_warmachine.sql, docs/dev/{changelog}.md, AGENTS.md
+
+- **Attack class now owns the War Machine flag.** The separate Weapon Editor
+  toggle is gone; options are **Personal / Magic / War Machine** and the stored
+  value is `warmachine` (migration **187** renames `siege` and updates the check).
+  Parser/mapper still accept the legacy `siege` value and the bare
+  `war_machine` flag, normalizing both to `warmachine`. Selecting a class sets the
+  internal `warMachine` flag automatically; **Dimension/shape are never changed
+  automatically**.
+- The selector carries a tooltip explaining the three classes, including that a
+  War Machine is one crew-served engine the whole unit operates and follows the
+  full ship-damage pipeline.
+- **Ship token movement readout fixed.** Atmosphere reads
+  `shipAtmospherePools` (`fpSpent`/`mpSpent`) instead of `speedSpent`, so it
+  updates. It shows **FP** while airborne and switches to **MP** while grounded.
+  The ship hover tooltip now reads the live runtime row instead of a stale
+  snapshot.
+- Ship card menu labels renamed: **Fill station → Send Crew**, **Empty station →
+  Recall crew**.
+- **Apply 187 in Supabase** (self-contained; safe after 186).
+
 ## Weapon library stores attack class + reload steps (2026-11-26, migration 186)
 **Files:** supabase/migrations/186_unit_weapon_attack_class.sql, src/packages/infra/lib/weaponMappers.ts, src/packages/infra/tests/weaponMappers.test.ts, docs/dev/{outstanding,changelog}.md, AGENTS.md
 

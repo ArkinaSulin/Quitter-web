@@ -8,6 +8,13 @@ import { Weapon, SaveStat, SAVE_STATS, AreaShape, AREA_SHAPES } from '@/packages
 export const WEAPON_INPUT =
   'w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:border-yellow-400 outline-none disabled:opacity-50';
 
+/** Tooltip copy for the merged attack-class / war-machine selector. */
+export const ATTACK_CLASS_HELP =
+  'Personal: small arms and melee - cannot damage a Spelljammer ship. '
+  + 'Magic: damages ship HP; area magic (Dimension > 0) also destroys components and hits crew. '
+  + 'War Machine: the whole unit crew-serves ONE engine; uses the full ship damage pipeline '
+  + '(HP, component boxes, crew, cargo).';
+
 export function Cell({ label, children, widthClass = 'flex-1' }: { label: string; children: React.ReactNode; widthClass?: string }) {
   return (
     <label className={`flex flex-col gap-1 text-xs text-gray-400 min-w-0 ${widthClass}`}>
@@ -30,9 +37,9 @@ export function NumInput({ value, onChange, min, max }: { value: any; onChange: 
   );
 }
 
-export function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+export function SelectInput({ value, onChange, options, title }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; title?: string }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)} className={WEAPON_INPUT}>
+    <select value={value} onChange={e => onChange(e.target.value)} className={WEAPON_INPUT} title={title}>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
@@ -132,19 +139,23 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
       <div className="flex items-end gap-3">
         <Cell label="Attack class">
           <SelectInput
-            value={value.attackClass ?? 'personal'}
-            onChange={v => patch({ attackClass: v as NonNullable<Weapon['attackClass']> })}
+            value={value.attackClass ?? (value.warMachine ? 'warmachine' : 'personal')}
+            onChange={v => {
+              const attackClass = v as NonNullable<Weapon['attackClass']>;
+              patch({ attackClass, warMachine: attackClass === 'warmachine' });
+            }}
+            title={ATTACK_CLASS_HELP}
             options={[
               { value: 'personal', label: 'Personal' },
               { value: 'magic', label: 'Magic' },
-              { value: 'siege', label: 'Siege' },
+              { value: 'warmachine', label: 'War Machine' },
             ]}
           />
         </Cell>
         <Cell label="Magic Dimension (ft)"><NumInput value={value.magicDimension} min={0} onChange={v => patch({ magicDimension: Math.max(0, v) })} /></Cell>
         <Cell label="Shape"><SelectInput value={value.shape} onChange={v => patch({ shape: v as AreaShape })} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
       </div>
-      <p className="text-xs text-gray-500 -mt-2">Attack class controls ship damage: personal cannot hurt a Spelljammer; magic/siege can. AoE magic is any magic weapon with Dimension &gt; 0.</p>
+      <p className="text-xs text-gray-500 -mt-2" title={ATTACK_CLASS_HELP}>Attack class controls ship damage and war-machine service (hover for details).</p>
 
       <p className="text-xs text-gray-500 -mt-2">Shape: circle = dimension is radius · cube = side · cone = 60° wedge · line = 5 ft-wide line. Dimension &gt; 0 makes this an area-effect weapon.</p>
 
@@ -168,7 +179,6 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
       <div className="space-y-3 border-t border-gray-700 pt-3">
         <ToggleRow checked={value.reach} onChange={v => patch({ reach: v })} label="Reach" description="Strikes first against shorter weapons and cancels the opponent's retaliation." />
         <ToggleRow checked={value.isTwoHanded} onChange={v => patch({ isTwoHanded: v })} label="Two-Handed" description="Requires both hands — shield defense is dropped while this is the active weapon." />
-        <ToggleRow checked={!!value.warMachine} onChange={v => patch(v && !value.magicDimension ? { warMachine: true, magicDimension: 5, shape: 'circle' } : { warMachine: v })} label="War Machine" description="Crew-served: the whole unit operates ONE machine, so it makes # Attacks per UNIT (not per troop). Use a ranged weapon. Defaults to a 5 ft blast (circle)." />
         <ToggleRow checked={value.freeAction} onChange={v => patch({ freeAction: v })} label="Free Action" description="Does not cost an action to use." />
         <ToggleRow checked={value.noRetaliation} onChange={v => patch({ noRetaliation: v })} label="No Retaliation" description="Provokes no retaliation and beats reach — fully safe attack." />
       </div>

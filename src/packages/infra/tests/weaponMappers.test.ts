@@ -51,8 +51,8 @@ describe('weaponMappers', () => {
   });
 
   it('round-trips attack class and reload steps', () => {
-    const mapped = mapWeaponRow({ id: 'w', name: 'Ballista', attack_class: 'siege', reload_steps: 2 });
-    expect(mapped.attackClass).toBe('siege');
+    const mapped = mapWeaponRow({ id: 'w', name: 'Ballista', attack_class: 'warmachine', reload_steps: 2 });
+    expect(mapped.attackClass).toBe('warmachine');
     expect(mapped.reloadSteps).toBe(2);
     const row = mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'magic', reloadSteps: 3 });
     expect(row.attack_class).toBe('magic');
@@ -62,6 +62,10 @@ describe('weaponMappers', () => {
     expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'personal' }).attack_class).toBe('personal');
     expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0 }).attack_class).toBeNull();
     expect(mapWeaponRow({ id: 'w', name: 'X', attack_class: 'nonsense' }).attackClass).toBeUndefined();
+    // Legacy 'siege' and the bare flag normalize to warmachine.
+    expect(mapWeaponRow({ id: 'w', name: 'X', attack_class: 'siege' }).attackClass).toBe('warmachine');
+    expect(mapWeaponRow({ id: 'w', name: 'X', war_machine: true }).attackClass).toBe('warmachine');
+    expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, warMachine: true }).attack_class).toBe('warmachine');
   });
 
   it('reads snake_case only — re-mapping an already-mapped object wipes fields', () => {

@@ -27,8 +27,9 @@ describe('unit ship attack classification', () => {
     expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({}))).toBe('personal');
   });
 
-  it('war machines are siege, area magic is AoE, flagged magic is single-target', () => {
-    expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ warMachine: true }))).toBe('siege');
+  it('war machines are warmachine class, area magic is AoE, flagged magic is single-target', () => {
+    expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ warMachine: true }))).toBe('warmachine');
+    expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ attackClass: 'warmachine' }))).toBe('warmachine');
     expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ magicDimension: 20 }))).toBe('magic-aoe');
     expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ attackClass: 'magic' }))).toBe('magic-single');
   });
