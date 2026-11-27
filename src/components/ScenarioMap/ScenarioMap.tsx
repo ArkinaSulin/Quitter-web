@@ -2025,6 +2025,41 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         .map(c => ({ ...c, tons: Math.max(0, c.tons - Number(boxState[c.key] ?? 0)) }))
         .filter(c => c.tons > 0)
       : [];
+    const hitCrewOnCard = (cardKey: string, count: number, damage: number) => {
+      const targets = shipCardCrewTargets(ship, units, cardKey);
+      const picked = pickDistinct(targets, Math.min(count, targets.length), Math.random);
+      if (picked.length === 0) return;
+      const station = stations[cardKey];
+      if (station) stations[cardKey] = { ...station, crewIds: [...(station.crewIds ?? [])] };
+      const names: string[] = [];
+      for (const target of picked) {
+        names.push(target.name);
+        if (target.kind === 'crew') {
+          const hp = Math.max(0, target.hp - damage);
+          crewState[target.id] = {
+            ...(crewState[target.id] ?? { hp: target.hp }),
+            hp,
+            dead: hp <= 0,
+            ...(hp <= 0 ? { station: null } : {}),
+          };
+          if (hp <= 0) {
+            const s = stations[cardKey];
+            if (s) s.crewIds = (s.crewIds ?? []).filter(id => id !== target.id);
+          }
+        } else {
+          const hero = units.find(u => u.id === target.id);
+          if (!hero) continue;
+          const hp = Math.max(0, (hero.currentUnitHp ?? 1) - damage);
+          extraSteps.push({
+            type: 'DAMAGE',
+            unitId: hero.id,
+            description: `${hero.unitName} wounded aboard ${shipDisplayName(ship)}`,
+            changes: [{ field: 'currentUnitHp', from: hero.currentUnitHp, to: hp }],
+          });
+        }
+      }
+      detail.push(`${names.length} crew hit (${names.join(', ')})`);
+    };
     for (let i = 0; i < attackCount; i += 1) {
       const roll = 1 + Math.floor(Math.random() * 20);
       attackRolls.push(roll);
@@ -2048,40 +2083,9 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           if (cls === 'magic-aoe') {
             const radius = weapon.magicDimension ?? 0;
             const crewCount = radius >= 20 ? 3 : radius <= 5 ? 1 : 2;
-            const targets = shipCardCrewTargets(ship, units, card.key);
-            const picked = pickDistinct(targets, Math.min(crewCount, targets.length), Math.random);
-            if (picked.length > 0) {
-              const station = stations[card.key];
-              if (station) stations[card.key] = { ...station, crewIds: [...(station.crewIds ?? [])] };
-              const names: string[] = [];
-              for (const target of picked) {
-                names.push(target.name);
-                if (target.kind === 'crew') {
-                  const hp = Math.max(0, target.hp - damageRoll.total);
-                  crewState[target.id] = {
-                    ...(crewState[target.id] ?? { hp: target.hp }),
-                    hp,
-                    dead: hp <= 0,
-                    ...(hp <= 0 ? { station: null } : {}),
-                  };
-                  if (hp <= 0) {
-                    const s = stations[card.key];
-                    if (s) s.crewIds = (s.crewIds ?? []).filter(id => id !== target.id);
-                  }
-                } else {
-                  const hero = units.find(u => u.id === target.id);
-                  if (!hero) continue;
-                  const hp = Math.max(0, (hero.currentUnitHp ?? 1) - damageRoll.total);
-                  extraSteps.push({
-                    type: 'DAMAGE',
-                    unitId: hero.id,
-                    description: `${hero.unitName} wounded aboard ${shipDisplayName(ship)}`,
-                    changes: [{ field: 'currentUnitHp', from: hero.currentUnitHp, to: hp }],
-                  });
-                }
-              }
-              detail.push(`${names.length} crew hit (${names.join(', ')})`);
-            }
+            hitCrewOnCard(card.key, crewCount, damageRoll.total);
+          } else if (cls === 'siege' || cls === 'huge') {
+            hitCrewOnCard(card.key, 1, damageRoll.total);
           }
         }
       }
@@ -2108,7 +2112,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             { field: 'shipHp', from: ship.shipHp, to: newHp },
             { field: 'minHpAttained', from: ship.minHpAttained, to: minHpAfterDamage(ship.minHpAttained, newHp) },
             ...(componentHits ? [{ field: 'boxState', from: ship.boxState ?? {}, to: boxState }] : []),
-            ...(cls === 'magic-aoe'
+            ...(componentHits
               ? [
                   { field: 'crewState', from: ship.crewState ?? {}, to: crewState },
                   { field: 'stations', from: ship.stations ?? {}, to: stations },

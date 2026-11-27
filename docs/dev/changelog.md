@@ -5,7 +5,8 @@
 
 - Unit→ship attacks now resolve each attack separately against ship AC then DT.
 - Siege/Huge fire `numberOfAttacks` shots; each penetrating shot damages ship HP
-  and destroys `/10` component tons.
+  and destroys `/10` component tons and hits one living crew member on the struck
+  card.
 - AoE magic auto-hits, checks DT once, destroys component tons and hits 3/2/1
   crew by radius (>=20 ft / between / <=5 ft).
 - Single-target magic remains ship HP only; personal remains zero damage with a
