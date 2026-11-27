@@ -5,6 +5,8 @@
 
 - Deployed war machines now draw as a compact **card inside the unit token**:
   weapon name, reload state, numeric crew count, `steps n/5`, and a Fire button.
+- Unit weapons gained an authored **Reload steps** field (serialized, default 1
+  when absent), shown on the deployed card.
 - The card rotates with the unit in 60° steps, matching the deployed 60° arc.
 - The Fire button is visual only in this pass; wiring it to target selection and
   the 5-step action resolver is the next step.

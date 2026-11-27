@@ -112,6 +112,7 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
 
       <div className="flex items-end gap-3">
         <Cell label="# Attacks"><NumInput value={value.numberOfAttacks} min={1} onChange={v => patch({ numberOfAttacks: Math.max(1, v || 1) })} /></Cell>
+        <Cell label="Reload steps"><NumInput value={value.reloadSteps ?? 1} min={0} onChange={v => patch({ reloadSteps: Math.max(0, v) })} /></Cell>
         <Cell label="Atk bonus"><NumInput value={value.attackBonus} onChange={v => patch({ attackBonus: v })} /></Cell>
       </div>
 

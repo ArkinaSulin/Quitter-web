@@ -40,7 +40,7 @@ function drawDeployedWarMachineCard(
   const state = unit.warMachineState;
   const stepsUsed = Math.max(0, Math.min(5, Math.floor(state?.stepsUsed ?? 0)));
   const steps = 5 - stepsUsed;
-  const reloadSteps = 1;
+  const reloadSteps = Math.max(0, Math.floor(weapon?.reloadSteps ?? 1));
   const reload = state?.armed ? 'armed' : `${Math.max(0, Math.floor(state?.reloadProgress ?? 0))}/${reloadSteps || 0}`;
   ctx.save();
   ctx.translate(x, y);

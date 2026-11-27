@@ -361,3 +361,12 @@ describe('weapon attack class', () => {
     expect(parseWeapons('Spear,3,1d6,false,1,0,0,false,false,false,false,1')[0].attackClass).toBeUndefined();
   });
 });
+
+describe('war machine reload steps', () => {
+  it('round-trips an explicit reload step count', () => {
+    const w: Weapon = { name: 'Ballista', attackBonus: 3, damageDice: '2d6', isHealing: false, range: 2, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10, warMachine: true, attackClass: 'siege', reloadSteps: 3 };
+    const s = stringifyWeapons([w]);
+    expect(parseWeapons(s)[0].reloadSteps).toBe(3);
+    expect(parseWeapons(s)[0].attackClass).toBe('siege');
+  });
+});

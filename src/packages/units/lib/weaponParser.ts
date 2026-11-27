@@ -40,6 +40,8 @@ export interface Weapon {
   /** Explicit attack class for ship damage (old strings infer from warMachine /
    *  magicDimension). */
   attackClass?: 'personal' | 'magic' | 'siege';
+  /** Deployed war-machine reload steps (0 = fire immediately); default 1. */
+  reloadSteps?: number;
   /** Crew needed to operate the weapon. Stored for later use (e.g. ships); no
    *  rule consumes it yet. 0/absent = no requirement. */
   minCrew?: number;
@@ -208,6 +210,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
       const attackClass = attackClassRaw === 'personal' || attackClassRaw === 'magic' || attackClassRaw === 'siege'
         ? attackClassRaw
         : undefined;
+      const reloadSteps = Math.max(0, parseInt(parts[20]) || 1);
       return {
         name: parts[0] || 'Unknown',
         attackBonus: parseInt(parts[1]) || 0,
@@ -230,6 +233,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         warMachine,
         minRange: Math.max(0, parseInt(parts[17]) || 0),
         minCrew: Math.max(0, parseInt(parts[18]) || 0),
+        ...(parts[20] ? { reloadSteps } : {}),
         ...(attackClass ? { attackClass } : {}),
       };
     });
@@ -244,7 +248,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}${w.attackClass ? `,${w.attackClass}` : ''}`
+      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}${w.attackClass || w.reloadSteps != null ? `,${w.attackClass ?? ''}` : ''}${w.reloadSteps != null ? `,${w.reloadSteps}` : ''}`
     )
     .join(';');
 }
