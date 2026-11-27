@@ -6316,7 +6316,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       setSelectedHex(hex);
       setSelectedUnit(null);
     },
-    onUnitClick: (unit, _clientX, _clientY) => {
+    onUnitClick: (unit, clientX, clientY) => {
       if (controlsLocked || reactionMode) return;
       if (warMachineFireMode) {
         const attacker = units.find(u => u.id === warMachineFireMode && !u.isDeleted);
@@ -6350,7 +6350,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
       if (unit.deployedWarMachine) {
-        void handleWarMachineFireClick(unit);
+        const w = TOKEN_WIDTH * zoom;
+        const h = TOKEN_HEIGHT * zoom;
+        const p = hexToPixel(unit.hex, HEX_SIZE);
+        const cx = p.x * zoom + offsetX;
+        const cy = p.y * zoom + offsetY;
+        const dx = clientX - cx;
+        const dy = clientY - cy;
+        const a = (((Math.floor(unit.facing) || 0) % 6) * Math.PI) / 3;
+        const lx = dx * Math.cos(a) + dy * Math.sin(a);
+        const ly = -dx * Math.sin(a) + dy * Math.cos(a);
+        const onFire = lx >= -w * 0.22 && lx <= w * 0.22 && ly >= h * 0.34 && ly <= h * 0.5;
+        if (onFire) {
+          void handleWarMachineFireClick(unit);
+          return;
+        }
+        setSelectedUnit(unit);
         return;
       }
       if (tryShipRam(unit.hex)) return;
