@@ -30,6 +30,9 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Deployed war machine compact token card (2026-11-26)**: deployed units draw a
+  card-in-token with weapon name, reload, numeric crew, steps n/5 and a visual
+  Fire button; the card rotates 60° with facing. Fire click wiring remains next.
 - **Deployed war machine 5-step action model (2026-11-26)**: per-turn step/reload
   state (migration 185), Fire auto-loads/fires/auto-loads leftovers; moving clears
   deployment and spends the steps. Token Fire UI remains next.

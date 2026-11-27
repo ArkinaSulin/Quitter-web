@@ -13,6 +13,7 @@ import { isDeadCorpse } from '@/packages/units';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { corpseDots, corpseDotShape, FallenMap } from '@/packages/battle';
 import { TEAM_COLORS, Team } from '@/packages/units';
+import { parseWeapons } from '@/packages/units';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, PlacedShip, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
 import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
 import { shipFacingRadians } from '@/packages/ships';
@@ -23,6 +24,58 @@ import { MapStructures, isHexStructureKey, structureSurfaceAt, climbStepsFromFee
 import { StructureTemplate } from '@/types/structure';
 import { strokeFillText, fillHexPath, strokeHexPath, traceHexPath, MP_COST_GREY, edgeStructureVisuals, mapTextStyles, MONO, drawHexStructure, drawEffectMark, climbLabelText, drawClimbLabel, hexClimbLabels, CLIMB_LABEL_OFFSET } from '@/components/shared/mapFeatureDraw';
 import { AiOverlayData } from './aiTypes';
+
+/** Compact deployed war-machine card drawn inside a unit token. */
+function drawDeployedWarMachineCard(
+  ctx: CanvasRenderingContext2D,
+  unit: Unit,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  zoom: number,
+): void {
+  const weapons = parseWeapons(unit.weaponString || '');
+  const weapon = weapons[unit.activeWeaponIndex ?? 0] ?? weapons[0];
+  const state = unit.warMachineState;
+  const stepsUsed = Math.max(0, Math.min(5, Math.floor(state?.stepsUsed ?? 0)));
+  const steps = 5 - stepsUsed;
+  const reloadSteps = 1;
+  const reload = state?.armed ? 'armed' : `${Math.max(0, Math.floor(state?.reloadProgress ?? 0))}/${reloadSteps || 0}`;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((((Math.floor(unit.facing) || 0) % 6) * Math.PI) / 3);
+  ctx.fillStyle = 'rgba(24, 24, 27, 0.94)';
+  ctx.strokeStyle = '#d97706';
+  ctx.lineWidth = Math.max(1.5, 2 * zoom);
+  const w = width;
+  const h = height;
+  ctx.beginPath();
+  ctx.rect(-w / 2, -h / 2, w, h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#fde68a';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const font = Math.max(7, 9 * zoom);
+  ctx.font = `${font}px monospace`;
+  ctx.fillText((weapon?.name ?? 'War machine').slice(0, 18), 0, -h * 0.3);
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillText(`reload ${reload}`, 0, -h * 0.08);
+  ctx.fillText(`crew ${Math.max(0, unit.currentTroopCount)}`, 0, h * 0.08);
+  ctx.fillText(`steps ${steps}/5`, 0, h * 0.24);
+  // Fire button (bottom centre).
+  ctx.fillStyle = steps > 0 ? 'rgba(180, 83, 9, 0.95)' : 'rgba(75, 85, 99, 0.9)';
+  ctx.strokeStyle = steps > 0 ? '#fbbf24' : '#4b5563';
+  ctx.beginPath();
+  ctx.rect(-w * 0.22, h * 0.34, w * 0.44, h * 0.16);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#fff7ed';
+  ctx.font = `bold ${Math.max(7, 8 * zoom)}px monospace`;
+  ctx.fillText('Fire', 0, h * 0.42);
+  ctx.restore();
+}
 
 interface CanvasDrawDeps {
   canvasRef: RefObject<HTMLCanvasElement>;
@@ -793,6 +846,11 @@ export function useCanvasDraw(deps: CanvasDrawDeps) {
         ctx.ellipse(cx, cy, tokenWidth * 0.3, tokenHeight * 0.12, 0, 0, 2 * Math.PI);
         ctx.fill();
         ctx.restore();
+      }
+      if (unit.deployedWarMachine) {
+        drawDeployedWarMachineCard(ctx, unit, tokenCx, tokenCy, tokenWidth, tokenHeight, currentZoom);
+        if (unit.hidden) ctx.restore();
+        continue;
       }
       try {
         drawToken({

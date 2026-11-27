@@ -1,5 +1,15 @@
 # QuiTTER Changelog
 
+## Deployed war machine compact token card (2026-11-26)
+**Files:** src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{outstanding,changelog}.md, AGENTS.md
+
+- Deployed war machines now draw as a compact **card inside the unit token**:
+  weapon name, reload state, numeric crew count, `steps n/5`, and a Fire button.
+- The card rotates with the unit in 60° steps, matching the deployed 60° arc.
+- The Fire button is visual only in this pass; wiring it to target selection and
+  the 5-step action resolver is the next step.
+- No migration.
+
 ## Deployed war machine 5-step action model (2026-11-26)
 **Files:** src/packages/units/lib/{warMachine.ts,weaponParser.ts}, src/packages/units/tests/warMachine.test.ts, src/packages/units/index.ts, src/types/gameProtocol.ts, src/hooks/{useGameEngine.ts,useSupabaseSync.ts}, supabase/migrations/185_unit_war_machine_state.sql, docs/dev/{02,outstanding,changelog}.md, AGENTS.md
 
