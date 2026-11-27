@@ -6318,6 +6318,37 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onUnitClick: (unit, _clientX, _clientY) => {
       if (controlsLocked || reactionMode) return;
+      if (warMachineFireMode) {
+        const attacker = units.find(u => u.id === warMachineFireMode && !u.isDeleted);
+        if (!attacker?.hex || !unit.hex || !isHostile(attacker.team, unit.team, alliances)) {
+          setWarMachineFireMode(null);
+          return;
+        }
+        const weapon = parseWeapons(attacker.weaponString || '')[attacker.activeWeaponIndex ?? 0];
+        const dist = hexDistance(attacker.hex, unit.hex);
+        const inArc = facingToward(attacker.hex, unit.hex) === ((attacker.facing % 6) + 6) % 6;
+        if (!weapon || !inArc || dist < (weapon.minRange ?? 0) || dist > weapon.maxRange) {
+          addError('That unit is outside the war machine’s 60° arc or range.');
+          setWarMachineFireMode(null);
+          return;
+        }
+        setWarMachineFireMode(null);
+        const plan = planWarMachineFire(attacker.warMachineState, turnNumber, Math.max(0, Math.floor(weapon.reloadSteps ?? 1)));
+        const fake = {
+          ...attacker,
+          actionsAvailable: (attacker.actionsAvailable ?? 0) + 1,
+          attacksUsed: Math.max(0, (attacker.attacksUsed ?? 0) - 1),
+        };
+        void performAttack(fake, unit, false, {
+          prependSubSteps: [{
+            type: 'OTHER_ACTION',
+            unitId: attacker.id,
+            description: `${attacker.unitName} fired its deployed war machine`,
+            changes: [{ field: 'warMachineState', from: attacker.warMachineState ?? {}, to: plan.state }],
+          }],
+        });
+        return;
+      }
       if (unit.deployedWarMachine) {
         void handleWarMachineFireClick(unit);
         return;
