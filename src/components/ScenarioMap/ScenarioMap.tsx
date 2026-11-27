@@ -6758,11 +6758,32 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         return;
       }
     }
+    if (warMachineFireMode) {
+      const unit = units.find(u => u.id === warMachineFireMode && !u.isDeleted);
+      const weapon = unit ? parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0] : null;
+      const fills: Record<string, string> = {};
+      if (unit && weapon) {
+        const radius = backgroundConfig?.gridRadius ?? DEFAULT_GRID_RADIUS;
+        for (let q = -radius; q <= radius; q += 1) {
+          for (let r = -radius; r <= radius; r += 1) {
+            const hex = { q, r, s: -q - r };
+            if (!isHexOnGrid(hex, radius)) continue;
+            const dist = hexDistance(unit.hex, hex);
+            if (dist > weapon.maxRange || dist < (weapon.minRange ?? 0)) continue;
+            if (facingToward(unit.hex, hex) !== ((unit.facing % 6) + 6) % 6) continue;
+            fills[`${q},${r}`] = 'rgba(251, 191, 36, 0.28)';
+          }
+        }
+      }
+      setOverlayMap(fills);
+      setOverlayLabels({});
+      return;
+    }
     const { fills, labels } = computeOverlayMap({ reactionMode, draggingUnitId, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, terrainCosts: zoneMpCosts, walls, structures, templates: structureTemplates, zones: effectiveZones, threatShips, shipObstacles, chargeFacing: chargeAimFacing, reactiveArchery: archerReactionEnabled, showAllMoveMp, movePreviewMode });
     if (retreatHoverHex) fills[retreatHoverHex] = 'rgba(255, 220, 90, 0.55)';
     setOverlayMap(fills);
     setOverlayLabels(labels);
-  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, turnNumber, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, threatShips, shipObstacles, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode, shipFireMode, shipFiringArcs]);
+  }, [reactionMode, draggingUnitId, draggingShipId, shipRuntime, shipMode, shipStep, turnNumber, currentTurnAlliance, hoveredUnit, units, alliances, formationsMap, freeMove, backgroundConfig, rangeViolationHex, zoneMpCosts, walls, structures, structureTemplates, effectiveZones, threatShips, shipObstacles, warMachineFireMode, hoveredWallEdge, retreatHoverHex, chargeAimFacing, archerReactionEnabled, showAllMoveMp, movePreviewMode, shipFireMode, shipFiringArcs]);
 
   // Center map on initial load
   useEffect(() => {
