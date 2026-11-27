@@ -4,6 +4,38 @@ Living roadmap of what is **not built yet**, for the next session. Shipped work
 goes in `docs/dev/changelog.md`; this file is the forward-looking list.
 Statuses: next / later / blocked / done-here-listed-for-context.
 
+## Spelljammer unit-ship interaction / war machines (phased roadmap)
+
+Rules already settled. Current: occupancy blocks stacking and pass-through;
+ship stats/render layers are in. Remaining phases:
+
+1. **Damage classification** - classify unit attacks vs ships as personal /
+   single-target magic / AoE magic / siege / Huge+ (`sizeCategory >= 300`).
+2. **Unit-to-ship drop routing** - hero below Large: Board/Attack prompt;
+   non-hero: attack when eligible; ship-to-unit is always move; reject
+   ineligible drops.
+3. **Unit attack damage** - AC then DT; personal consumes the action and deals
+   nothing with a clear message; single-target magic that passes DT damages ship
+   HP only; AoE auto-hits, passes DT for component damage and 3/2/1 crew by
+   radius (>=20 ft / between / <=5 ft); siege and Huge+ use the ship-weapon
+   pipeline.
+4. **Hero prompt polish** - hostile-only Board/Attack; cancel is free.
+5. **Deployed warmachine state** - context item **Deploy war machine - 2
+   actions**; rotate 2 actions; moving auto-undeploys and sets Scattered;
+   attacked and retaliates as a unit; 60-degree fire arc.
+6. **Deployed actions** - 5 steps/turn; Fire auto-loads, remaining steps
+   auto-load after firing; moving and loading/firing are mutually exclusive.
+7. **Deployed token card** - weapon name, reload number, numeric crew, 5-step
+   indicator, Fire button; full card-in-token replacement.
+8. **Stats** - ships already one-troop rows; add unit-to-ship damage attribution;
+   crew rows remain future (one per distinct crew line, starting/lost only).
+
+### Done when
+- Unit drops on ships never stack and route to a legal attack/prompt or are rejected.
+- Personal weapons visibly do nothing; magic/siege/Huge follow DT rules.
+- A warmachine unit can deploy, load/fire with 5 steps, rotate, and move away
+  (auto-Scattered) with all changes undoable.
+
 ## Spelljammer runtime (in progress, migrations 151�?"157)
 **Shipped:** ability-score/save split, scenario ship mode + firing-arc toggle +
 step counter, `ship_spelljammer` instance columns + RLS + `SHIP` command log,

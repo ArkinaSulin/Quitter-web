@@ -30,6 +30,11 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Unit→ship drop classification/routing (2026-11-26)**: personal / single-target
+  magic / AoE / siege / Huge+ classifier, Board/Attack prompt for hostile hero
+  drops, non-hero attack prompt when a weapon reaches; ship→unit stays a move.
+  Provisional AC→DT ship damage; full pipelines and deployed warmachine are
+  phased in `docs/dev/outstanding.md`.
 - **Ship occupancy, elevated rendering, ship stats (2026-11-26)**: units and
   ships block each other (no stacking/pass-through; heroes board instead);
   airborne atmosphere ships use the flying-unit offset + ground shadow; ships

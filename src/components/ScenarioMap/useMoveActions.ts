@@ -98,6 +98,8 @@ interface MoveActionsDeps {
   /** Boarding: the drop target contains a ship. Return true when handled (the
    *  normal move must not also happen). `cost`/`maxMP` are the validated path. */
   onBoardShip?: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, isFree: boolean) => Promise<boolean>;
+  /** Non-hero drop on a ship: attack when eligible. Return true when handled. */
+  onAttackShip?: (unit: Unit, targetHex: Hex, cost: number, maxMP: number, isFree: boolean) => Promise<boolean>;
   /** Free-placement boarding; skips adjacency and same-elevation checks. */
   onBoardShipFree?: (unit: Unit, shipId: string) => Promise<void>;
   /** Resolve the valid levels/hosts at a free-placement hex. */
@@ -154,6 +156,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
     shipObstacles,
     pursuitsRef,
     onBoardShip,
+    onAttackShip,
     onBoardShipFree,
     buildFreePlacementOptions,
     requestFreePlacement,
@@ -782,6 +785,16 @@ export function useMoveActions(deps: MoveActionsDeps) {
         return;
       }
 
+      const shipDropKey = `${targetHex.q},${targetHex.r}`;
+      const targetIsShip = !!shipObstacles
+        && (shipObstacles.ground.has(shipDropKey) || shipObstacles.air.has(shipDropKey));
+      if (targetIsShip) {
+        if (await onBoardShip?.(unit, targetHex, 0, unitMaxMP(unit), true)) return;
+        if (await onAttackShip?.(unit, targetHex, 0, unitMaxMP(unit), true)) return;
+        addMessage(`${unit.unitName} cannot enter ${targetHex.q}, ${targetHex.r} — ship occupied`);
+        return;
+      }
+
       // Attached-hero fallthrough keeps the existing occupancy / flyer / move
       // behavior (detach is handled above).
       const occupied = flying
@@ -809,6 +822,7 @@ export function useMoveActions(deps: MoveActionsDeps) {
       }
       const breakToFormation = flying ? undefined : (entryBreakFormation(unit.hex, targetHex, unit.currentFormation, structures, structureTemplates, groundZones) ?? undefined);
       if (await onBoardShip?.(unit, targetHex, 0, unitMaxMP(unit), true)) return;
+      if (await onAttackShip?.(unit, targetHex, 0, unitMaxMP(unit), true)) return;
       await moveUnitFree(unit, targetHex, attachedHero, breakToFormation, raisedTarget ? targetTop : descendElev);
       await maybeAutoReturnToRanged(unit);
       offerReactionsFor({ ...unit, hex: targetHex });
@@ -819,6 +833,15 @@ export function useMoveActions(deps: MoveActionsDeps) {
 
     const movementMult = getFormationMultiplier(formationsMap, unit.currentFormation, 'movement_multiplier');
     const effectiveMax = flying ? originMax : computeEffectiveMovement(unit, movementMult);
+    const shipDropKey = `${targetHex.q},${targetHex.r}`;
+    const targetIsShip = !!shipObstacles
+      && (shipObstacles.ground.has(shipDropKey) || shipObstacles.air.has(shipDropKey));
+    if (targetIsShip) {
+      if (await onBoardShip?.(unit, targetHex, 0, unitMaxMP(unit), false)) return;
+      if (await onAttackShip?.(unit, targetHex, 0, unitMaxMP(unit), false)) return;
+      addMessage(`${unit.unitName} cannot enter ${targetHex.q}, ${targetHex.r} — ship occupied`);
+      return;
+    }
     const occupied = flying ? flyOccupied : withShipObstacles(computeOccupiedHexes(units, unitId, originSurface), false);
     const threatHexes = computeThreatHexes(units, unitId, alliances, formationsMap, structures, structureTemplates, threatShips);
     const mounted = !!unit.mountId || !!unit.mountName;
@@ -903,8 +926,9 @@ export function useMoveActions(deps: MoveActionsDeps) {
       return;
     }
     if (await onBoardShip?.(unit, targetHex, reachEntry.cost, finalMax, false)) return;
+    if (await onAttackShip?.(unit, targetHex, reachEntry.cost, finalMax, false)) return;
     await completeMove(unit, targetHex, reachEntry.cost, false, finalMax, attachedHero, heroMax, breakToFormation, descendElev, originSurface);
-  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero, onBoardShip, onBoardShipFree, buildFreePlacementOptions, requestFreePlacement]);
+  }, [units, formationsMap, alliances, completeMove, addMessage, freeMove, moveUnitFree, isMoveAffordable, isHeroMoveAffordable, unitMaxMP, terrainCosts, walls, structures, structureTemplates, handleClimbMove, maybeAutoReturnToRanged, offerReactionsFor, pruneReactionOffers, finishHeroMove, attachHero, onBoardShip, onAttackShip, onBoardShipFree, buildFreePlacementOptions, requestFreePlacement]);
 
   /**
    * Atomic climb OVER a freestanding edge wall: climb up to the top (near side),

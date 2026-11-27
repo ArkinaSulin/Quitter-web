@@ -1,5 +1,22 @@
 # QuiTTER Changelog
 
+## Unit→ship drops: classification + attack/board routing (2026-11-26)
+**Files:** src/packages/units/lib/unitShipAttack.ts, src/packages/units/lib/weaponParser.ts, src/packages/units/index.ts, src/packages/units/tests/unitShipAttack.test.ts, src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts}, docs/dev/{outstanding,changelog}.md, AGENTS.md
+
+- Added the unit-attack-vs-ship classifier: **personal / single-target magic /
+  AoE magic / siege / Huge+** (`sizeCategory >= 300`), plus a best-reaching-weapon
+  helper.
+- Dropping a unit on a ship no longer stacks:
+  - a hero on a hostile ship gets **Board / Attack**;
+  - a non-hero with a reaching weapon gets the attack prompt;
+  - no reaching weapon/personal-only still consumes the attack action with a clear
+    message;
+  - ship→unit remains a move only.
+- Provisional ship damage uses AC then DT; full magic/siege pipelines and the
+  deployed warmachine remain in the phased roadmap
+  (`docs/dev/outstanding.md`).
+- No migration.
+
 ## Ship occupancy, elevated rendering, ship stats (2026-11-26)
 **Files:** src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts,useOverlay.ts,useReactionActions.ts,useCanvasDraw.ts,ScenarioStatsModal.tsx}, src/hooks/useHexGrid.ts, src/packages/world/lib/placedShips.ts, src/packages/battle/lib/battleStats.ts, docs/dev/{08,21,outstanding,changelog}.md, AGENTS.md
 

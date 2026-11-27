@@ -37,6 +37,9 @@ export interface Weapon {
   /** Minimum range in hexes: the weapon cannot attack a target closer than this
    *  (`minRange <= dist <= maxRange`). 0/absent = no minimum. */
   minRange?: number;
+  /** Single-target magic weapon (future authored flag; area magic is detected by
+   *  `magicDimension > 0`). */
+  magic?: boolean;
   /** Crew needed to operate the weapon. Stored for later use (e.g. ships); no
    *  rule consumes it yet. 0/absent = no requirement. */
   minCrew?: number;

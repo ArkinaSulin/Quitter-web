@@ -9,7 +9,7 @@ import { routRetreatPath, type RoutPath } from '@/packages/morale';
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/units';
 import { applyMoveCost, applyHeroMoveCost, moveBudgetUnit, isLooseUnit, canAdoptFormation } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
-import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost } from '@/packages/units';
+import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost, classifyUnitShipAttack, unitShipAttackWeapon } from '@/packages/units';
 import { canReactWithWeapon, resolveSpellDamage } from '@/packages/combat';
 import { getFormations } from '@/packages/infra';
 import { loadSettings, getSetting } from '@/packages/infra';
@@ -1006,6 +1006,14 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
   // Tooltip
   const [hoveredUnit, setHoveredUnit] = useState<Unit | null>(null);
   const [hoveredShip, setHoveredShip] = useState<{ ship: ShipRuntime; x: number; y: number } | null>(null);
+  const [pendingShipDrop, setPendingShipDrop] = useState<{
+    unit: Unit;
+    ship: ShipRuntime;
+    cost: number;
+    maxMP: number;
+    isFree: boolean;
+    canBoard: boolean;
+  } | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   // Context menu
@@ -1953,6 +1961,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       addError('Board from a hex adjacent to the ship.');
       return true;
     }
+    const unitAlliance = allianceOf(unit.team, alliances);
+    const shipAlliance = shipOwnerAlliance(ship, units, alliances);
+    if (shipAlliance !== null && unitAlliance !== shipAlliance) {
+      setPendingShipDrop({ unit, ship, cost, maxMP, isFree, canBoard: true });
+      return true;
+    }
     const maxSize = getSetting('hero_attach_max_size', 200);
     if ((unit.sizeCategory ?? 100) > maxSize) {
       addError('That hero is too large to board.');
@@ -1964,7 +1978,87 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     await handleBoardHero(unit, ship.id, cost, maxMP, isFree);
     return true;
-  }, [shipRuntime, handleBoardHero, addError]);
+  }, [shipRuntime, handleBoardHero, addError, units, alliances]);
+
+  const resolvePendingShipAttack = useCallback(async () => {
+    const pending = pendingShipDrop;
+    if (!pending) return;
+    setPendingShipDrop(null);
+    const { unit, ship } = pending;
+    if (!ship.hex) return;
+    const weapon = unitShipAttackWeapon(parseWeapons(unit.weaponString), hexDistance(unit.hex, ship.hex));
+    if (!weapon) return;
+    const cls = classifyUnitShipAttack(unit, weapon);
+    const actionCost = weapon.freeAction ? 0 : 1;
+    const actionSteps: SubStep[] = actionCost > 0
+      ? [{
+          type: 'OTHER_ACTION',
+          unitId: unit.id,
+          description: `${unit.unitName} spent an action attacking ${ship.name}`,
+          changes: [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - actionCost }],
+        }]
+      : [];
+    if (cls === 'personal') {
+      const text = `${unit.unitName}'s personal weapons cannot damage ${shipDisplayName(ship)}.`;
+      await execute('ATTACK', actionSteps, text, { message: text });
+      return;
+    }
+    const ac = ship.snapshot?.stats?.ac ?? 10;
+    const dt = ship.snapshot?.stats?.damageThreshold ?? 15;
+    const attackRoll = 1 + Math.floor(Math.random() * 20);
+    const autoHit = cls === 'magic-aoe';
+    const hit = autoHit || attackRoll === 20 || (attackRoll !== 1 && attackRoll + weapon.attackBonus >= ac);
+    const damageRoll = hit ? rollDamageDetailed(weapon.damageDice, Math.random) : null;
+    const damage = damageRoll?.total ?? 0;
+    const penetrated = hit && damage >= dt;
+    const newHp = penetrated ? Math.max(0, ship.shipHp - damage) : ship.shipHp;
+    const text = penetrated
+      ? `${unit.unitName} hit ${shipDisplayName(ship)} with ${weapon.name} for ${damage}.`
+      : hit
+        ? `${unit.unitName} hit ${shipDisplayName(ship)} with ${weapon.name}, but ${damage} did not beat damage threshold ${dt}.`
+        : `${unit.unitName} missed ${shipDisplayName(ship)} with ${weapon.name}.`;
+    const verbose = [
+      text,
+      autoHit ? '(area spell auto-hit)' : `{D20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus} vs AC ${ac}: ${attackRoll}}`,
+      damageRoll ? `${damage} damage {${weapon.damageDice}: ${damageRoll.faces.join(',')}} vs DT ${dt}` : '',
+    ].filter(Boolean).join('\n');
+    const shipSteps: SubStep[] = penetrated
+      ? [{
+          type: 'SHIP',
+          unitId: ship.id,
+          description: `${shipDisplayName(ship)} took ${damage}`,
+          changes: [
+            { field: 'shipHp', from: ship.shipHp, to: newHp },
+            { field: 'minHpAttained', from: ship.minHpAttained, to: minHpAfterDamage(ship.minHpAttained, newHp) },
+          ],
+          payload: { killerUnitId: unit.id, victimLevel: 0 },
+        }]
+      : [];
+    await execute('ATTACK', [...actionSteps, ...shipSteps], text, { message: text, verboseMessage: verbose });
+  }, [pendingShipDrop, execute]);
+
+  /** Non-hero drop on a ship: route to the ship-attack prompt when a weapon reaches. */
+  const onAttackShip = useCallback(async (
+    unit: Unit,
+    targetHex: Hex,
+    cost: number,
+    maxMP: number,
+    isFree: boolean,
+  ): Promise<boolean> => {
+    if (unit.isHero) return false;
+    const ship = shipRuntime.find(s =>
+      !s.isDeleted && s.hex && s.hex.q === targetHex.q && s.hex.r === targetHex.r,
+    );
+    if (!ship?.hex) return false;
+    const weapons = parseWeapons(unit.weaponString);
+    const weapon = unitShipAttackWeapon(weapons, hexDistance(unit.hex, ship.hex));
+    if (!weapon) {
+      addError(`${unit.unitName} has no weapon that can reach ${ship.name}.`);
+      return true;
+    }
+    setPendingShipDrop({ unit, ship, cost, maxMP, isFree, canBoard: false });
+    return true;
+  }, [shipRuntime, addError]);
 
   /** Free-placement boarding: adjacency and same-elevation checks are waived. */
   const onBoardShipFree = useCallback(async (unit: Unit, shipId: string) => {
@@ -4496,6 +4590,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     shipObstacles,
     pursuitsRef,
     onBoardShip,
+    onAttackShip,
     onBoardShipFree,
     buildFreePlacementOptions: buildFreePlacementOptionsFor,
     requestFreePlacement: openFreePlacement,
@@ -8761,6 +8856,38 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           }}
         />
       )}
+      {pendingShipDrop && (
+        <div className="fixed inset-0 z-[270] grid place-items-center bg-black/60 p-4" onMouseDown={() => setPendingShipDrop(null)}>
+          <div className="w-full max-w-sm rounded-lg border border-gray-600 bg-gray-800 p-3 shadow-xl" onMouseDown={e => e.stopPropagation()}>
+            <div className="mb-1 text-sm font-semibold text-amber-200">
+              {pendingShipDrop.unit.unitName} → {shipDisplayName(pendingShipDrop.ship)}
+            </div>
+            <p className="mb-2 text-[11px] text-gray-400">
+              {pendingShipDrop.canBoard
+                ? 'Board the ship or attack it?'
+                : 'Attack the ship with the equipped weapon?'}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPendingShipDrop(null)} className="rounded border border-gray-600 px-2 py-1 text-xs text-gray-300 hover:bg-gray-700">Cancel</button>
+              {pendingShipDrop.canBoard && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pending = pendingShipDrop;
+                    setPendingShipDrop(null);
+                    void handleBoardHero(pending.unit, pending.ship.id, pending.cost, pending.maxMP, pending.isFree);
+                  }}
+                  className="rounded border border-sky-600 px-2 py-1 text-xs text-sky-200 hover:bg-sky-900/40"
+                >
+                  Board
+                </button>
+              )}
+              <button type="button" onClick={() => void resolvePendingShipAttack()} className="rounded border border-amber-600 px-2 py-1 text-xs text-amber-200 hover:bg-amber-700/30">Attack</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {shipWindow && (
         <ShipWindow
           ship={shipWindow}
