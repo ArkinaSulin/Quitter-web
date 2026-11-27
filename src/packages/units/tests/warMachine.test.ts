@@ -41,4 +41,11 @@ describe('deployed war machine steps', () => {
     expect(r.state.turn).toBe(3);
     expect(r.fired).toBe(true);
   });
+
+  it('reload 0 is always armed and still spends one fire step', () => {
+    const r = planWarMachineFire(state(), 3, 0);
+    expect(r.fired).toBe(true);
+    expect(r.state.stepsUsed).toBe(1);
+    expect(r.loads).toBe(0);
+  });
 });

@@ -50,7 +50,10 @@ export function planWarMachineLoad(
   steps = WAR_MACHINE_STEPS_PER_TURN,
 ): WarMachineActionResult {
   const state = normalizeWarMachineState(raw, turn);
-  if (reloadSteps <= 0 || state.armed) return { state, fired: false, loads: 0 };
+  if (reloadSteps <= 0) {
+    return { state: { ...state, armed: true, reloadProgress: 0 }, fired: false, loads: 0 };
+  }
+  if (state.armed) return { state, fired: false, loads: 0 };
   const available = Math.min(steps, warMachineStepsRemaining(state));
   const needed = Math.max(1, Math.floor(reloadSteps) - state.reloadProgress);
   const loads = Math.max(0, Math.min(available, needed));
@@ -75,6 +78,7 @@ export function planWarMachineFire(
 ): WarMachineActionResult {
   let state = normalizeWarMachineState(raw, turn);
   const reload = Math.max(0, Math.floor(reloadSteps));
+  if (reload === 0) state = { ...state, armed: true, reloadProgress: 0 };
   let loads = 0;
   if (!state.armed && reload > 0) {
     const load = planWarMachineLoad(state, turn, reload, warMachineStepsRemaining(state));

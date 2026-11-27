@@ -22,7 +22,8 @@
 
 - Added the deployed warmachine 5-step load/fire model: Fire loads what it can,
   fires when armed with a step left, then auto-loads leftovers; a load that uses
-  all five steps cannot fire.
+  all five steps cannot fire. Reload 0 is always armed and still spends one fire
+  step.
 - Persisted `units.war_machine_state` (turn/steps/reload/armed); moving clears
   deployment and marks the steps used, so no load/fire that turn.
 - Migration 185 adds the column and field mapping.

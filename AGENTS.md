@@ -36,8 +36,8 @@ reusable maps. Here's the state:
   clicking a hostile ship or land unit in arc resolves and spends steps; clicking
   elsewhere selects the deployed card.
 - **Deployed war machine 5-step action model (2026-11-26)**: per-turn step/reload
-  state (migration 185), Fire auto-loads/fires/auto-loads leftovers; moving clears
-  deployment and spends the steps. Token Fire UI remains next.
+  state (migration 185), Fire auto-loads/fires/auto-loads leftovers; reload 0 is
+  always armed; moving clears deployment and spends the steps. Token Fire UI remains next.
 - **Deployed warmachine state (2026-11-26)**: context **Deploy war machine
   (2 actions)**, deployed state persisted (migration 184), 2-action rotation,
   moving auto-clears deployment and sets Scattered. 5-step load/fire and token

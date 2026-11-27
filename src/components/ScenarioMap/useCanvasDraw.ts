@@ -41,7 +41,9 @@ function drawDeployedWarMachineCard(
   const stepsUsed = Math.max(0, Math.min(5, Math.floor(state?.stepsUsed ?? 0)));
   const steps = 5 - stepsUsed;
   const reloadSteps = Math.max(0, Math.floor(weapon?.reloadSteps ?? 1));
-  const reload = state?.armed ? 'armed' : `${Math.max(0, Math.floor(state?.reloadProgress ?? 0))}/${reloadSteps || 0}`;
+  const reload = reloadSteps === 0 || state?.armed
+    ? 'armed'
+    : `${Math.max(0, Math.floor(state?.reloadProgress ?? 0))}/${reloadSteps}`;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate((((Math.floor(unit.facing) || 0) % 6) * Math.PI) / 3);
