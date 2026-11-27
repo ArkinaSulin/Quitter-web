@@ -30,7 +30,7 @@ describe('unit ship attack classification', () => {
   it('war machines are siege, area magic is AoE, flagged magic is single-target', () => {
     expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ warMachine: true }))).toBe('siege');
     expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ magicDimension: 20 }))).toBe('magic-aoe');
-    expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ magic: true }))).toBe('magic-single');
+    expect(classifyUnitShipAttack({ sizeCategory: 100 }, weapon({ attackClass: 'magic' }))).toBe('magic-single');
   });
 
   it('Huge and larger units use the ship-weapon pipeline regardless of weapon', () => {

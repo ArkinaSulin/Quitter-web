@@ -11,12 +11,17 @@ export const HUGE_SHIP_ATTACK_SIZE = 300;
 
 export function classifyUnitShipAttack(
   unit: { sizeCategory?: number | null },
-  weapon: Pick<Weapon, 'warMachine' | 'magicDimension' | 'isHealing' | 'magic'>,
+  weapon: Pick<Weapon, 'warMachine' | 'magicDimension' | 'isHealing' | 'attackClass'>,
 ): UnitShipAttackClass {
   if (Number(unit.sizeCategory ?? 0) >= HUGE_SHIP_ATTACK_SIZE) return 'huge';
+  if (weapon.attackClass === 'personal') return 'personal';
+  if (weapon.attackClass === 'siege') return 'siege';
+  if (weapon.attackClass === 'magic') {
+    return (weapon.magicDimension ?? 0) > 0 ? 'magic-aoe' : 'magic-single';
+  }
   if (weapon.warMachine) return 'siege';
   if ((weapon.magicDimension ?? 0) > 0) return 'magic-aoe';
-  if (weapon.magic || weapon.isHealing) return 'magic-single';
+  if (weapon.isHealing) return 'magic-single';
   return 'personal';
 }
 

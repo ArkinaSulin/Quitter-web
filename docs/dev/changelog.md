@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Explicit unit weapon attack class (2026-11-26)
+**Files:** src/packages/units/lib/{weaponParser.ts,unitShipAttack.ts}, src/packages/units/tests/{weaponParser,unitShipAttack}.test.ts, src/components/WeaponEditor/WeaponFields.tsx, docs/dev/{outstanding,changelog}.md, AGENTS.md
+
+- Added an explicit **Attack class** field to unit weapons: Personal / Magic /
+  Siege, serialized as a new CSV column.
+- Old weapon strings without the column infer: war machine → Siege, area magic →
+  Magic, otherwise Personal, so existing content keeps working.
+- The ship classifier now reads the authored class; AoE magic still wins for any
+  Magic weapon with a positive Magic Dimension.
+- No migration (weapon strings are text).
+
 ## Unit→ship drops: classification + attack/board routing (2026-11-26)
 **Files:** src/packages/units/lib/unitShipAttack.ts, src/packages/units/lib/weaponParser.ts, src/packages/units/index.ts, src/packages/units/tests/unitShipAttack.test.ts, src/components/ScenarioMap/{ScenarioMap.tsx,useMoveActions.ts}, docs/dev/{outstanding,changelog}.md, AGENTS.md
 

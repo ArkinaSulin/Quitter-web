@@ -348,3 +348,16 @@ describe('weaponIndicesReaching', () => {
     expect(weaponIndicesReaching(weapons, 0, 3)).toEqual([1, 2]);
   });
 });
+
+describe('weapon attack class', () => {
+  it('round-trips attackClass in the extended CSV column', () => {
+    const w: Weapon = { name: 'Wand', attackBonus: 5, damageDice: '2d6', isHealing: false, range: 4, maxRange: 8, magicDimension: 0, shape: 'circle', reach: false, noRetaliation: false, freeAction: false, isTwoHanded: false, numberOfAttacks: 1, onSaveHalfOrNeg: true, savingThrow: 'Dex', saveDC: 10, attackClass: 'magic' };
+    const s = stringifyWeapons([w]);
+    expect(s).toContain(',magic');
+    expect(parseWeapons(s)[0].attackClass).toBe('magic');
+  });
+
+  it('leaves old weapon strings without an attack class', () => {
+    expect(parseWeapons('Spear,3,1d6,false,1,0,0,false,false,false,false,1')[0].attackClass).toBeUndefined();
+  });
+});

@@ -37,9 +37,9 @@ export interface Weapon {
   /** Minimum range in hexes: the weapon cannot attack a target closer than this
    *  (`minRange <= dist <= maxRange`). 0/absent = no minimum. */
   minRange?: number;
-  /** Single-target magic weapon (future authored flag; area magic is detected by
-   *  `magicDimension > 0`). */
-  magic?: boolean;
+  /** Explicit attack class for ship damage (old strings infer from warMachine /
+   *  magicDimension). */
+  attackClass?: 'personal' | 'magic' | 'siege';
   /** Crew needed to operate the weapon. Stored for later use (e.g. ships); no
    *  rule consumes it yet. 0/absent = no requirement. */
   minCrew?: number;
@@ -202,6 +202,12 @@ export function parseWeapons(weaponString: string): Weapon[] {
       const range = parseInt(parts[4]) || 1;
       const savingThrow = (parts[13] || 'Dex') as SaveChoice;
       const shape = (parts[14] as AreaShape) || 'circle';
+      const magicDimension = parseInt(parts[6]) || 0;
+      const warMachine = parts[16] === 'true';
+      const attackClassRaw = parts[19];
+      const attackClass = attackClassRaw === 'personal' || attackClassRaw === 'magic' || attackClassRaw === 'siege'
+        ? attackClassRaw
+        : undefined;
       return {
         name: parts[0] || 'Unknown',
         attackBonus: parseInt(parts[1]) || 0,
@@ -211,7 +217,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         // maxRange is always >= range: 0 or absent means "same as range" (no
         // disadvantage band, and range is the hard cap).
         maxRange: parseInt(parts[5]) || range,
-        magicDimension: parseInt(parts[6]) || 0,
+        magicDimension,
         shape: AREA_SHAPES.includes(shape) ? shape : 'circle',
         reach: parts[7] === 'true',
         noRetaliation: parts[8] === 'true',
@@ -221,9 +227,10 @@ export function parseWeapons(weaponString: string): Weapon[] {
         onSaveHalfOrNeg: parts[12] !== 'false',
         savingThrow: (SAVE_STATS.includes(savingThrow as SaveStat) || savingThrow === 'none') ? savingThrow : 'Dex',
         saveDC: parseInt(parts[15]) || 10,
-        warMachine: parts[16] === 'true',
+        warMachine,
         minRange: Math.max(0, parseInt(parts[17]) || 0),
         minCrew: Math.max(0, parseInt(parts[18]) || 0),
+        ...(attackClass ? { attackClass } : {}),
       };
     });
 }
@@ -237,7 +244,7 @@ export function stringifyWeapons(weapons: Weapon[]): string {
   }
   return weapons
     .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}`
+      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}${w.attackClass ? `,${w.attackClass}` : ''}`
     )
     .join(';');
 }

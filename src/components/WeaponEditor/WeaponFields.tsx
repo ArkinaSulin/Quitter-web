@@ -129,9 +129,21 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
       <div className="border-t border-gray-700" />
 
       <div className="flex items-end gap-3">
+        <Cell label="Attack class">
+          <SelectInput
+            value={value.attackClass ?? 'personal'}
+            onChange={v => patch({ attackClass: v as NonNullable<Weapon['attackClass']> })}
+            options={[
+              { value: 'personal', label: 'Personal' },
+              { value: 'magic', label: 'Magic' },
+              { value: 'siege', label: 'Siege' },
+            ]}
+          />
+        </Cell>
         <Cell label="Magic Dimension (ft)"><NumInput value={value.magicDimension} min={0} onChange={v => patch({ magicDimension: Math.max(0, v) })} /></Cell>
         <Cell label="Shape"><SelectInput value={value.shape} onChange={v => patch({ shape: v as AreaShape })} options={AREA_SHAPES.map(s => ({ value: s, label: s }))} /></Cell>
       </div>
+      <p className="text-xs text-gray-500 -mt-2">Attack class controls ship damage: personal cannot hurt a Spelljammer; magic/siege can. AoE magic is any magic weapon with Dimension &gt; 0.</p>
 
       <p className="text-xs text-gray-500 -mt-2">Shape: circle = dimension is radius · cube = side · cone = 60° wedge · line = 5 ft-wide line. Dimension &gt; 0 makes this an area-effect weapon.</p>
 

@@ -30,6 +30,9 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Explicit unit weapon attack class (2026-11-26)**: weapons carry
+  Personal/Magic/Siege; old strings infer Siege from war machine and Magic from
+  area magic. Drives ship damage classification; no migration.
 - **Unit→ship drop classification/routing (2026-11-26)**: personal / single-target
   magic / AoE / siege / Huge+ classifier, Board/Attack prompt for hostile hero
   drops, non-hero attack prompt when a weapon reaches; ship→unit stays a move.
