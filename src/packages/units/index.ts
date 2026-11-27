@@ -7,5 +7,6 @@ export * from './lib/heroAttachment';
 export * from './lib/heroLayout';
 export * from './lib/weaponParser';
 export * from './lib/unitShipAttack';
+export * from './lib/warMachine';
 export * from './lib/verboseCombat';
 export * from './lib/tokenUtils';

@@ -1,5 +1,16 @@
 # QuiTTER Changelog
 
+## Deployed war machine 5-step action model (2026-11-26)
+**Files:** src/packages/units/lib/{warMachine.ts,weaponParser.ts}, src/packages/units/tests/warMachine.test.ts, src/packages/units/index.ts, src/types/gameProtocol.ts, src/hooks/{useGameEngine.ts,useSupabaseSync.ts}, supabase/migrations/185_unit_war_machine_state.sql, docs/dev/{02,outstanding,changelog}.md, AGENTS.md
+
+- Added the deployed warmachine 5-step load/fire model: Fire loads what it can,
+  fires when armed with a step left, then auto-loads leftovers; a load that uses
+  all five steps cannot fire.
+- Persisted `units.war_machine_state` (turn/steps/reload/armed); moving clears
+  deployment and marks the steps used, so no load/fire that turn.
+- Migration 185 adds the column and field mapping.
+- Token Fire button/card UI remains the next phase.
+
 ## Deployed warmachine state (2026-11-26)
 **Files:** src/types/gameProtocol.ts, src/hooks/{useGameEngine.ts,useSupabaseSync.ts}, src/components/ScenarioMap/{ContextMenu.tsx,ScenarioMap.tsx}, src/packages/units/lib/weaponParser.ts, supabase/migrations/184_unit_deployed_war_machine.sql, docs/dev/{outstanding,changelog}.md, AGENTS.md
 

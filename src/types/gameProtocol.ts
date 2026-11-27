@@ -199,6 +199,8 @@ export interface Unit extends AbilityScores, SavingThrows {
   pursuitUsed: boolean;
   /** Crew-served warmachine deployed in place (2-action deploy, 5-step fire). */
   deployedWarMachine?: boolean;
+  /** Deployed war machine 5-step load/fire state. */
+  warMachineState?: { turn: number; stepsUsed: number; reloadProgress: number; armed: boolean };
   /** Commanding-Presence leash: while this (hero) unit's aura covers a pursuer,
    *  that pursuer only chases when permit = true. DEFAULT false = the hero's
    *  presence holds the line (suppresses pursuit). */

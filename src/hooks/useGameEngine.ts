@@ -571,6 +571,7 @@ export function useGameEngine({
           unitId: unit.id,
           changes: [
             { field: 'deployedWarMachine', from: true, to: false },
+            { field: 'warMachineState', from: unit.warMachineState ?? {}, to: { ...(unit.warMachineState ?? {}), stepsUsed: 5, armed: false, reloadProgress: 0 } },
             { field: 'currentFormation', from: unit.currentFormation, to: 'Scattered' },
             { field: 'organizationLevel', from: unit.organizationLevel, to: 0 },
           ],
@@ -679,6 +680,7 @@ export function useGameEngine({
           unitId: unit.id,
           changes: [
             { field: 'deployedWarMachine', from: true, to: false },
+            { field: 'warMachineState', from: unit.warMachineState ?? {}, to: { ...(unit.warMachineState ?? {}), stepsUsed: 5, armed: false, reloadProgress: 0 } },
             { field: 'currentFormation', from: unit.currentFormation, to: 'Scattered' },
             { field: 'organizationLevel', from: unit.organizationLevel, to: 0 },
           ],

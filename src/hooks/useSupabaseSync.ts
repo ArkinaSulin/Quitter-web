@@ -113,6 +113,9 @@ function mapRowToUnit(row: any): Unit {
     archerReactionUsed: row.archer_reaction_used || false,
     pursuitUsed: row.pursuit_used || false,
     deployedWarMachine: row.deployed_war_machine || false,
+    warMachineState: row.war_machine_state && typeof row.war_machine_state === 'object'
+      ? row.war_machine_state
+      : undefined,
     commandPursuitPermit: row.command_pursuit_permit ?? false,
     heroicInspirationActive: row.heroic_inspiration_active || false,
     activeWeaponIndex: row.active_weapon_index || 0,
@@ -197,6 +200,7 @@ function mapUnitToRow(unit: Unit, scenarioId: string = 'default_mvp') {
     archer_reaction_used: unit.archerReactionUsed || false,
     pursuit_used: unit.pursuitUsed || false,
     deployed_war_machine: unit.deployedWarMachine ?? false,
+    war_machine_state: unit.warMachineState ?? {},
     command_pursuit_permit: unit.commandPursuitPermit ?? false,
     heroic_inspiration_active: unit.heroicInspirationActive || false,
     active_weapon_index: unit.activeWeaponIndex || 0,
@@ -514,6 +518,7 @@ export function useSupabaseSync(scenarioId: string = 'default_mvp') {
       archerReactionUsed: false,
       pursuitUsed: false,
       deployedWarMachine: false,
+      warMachineState: undefined,
       commandPursuitPermit: template.commandPursuitPermit ?? false,
       heroicInspirationActive: false,
       activeWeaponIndex,
