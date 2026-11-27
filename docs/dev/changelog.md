@@ -1,5 +1,18 @@
 # QuiTTER Changelog
 
+## Unit→ship attack damage v2 (2026-11-26)
+**Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{outstanding,changelog}.md, AGENTS.md
+
+- Unit→ship attacks now resolve each attack separately against ship AC then DT.
+- Siege/Huge fire `numberOfAttacks` shots; each penetrating shot damages ship HP
+  and destroys `/10` component tons.
+- AoE magic auto-hits, checks DT once, destroys component tons and hits 3/2/1
+  crew by radius (>=20 ft / between / <=5 ft).
+- Single-target magic remains ship HP only; personal remains zero damage with a
+  message.
+- Full siege crew/cargo pipeline and the deployed warmachine stay on the phased
+  roadmap.
+
 ## Explicit unit weapon attack class (2026-11-26)
 **Files:** src/packages/units/lib/{weaponParser.ts,unitShipAttack.ts}, src/packages/units/tests/{weaponParser,unitShipAttack}.test.ts, src/components/WeaponEditor/WeaponFields.tsx, docs/dev/{outstanding,changelog}.md, AGENTS.md
 

@@ -2005,37 +2005,121 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }
     const ac = ship.snapshot?.stats?.ac ?? 10;
     const dt = ship.snapshot?.stats?.damageThreshold ?? 15;
-    const attackRoll = 1 + Math.floor(Math.random() * 20);
     const autoHit = cls === 'magic-aoe';
-    const hit = autoHit || attackRoll === 20 || (attackRoll !== 1 && attackRoll + weapon.attackBonus >= ac);
-    const damageRoll = hit ? rollDamageDetailed(weapon.damageDice, Math.random) : null;
-    const damage = damageRoll?.total ?? 0;
-    const penetrated = hit && damage >= dt;
-    const newHp = penetrated ? Math.max(0, ship.shipHp - damage) : ship.shipHp;
+    const attackCount = cls === 'siege' || cls === 'huge'
+      ? Math.max(1, weapon.numberOfAttacks ?? 1)
+      : 1;
+    const attackRolls: number[] = [];
+    let totalDamage = 0;
+    let hitCount = 0;
+    let penetrated = false;
+    let lastDamage = 0;
+    const boxState = { ...(ship.boxState ?? {}) };
+    const crewState = { ...(ship.crewState ?? {}) };
+    const stations = { ...(ship.stations ?? {}) };
+    const extraSteps: SubStep[] = [];
+    const detail: string[] = [];
+    const componentHits = cls === 'siege' || cls === 'huge' || cls === 'magic-aoe';
+    const cards = ship.snapshot?.build
+      ? shipHitCards(ship.snapshot.build)
+        .map(c => ({ ...c, tons: Math.max(0, c.tons - Number(boxState[c.key] ?? 0)) }))
+        .filter(c => c.tons > 0)
+      : [];
+    for (let i = 0; i < attackCount; i += 1) {
+      const roll = 1 + Math.floor(Math.random() * 20);
+      attackRolls.push(roll);
+      const hit = autoHit || roll === 20 || (roll !== 1 && roll + weapon.attackBonus >= ac);
+      if (!hit) continue;
+      hitCount += 1;
+      const damageRoll = rollDamageDetailed(weapon.damageDice, Math.random);
+      lastDamage = damageRoll.total;
+      if (damageRoll.total < dt) continue;
+      penetrated = true;
+      totalDamage += damageRoll.total;
+      if (componentHits) {
+        const card = pickShipComponent(cards.filter(c => c.tons > 0));
+        if (card) {
+          const tons = cappedComponentTons(card.tons, damageRoll.total);
+          if (tons > 0) {
+            boxState[card.key] = Number(boxState[card.key] ?? 0) + tons;
+            card.tons -= tons;
+            detail.push(`${tons} ${card.name} box${tons === 1 ? '' : 'es'} destroyed`);
+          }
+          if (cls === 'magic-aoe') {
+            const radius = weapon.magicDimension ?? 0;
+            const crewCount = radius >= 20 ? 3 : radius <= 5 ? 1 : 2;
+            const targets = shipCardCrewTargets(ship, units, card.key);
+            const picked = pickDistinct(targets, Math.min(crewCount, targets.length), Math.random);
+            if (picked.length > 0) {
+              const station = stations[card.key];
+              if (station) stations[card.key] = { ...station, crewIds: [...(station.crewIds ?? [])] };
+              const names: string[] = [];
+              for (const target of picked) {
+                names.push(target.name);
+                if (target.kind === 'crew') {
+                  const hp = Math.max(0, target.hp - damageRoll.total);
+                  crewState[target.id] = {
+                    ...(crewState[target.id] ?? { hp: target.hp }),
+                    hp,
+                    dead: hp <= 0,
+                    ...(hp <= 0 ? { station: null } : {}),
+                  };
+                  if (hp <= 0) {
+                    const s = stations[card.key];
+                    if (s) s.crewIds = (s.crewIds ?? []).filter(id => id !== target.id);
+                  }
+                } else {
+                  const hero = units.find(u => u.id === target.id);
+                  if (!hero) continue;
+                  const hp = Math.max(0, (hero.currentUnitHp ?? 1) - damageRoll.total);
+                  extraSteps.push({
+                    type: 'DAMAGE',
+                    unitId: hero.id,
+                    description: `${hero.unitName} wounded aboard ${shipDisplayName(ship)}`,
+                    changes: [{ field: 'currentUnitHp', from: hero.currentUnitHp, to: hp }],
+                  });
+                }
+              }
+              detail.push(`${names.length} crew hit (${names.join(', ')})`);
+            }
+          }
+        }
+      }
+    }
+    const newHp = penetrated ? Math.max(0, ship.shipHp - totalDamage) : ship.shipHp;
     const text = penetrated
-      ? `${unit.unitName} hit ${shipDisplayName(ship)} with ${weapon.name} for ${damage}.`
-      : hit
-        ? `${unit.unitName} hit ${shipDisplayName(ship)} with ${weapon.name}, but ${damage} did not beat damage threshold ${dt}.`
+      ? `${unit.unitName} hit ${shipDisplayName(ship)} with ${weapon.name} for ${totalDamage}${detail.length > 0 ? ` — ${detail.join('; ')}` : ''}.`
+      : hitCount > 0
+        ? `${unit.unitName} hit ${shipDisplayName(ship)} with ${weapon.name}, but ${lastDamage} did not beat damage threshold ${dt}.`
         : `${unit.unitName} missed ${shipDisplayName(ship)} with ${weapon.name}.`;
     const verbose = [
       text,
-      autoHit ? '(area spell auto-hit)' : `{D20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus} vs AC ${ac}: ${attackRoll}}`,
-      damageRoll ? `${damage} damage {${weapon.damageDice}: ${damageRoll.faces.join(',')}} vs DT ${dt}` : '',
+      autoHit
+        ? '(area spell auto-hit)'
+        : attackRolls.map(r => `{D20${weapon.attackBonus >= 0 ? '+' : ''}${weapon.attackBonus} vs AC ${ac}: ${r}}`).join(' '),
+      penetrated ? `${totalDamage} total damage vs DT ${dt}` : '',
     ].filter(Boolean).join('\n');
     const shipSteps: SubStep[] = penetrated
       ? [{
           type: 'SHIP',
           unitId: ship.id,
-          description: `${shipDisplayName(ship)} took ${damage}`,
+          description: `${shipDisplayName(ship)} took ${totalDamage}`,
           changes: [
             { field: 'shipHp', from: ship.shipHp, to: newHp },
             { field: 'minHpAttained', from: ship.minHpAttained, to: minHpAfterDamage(ship.minHpAttained, newHp) },
+            ...(componentHits ? [{ field: 'boxState', from: ship.boxState ?? {}, to: boxState }] : []),
+            ...(cls === 'magic-aoe'
+              ? [
+                  { field: 'crewState', from: ship.crewState ?? {}, to: crewState },
+                  { field: 'stations', from: ship.stations ?? {}, to: stations },
+                ]
+              : []),
           ],
           payload: { killerUnitId: unit.id, victimLevel: 0 },
         }]
       : [];
-    await execute('ATTACK', [...actionSteps, ...shipSteps], text, { message: text, verboseMessage: verbose });
-  }, [pendingShipDrop, execute]);
+    await execute('ATTACK', [...actionSteps, ...extraSteps, ...shipSteps], text, { message: text, verboseMessage: verbose });
+  }, [pendingShipDrop, execute, units]);
 
   /** Non-hero drop on a ship: route to the ship-attack prompt when a weapon reaches. */
   const onAttackShip = useCallback(async (
