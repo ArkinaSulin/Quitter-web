@@ -50,6 +50,20 @@ describe('weaponMappers', () => {
     expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, saveDC: -3 }).save_dc).toBe(0);
   });
 
+  it('round-trips attack class and reload steps', () => {
+    const mapped = mapWeaponRow({ id: 'w', name: 'Ballista', attack_class: 'siege', reload_steps: 2 });
+    expect(mapped.attackClass).toBe('siege');
+    expect(mapped.reloadSteps).toBe(2);
+    const row = mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'magic', reloadSteps: 3 });
+    expect(row.attack_class).toBe('magic');
+    expect(row.reload_steps).toBe(3);
+    // Personal is written explicitly; absent class stays NULL so old rows keep
+    // inferring from warMachine / magicDimension.
+    expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'personal' }).attack_class).toBe('personal');
+    expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0 }).attack_class).toBeNull();
+    expect(mapWeaponRow({ id: 'w', name: 'X', attack_class: 'nonsense' }).attackClass).toBeUndefined();
+  });
+
   it('reads snake_case only — re-mapping an already-mapped object wipes fields', () => {
     const mapped = mapWeaponRow({
       id: 'w1', name: 'Long bow', damage_dice: '1d8', attack_bonus: 4,

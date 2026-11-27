@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Weapon library stores attack class + reload steps (2026-11-26, migration 186)
+**Files:** supabase/migrations/186_unit_weapon_attack_class.sql, src/packages/infra/lib/weaponMappers.ts, src/packages/infra/tests/weaponMappers.test.ts, docs/dev/{outstanding,changelog}.md, AGENTS.md
+
+- The Weapon Editor's **Attack class** selector always reverted to *Personal*
+  because `unit_weapons` had no column and the row mapper neither read nor wrote
+  it. Migration **186** adds `attack_class` (`personal|magic|siege`, nullable) and
+  `reload_steps` (integer, default 1).
+- `mapWeaponRow`/`mapWeaponToRow` now round-trip both fields.
+- Added mapper coverage including the NULL case for a weapon that predates the
+  column.
+- **Apply 186 in Supabase** — until then saves that include the new columns fail.
+
 ## Deployed war machine compact token card (2026-11-26)
 **Files:** src/components/ScenarioMap/useCanvasDraw.ts, docs/dev/{outstanding,changelog}.md, AGENTS.md
 

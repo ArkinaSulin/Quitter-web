@@ -30,6 +30,10 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Weapon library attack class + reload steps (2026-11-26, migration 186)**: the
+  Weapon Editor's attack class now persists (`unit_weapons.attack_class`, nullable
+  personal/magic/siege) alongside `reload_steps` (default 1); the row mapper reads
+  and writes both. **Apply 186 in Supabase.**
 - **Deployed war machine compact token card (2026-11-26)**: deployed units draw a
   card-in-token with weapon name, authored reload steps, numeric crew, steps n/5
   and a Fire button. Clicking the card's Fire button loads/enters 60° fire mode
