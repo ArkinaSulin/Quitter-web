@@ -253,6 +253,25 @@ describe('battleStats', () => {
     expect(friendly.totalKillLevels).toBe(15); // 3 x level 5
   });
 
+  it('credits ship HP damage to the attacking unit and the ship row', () => {
+    const shot = row({
+      action_type: 'ATTACK', seq: 1,
+      sub_steps: [{
+        type: 'SHIP', description: '', unitId: 'ship',
+        changes: [{ field: 'shipHp', from: 100, to: 80 }],
+        payload: { killerUnitId: 'a', victimLevel: 0 },
+      } as never],
+    });
+    const a = unit({ id: 'a', team: 'blue' });
+    const ship = unit({ id: 'ship', team: 'black', level: 0, maxTroopCount: 1, currentTroopCount: 1, maxUnitHp: 100, currentUnitHp: 80 });
+    const stats = buildStats([shot], [a, ship], ALLIANCES);
+    const ra = allRows(stats).find(r => r.unitId === 'a')!;
+    const rs = allRows(stats).find(r => r.unitId === 'ship')!;
+    expect(ra.killHp).toBe(20);
+    expect(rs.hpLost).toBe(20);
+    expect(rs.introHp).toBe(100);
+  });
+
   it('tracks starting HP, gross HP lost and kill HP', () => {
     const rows = [
       place(1, 'a', 'blue', 20, 200),
