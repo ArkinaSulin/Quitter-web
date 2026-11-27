@@ -1964,7 +1964,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const unitAlliance = allianceOf(unit.team, alliances);
     const shipAlliance = shipOwnerAlliance(ship, units, alliances);
     if (shipAlliance !== null && unitAlliance !== shipAlliance) {
-      setPendingShipDrop({ unit, ship, cost, maxMP, isFree, canBoard: true });
+      const maxSize = getSetting('hero_attach_max_size', 200);
+      const canBoard = (unit.sizeCategory ?? 100) <= maxSize
+        && (unit.elevation ?? 0) === (ship.elevation ?? 0);
+      setPendingShipDrop({ unit, ship, cost, maxMP, isFree, canBoard });
       return true;
     }
     const maxSize = getSetting('hero_attach_max_size', 200);
@@ -1987,7 +1990,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const { unit, ship } = pending;
     if (!ship.hex) return;
     const weapon = unitShipAttackWeapon(parseWeapons(unit.weaponString), hexDistance(unit.hex, ship.hex));
-    if (!weapon) return;
+    if (!weapon) { addError(`${unit.unitName} has no weapon that can reach ${ship.name}.`); return; }
     const cls = classifyUnitShipAttack(unit, weapon);
     const actionCost = weapon.freeAction ? 0 : 1;
     const actionSteps: SubStep[] = actionCost > 0
@@ -2023,6 +2026,8 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     let nextLoadedCargo = ship.loadedCargo ?? 0;
     let cargoChanged = false;
     let cargoLost = '';
+    let nextGroundZones = groundZones;
+    let cargoDebrisChanged = false;
     const componentHits = cls === 'siege' || cls === 'huge' || cls === 'magic-aoe';
     const cards = ship.snapshot?.build
       ? shipHitCards(ship.snapshot.build)
@@ -2114,6 +2119,40 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             cargoLost = cargoDamageSummary(result.destroyedItems);
             cargoChanged = true;
             if (cargoLost) detail.push(`cargo lost: ${cargoLost}`);
+            if (ship.hex && result.destroyedItems.length > 0) {
+              const hex = ship.hex;
+              const existing = groundZones.filter(z =>
+                z.kind === 'cargo_debris' && z.q === hex.q && z.r === hex.r);
+              const barrelCount = result.destroyedBoxes.filter(items => items.length > 0).length;
+              const merged: GroundEffect = {
+                key: existing[0]?.key ?? newEffectKey(),
+                q: hex.q,
+                r: hex.r,
+                name: 'Floating cargo barrel',
+                color: '#b45309',
+                kind: 'cargo_debris',
+                transparentBackground: true,
+                layer: 'above',
+                elevation: existing[0]?.elevation ?? (ship.elevation ?? 0),
+                zIndex: existing[0]?.zIndex ?? 50,
+                duration: 0,
+                turnsLeft: 0,
+                permanent: true,
+                cargo: mergeCargoItems([
+                  ...existing.flatMap(z => z.cargo ?? []),
+                  ...result.destroyedItems,
+                ]),
+                barrelCount: existing.reduce((sum, z) => sum + Math.max(1, Number(z.barrelCount ?? 1)), 0)
+                  + barrelCount,
+                salvageFraction: 0.5,
+              };
+              nextGroundZones = [
+                ...groundZones.filter(z => !(z.kind === 'cargo_debris' && z.q === hex.q && z.r === hex.r)),
+                merged,
+              ];
+              cargoDebrisChanged = true;
+              if (barrelCount > 0) detail.push(`${barrelCount} floating barrel${barrelCount === 1 ? '' : 's'}`);
+            }
           }
           if (cls === 'magic-aoe') {
             const radius = weapon.magicDimension ?? 0;
@@ -2163,8 +2202,16 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
           payload: { killerUnitId: unit.id, victimLevel: 0 },
         }]
       : [];
-    await execute('ATTACK', [...actionSteps, ...extraSteps, ...shipSteps], text, { message: text, verboseMessage: verbose });
-  }, [pendingShipDrop, execute, units]);
+    const zoneSteps: SubStep[] = cargoDebrisChanged
+      ? [{
+          type: 'ZONE',
+          unitId: scenarioId,
+          description: `${shipDisplayName(ship)}: floating cargo barrels`,
+          changes: [{ field: 'ground_effects', from: groundZones, to: nextGroundZones }],
+        }]
+      : [];
+    await execute('ATTACK', [...actionSteps, ...extraSteps, ...shipSteps, ...zoneSteps], text, { message: text, verboseMessage: verbose });
+  }, [pendingShipDrop, execute, units, groundZones, scenarioId]);
 
   /** Non-hero drop on a ship: route to the ship-attack prompt when a weapon reaches. */
   const onAttackShip = useCallback(async (
