@@ -1,5 +1,19 @@
 # QuiTTER Changelog
 
+## Deployed team styling + no reload for personal/magic weapons (2026-11-27, migration 188)
+**Files:** src/components/{ScenarioMap/useCanvasDraw.ts,TokenRenderer/drawToken.ts,WeaponEditor/WeaponFields.tsx}, src/packages/{units/lib/weaponParser.ts,infra/lib/weaponMappers.ts}, supabase/migrations/188_unit_weapon_reload_personal_magic_zero.sql, docs/dev/changelog.md, AGENTS.md
+
+- **Deployed war-machine cards use the team identity.** The card is filled with
+  the team colour, bordered by it, and carries the team shape as an upright
+  watermark behind the text (contrasting ink via `getDotColor`). The Fire button
+  stays dark/amber for affordance. `drawTeamShape` is now exported for reuse.
+- **Personal and magic unit weapons never load.** Their reload steps are forced
+  to 0 in the parser and library mapper, the Weapon Editor hides the Reload field
+  for non-war-machine classes and writes 0 when the class changes, and legacy
+  strings default to 0. War machines keep their authored reload count (default 1).
+  Migration **188** zeroes existing `unit_weapons` rows and sets the column
+  default to 0. **Apply 188 in Supabase.**
+
 ## War Machine attack class, ship pool readout, station labels (2026-11-27, migration 187)
 **Files:** src/components/{WeaponEditor/WeaponFields.tsx,ScenarioMap/{ScenarioMap.tsx,ShipWindow.tsx}}, src/packages/{units/{lib/{weaponParser.ts,unitShipAttack.ts},tests/{weaponParser.test.ts,unitShipAttack.test.ts}},infra/{lib/weaponMappers.ts,tests/weaponMappers.test.ts}}, supabase/migrations/187_unit_weapon_attack_class_warmachine.sql, docs/dev/{changelog}.md, AGENTS.md
 

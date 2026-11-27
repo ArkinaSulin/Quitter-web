@@ -121,6 +121,7 @@ export function blankWeapon(): Weapon {
     savingThrow: 'Dex',
     saveDC: 10,
     warMachine: false,
+    reloadSteps: 0,
     minRange: 0,
     minCrew: 0,
   };
@@ -217,7 +218,11 @@ export function parseWeapons(weaponString: string): Weapon[] {
             : warMachine
               ? 'warmachine'
               : undefined;
-      const reloadSteps = Math.max(0, parseInt(parts[20]) || 1);
+      const reloadSteps = attackClass === 'warmachine'
+        ? Math.max(0, parseInt(parts[20]) || 1)
+        // Personal and magic weapons need no loading; 0 is also the default for
+        // legacy weapons without a stored step count.
+        : 0;
       return {
         name: parts[0] || 'Unknown',
         attackBonus: parseInt(parts[1]) || 0,
@@ -240,7 +245,7 @@ export function parseWeapons(weaponString: string): Weapon[] {
         warMachine: attackClass === 'warmachine',
         minRange: Math.max(0, parseInt(parts[17]) || 0),
         minCrew: Math.max(0, parseInt(parts[18]) || 0),
-        ...(parts[20] ? { reloadSteps } : {}),
+        reloadSteps,
         ...(attackClass ? { attackClass } : {}),
       };
     });
@@ -254,9 +259,14 @@ export function stringifyWeapons(weapons: Weapon[]): string {
     return '';
   }
   return weapons
-    .map(w =>
-      `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.attackClass === 'warmachine' || w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}${w.attackClass || w.reloadSteps != null ? `,${w.attackClass ?? ''}` : ''}${w.reloadSteps != null ? `,${w.reloadSteps}` : ''}`
-    )
+    .map(w => {
+      const base = `${w.name},${w.attackBonus},${w.damageDice},${w.isHealing ?? false},${w.range},${w.maxRange ?? w.range},${w.magicDimension},${w.reach},${w.noRetaliation},${w.freeAction},${w.isTwoHanded},${w.numberOfAttacks ?? 1},${w.onSaveHalfOrNeg ?? true},${w.savingThrow ?? 'Dex'},${w.shape ?? 'circle'},${w.saveDC ?? 10},${w.attackClass === 'warmachine' || w.warMachine ? 'true' : 'false'},${w.minRange ?? 0},${w.minCrew ?? 0}`;
+      // Class and reload always travel together when a class is authored; a
+      // weapon without a class keeps the legacy 19-column shape (its reload is
+      // implicitly 0).
+      if (!w.attackClass) return base;
+      return `${base},${w.attackClass},${Math.max(0, Math.floor(w.reloadSteps ?? (w.attackClass === 'warmachine' ? 1 : 0)))}`;
+    })
     .join(';');
 }
 

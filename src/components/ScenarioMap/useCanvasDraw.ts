@@ -7,12 +7,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import { hexToPixel, unitMatchesFilter, type TargetFilter } from '@/hooks/useHexGrid';
 import { Unit, Hex, AllianceGroup, Formation, SizeCategory, GroundEffect, ALLIANCE_COLORS } from '@/types/gameProtocol';
-import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker, traceStarPath } from '@/components/TokenRenderer/drawToken';
+import { drawToken, loadImage, getLoadedImage, drawArcherReactionButton, drawTargetMarker, traceStarPath, drawTeamShape } from '@/components/TokenRenderer/drawToken';
 import { computeEffectiveMoraleModifier } from '@/packages/morale';
 import { isDeadCorpse } from '@/packages/units';
 import { computeEffectiveMovement, getFormationMultiplier } from '@/packages/units';
 import { corpseDots, corpseDotShape, FallenMap } from '@/packages/battle';
-import { TEAM_COLORS, Team } from '@/packages/units';
+import { TEAM_COLORS, TEAM_SHAPES, getDotColor, Team } from '@/packages/units';
 import { parseWeapons } from '@/packages/units';
 import { DEFAULT_GRID_RADIUS, HEX_SIZE, TOKEN_HEIGHT, TOKEN_WIDTH, tokenDrawOrder, getAttachedHeroPos, elevationOffset, canFly, isAirborne, MapBackgroundConfig, PlacedShip, costShade, hexMpLabelAt, HEX_DIRS } from '@/packages/world';
 import { shipImageHeightPx, shipImageOffsetPx } from '@/components/ShipRenderer/shipImageScale';
@@ -44,31 +44,43 @@ function drawDeployedWarMachineCard(
   const reload = reloadSteps === 0 || state?.armed
     ? 'armed'
     : `${Math.max(0, Math.floor(state?.reloadProgress ?? 0))}/${reloadSteps}`;
+  const facing = ((Math.floor(unit.facing) || 0) % 6) * Math.PI / 3;
+  const team = unit.team || 'black';
+  const teamColor = TEAM_COLORS[team as Team] || '#333333';
+  const shape = TEAM_SHAPES[team as Team] || 'square';
+  // Contrasting ink for text/shape on the team colour.
+  const ink = getDotColor(team);
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate((((Math.floor(unit.facing) || 0) % 6) * Math.PI) / 3);
-  ctx.fillStyle = 'rgba(24, 24, 27, 0.94)';
-  ctx.strokeStyle = '#d97706';
-  ctx.lineWidth = Math.max(1.5, 2 * zoom);
+  ctx.rotate(facing);
   const w = width;
   const h = height;
+  ctx.fillStyle = teamColor + 'E6';
+  ctx.strokeStyle = teamColor;
+  ctx.lineWidth = Math.max(1.5, 2 * zoom);
   ctx.beginPath();
   ctx.rect(-w / 2, -h / 2, w, h);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = '#fde68a';
+  // Team symbol watermark, counter-rotated so it stays upright with the card.
+  ctx.save();
+  ctx.rotate(-facing);
+  drawTeamShape(ctx, 0, 0, Math.min(w, h) * 0.95, shape, ink, 0.4);
+  ctx.restore();
+  ctx.fillStyle = ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const font = Math.max(7, 9 * zoom);
-  ctx.font = `${font}px monospace`;
+  ctx.font = `bold ${font}px monospace`;
   ctx.fillText((weapon?.name ?? 'War machine').slice(0, 18), 0, -h * 0.3);
-  ctx.fillStyle = '#e5e7eb';
+  ctx.fillStyle = ink;
+  ctx.font = `${font}px monospace`;
   ctx.fillText(`reload ${reload}`, 0, -h * 0.08);
   ctx.fillText(`crew ${Math.max(0, unit.currentTroopCount)}`, 0, h * 0.08);
   ctx.fillText(`steps ${steps}/5`, 0, h * 0.24);
   // Fire button (bottom centre).
-  ctx.fillStyle = steps > 0 ? 'rgba(180, 83, 9, 0.95)' : 'rgba(75, 85, 99, 0.9)';
-  ctx.strokeStyle = steps > 0 ? '#fbbf24' : '#4b5563';
+  ctx.fillStyle = steps > 0 ? 'rgba(120, 53, 15, 0.95)' : 'rgba(55, 65, 81, 0.9)';
+  ctx.strokeStyle = steps > 0 ? '#fbbf24' : '#9ca3af';
   ctx.beginPath();
   ctx.rect(-w * 0.22, h * 0.34, w * 0.44, h * 0.16);
   ctx.fill();

@@ -54,9 +54,15 @@ describe('weaponMappers', () => {
     const mapped = mapWeaponRow({ id: 'w', name: 'Ballista', attack_class: 'warmachine', reload_steps: 2 });
     expect(mapped.attackClass).toBe('warmachine');
     expect(mapped.reloadSteps).toBe(2);
-    const row = mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'magic', reloadSteps: 3 });
-    expect(row.attack_class).toBe('magic');
+    const row = mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'warmachine', reloadSteps: 3 });
+    expect(row.attack_class).toBe('warmachine');
     expect(row.reload_steps).toBe(3);
+    // Personal/magic never load; their step count is forced to 0.
+    const magicRow = mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'magic', reloadSteps: 3 });
+    expect(magicRow.attack_class).toBe('magic');
+    expect(magicRow.reload_steps).toBe(0);
+    expect(mapWeaponRow({ id: 'w', name: 'Wand', attack_class: 'magic', reload_steps: 4 }).reloadSteps).toBe(0);
+    expect(mapWeaponRow({ id: 'w', name: 'Sword', attack_class: 'personal', reload_steps: 4 }).reloadSteps).toBe(0);
     // Personal is written explicitly; absent class stays NULL so old rows keep
     // inferring from warMachine / magicDimension.
     expect(mapWeaponToRow({ ...blankWeapon(), id: '', notes: '', costGp: 0, attackClass: 'personal' }).attack_class).toBe('personal');

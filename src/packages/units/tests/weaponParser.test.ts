@@ -41,6 +41,7 @@ describe('parseWeapons', () => {
       savingThrow: 'Dex',
       saveDC: 10,
       warMachine: false,
+      reloadSteps: 0,
       minRange: 0,
       minCrew: 0,
     });
@@ -369,6 +370,11 @@ describe('war machine reload steps', () => {
     expect(parseWeapons(s)[0].reloadSteps).toBe(3);
     expect(parseWeapons(s)[0].attackClass).toBe('warmachine');
     expect(parseWeapons(s)[0].warMachine).toBe(true);
+    // Personal and magic weapons never load: 0 even when the stored column says
+    // otherwise, and 0 by default.
+    expect(parseWeapons('Spear,3,1d6,false,1,0,0,false,false,false,false,1,true,Dex,circle,10,false,0,0,personal,3')[0].reloadSteps).toBe(0);
+    expect(parseWeapons('Wand,5,2d6,false,4,8,0,false,false,false,false,1,true,Dex,circle,10,false,0,0,magic,3')[0].reloadSteps).toBe(0);
+    expect(parseWeapons('Spear,3,1d6,false,1,0,0,false,false,false,false,1,true,Dex,circle,10,false,0,0')[0].reloadSteps).toBe(0);
   });
 
   it('normalizes the legacy siege value and the bare war-machine flag', () => {

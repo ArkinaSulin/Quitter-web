@@ -82,6 +82,7 @@ interface WeaponFieldsProps {
 
 export function WeaponFields({ value, onChange, meta, onMetaChange, error }: WeaponFieldsProps) {
   const patch = (p: Partial<Weapon>) => onChange({ ...value, ...p });
+  const isWarMachineWeapon = value.attackClass === 'warmachine' || (!value.attackClass && !!value.warMachine);
 
   const handleRangeChange = (raw: number) => {
     const next = Math.max(1, raw || 1);
@@ -119,7 +120,9 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
 
       <div className="flex items-end gap-3">
         <Cell label="# Attacks"><NumInput value={value.numberOfAttacks} min={1} onChange={v => patch({ numberOfAttacks: Math.max(1, v || 1) })} /></Cell>
-        <Cell label="Reload steps"><NumInput value={value.reloadSteps ?? 1} min={0} onChange={v => patch({ reloadSteps: Math.max(0, v) })} /></Cell>
+        {isWarMachineWeapon && (
+          <Cell label="Reload steps"><NumInput value={value.reloadSteps ?? 1} min={0} onChange={v => patch({ reloadSteps: Math.max(0, v) })} /></Cell>
+        )}
         <Cell label="Atk bonus"><NumInput value={value.attackBonus} onChange={v => patch({ attackBonus: v })} /></Cell>
       </div>
 
@@ -142,7 +145,14 @@ export function WeaponFields({ value, onChange, meta, onMetaChange, error }: Wea
             value={value.attackClass ?? (value.warMachine ? 'warmachine' : 'personal')}
             onChange={v => {
               const attackClass = v as NonNullable<Weapon['attackClass']>;
-              patch({ attackClass, warMachine: attackClass === 'warmachine' });
+              const warmachine = attackClass === 'warmachine';
+              patch({
+                attackClass,
+                warMachine: warmachine,
+                // Magic and personal weapons need no loading; war machines keep
+                // their authored reload count (default 1).
+                reloadSteps: warmachine ? Math.max(1, value.reloadSteps ?? 1) : 0,
+              });
             }}
             title={ATTACK_CLASS_HELP}
             options={[

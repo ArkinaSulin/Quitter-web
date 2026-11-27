@@ -917,7 +917,7 @@ function drawHeroSquareToken(
 }
 
 // ---- Helper functions ----
-function drawTeamShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, shape: string, color: string, alpha: number) {
+export function drawTeamShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, shape: string, color: string, alpha: number) {
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
@@ -973,7 +973,7 @@ function drawTeamShape(ctx: CanvasRenderingContext2D, cx: number, cy: number, si
   ctx.restore();
 }
 
-function getTeamShapeAlpha(team: string): number {
+export function getTeamShapeAlpha(team: string): number {
   if (team === 'violet') return 1;
   if (team === 'yellow' || team === 'orange') return 0.7;
   return 0.35;

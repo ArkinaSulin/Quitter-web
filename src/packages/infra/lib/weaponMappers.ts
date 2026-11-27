@@ -45,7 +45,9 @@ export function mapWeaponRow(row: any): LibraryWeapon {
     minRange: Math.max(0, Number(row?.min_range) || 0),
     minCrew: Math.max(0, Number(row?.min_crew) || 0),
     ...(attackClass ? { attackClass } : {}),
-    ...(row?.reload_steps != null ? { reloadSteps: Math.max(0, Number(row.reload_steps) || 0) } : {}),
+    reloadSteps: attackClass === 'warmachine'
+      ? (row?.reload_steps == null ? 1 : Math.max(0, Number(row.reload_steps) || 0))
+      : 0,
     notes: row?.notes || '',
     costGp: Number(row?.cost_gp) || 0,
     ownerId: row?.owner_id || null,
@@ -76,7 +78,9 @@ export function mapWeaponToRow(w: LibraryWeapon) {
     min_range: Math.max(0, w.minRange || 0),
     min_crew: Math.max(0, w.minCrew || 0),
     attack_class: w.attackClass ?? (w.warMachine ? 'warmachine' : null),
-    reload_steps: Math.max(0, Math.floor(w.reloadSteps ?? 1)),
+    reload_steps: (w.attackClass === 'warmachine' || (!w.attackClass && w.warMachine))
+      ? Math.max(0, Math.floor(w.reloadSteps ?? 1))
+      : 0,
     notes: w.notes || '',
     cost_gp: w.costGp || 0,
   };

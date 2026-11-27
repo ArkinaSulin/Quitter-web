@@ -30,6 +30,12 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Deployed team styling + zero reload for personal/magic (2026-11-27, migration
+  188)**: deployed war-machine cards now use the team colour fill/border and the
+  upright team shape watermark; personal and magic unit weapons force
+  `reloadSteps = 0` (parser, mapper, editor; Warmachine keeps its count), and
+  migration 188 zeroes existing library rows + the column default. **Apply 188 in
+  Supabase.**
 - **War Machine attack class + ship pool readout (2026-11-27, migration 187)**: the
   Weapon Editor's separate War Machine toggle is merged into **Attack class**
   (Personal / Magic / War Machine); the stored value is now `warmachine`
