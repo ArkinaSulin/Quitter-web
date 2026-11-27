@@ -63,10 +63,10 @@ export function isWarMachineUnit(unit: { weaponString?: string | null }): boolea
  * 60° steps (6 actions).
  */
 export function warMachineTurnActionCost(
-  unit: { weaponString?: string | null; currentFormation?: string },
+  unit: { weaponString?: string | null; currentFormation?: string; deployedWarMachine?: boolean },
   steps = 1,
 ): number | null {
-  if (unit.currentFormation !== 'Open Order') return null;
+  if (!unit.deployedWarMachine && unit.currentFormation !== 'Open Order') return null;
   if (!isWarMachineUnit(unit)) return null;
   return Math.max(1, Math.floor(steps)) * 2;
 }

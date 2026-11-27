@@ -197,6 +197,8 @@ export interface Unit extends AbilityScores, SavingThrows {
   archerReactionUsed: boolean;
   /** True once the unit makes its once-per-turn pursue on a disengaging enemy; cleared at its turn start. */
   pursuitUsed: boolean;
+  /** Crew-served warmachine deployed in place (2-action deploy, 5-step fire). */
+  deployedWarMachine?: boolean;
   /** Commanding-Presence leash: while this (hero) unit's aura covers a pursuer,
    *  that pursuer only chases when permit = true. DEFAULT false = the hero's
    *  presence holds the line (suppresses pursuit). */

@@ -30,6 +30,10 @@ reusable maps. Here's the state:
 
 ### Completed
 
+- **Deployed warmachine state (2026-11-26)**: context **Deploy war machine
+  (2 actions)**, deployed state persisted (migration 184), 2-action rotation,
+  moving auto-clears deployment and sets Scattered. 5-step load/fire and token
+  card remain phased.
 - **Unit→ship attack damage v2 (2026-11-26)**: per-attack AC→DT; siege/Huge fire
   multiple shots (ship HP + `/10` component tons + one crew hit + Cargo-card
   cargo loss with floating barrels); AoE auto-hits for component damage and 3/2/1

@@ -9,7 +9,7 @@ import { routRetreatPath, type RoutPath } from '@/packages/morale';
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/units';
 import { applyMoveCost, applyHeroMoveCost, moveBudgetUnit, isLooseUnit, canAdoptFormation } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
-import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost, classifyUnitShipAttack, unitShipAttackWeapon } from '@/packages/units';
+import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost, classifyUnitShipAttack, unitShipAttackWeapon, isWarMachineUnit } from '@/packages/units';
 import { canReactWithWeapon, resolveSpellDamage } from '@/packages/combat';
 import { getFormations } from '@/packages/infra';
 import { loadSettings, getSetting } from '@/packages/infra';
@@ -1982,6 +1982,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     await handleBoardHero(unit, ship.id, cost, maxMP, isFree);
     return true;
   }, [shipRuntime, handleBoardHero, addError, units, alliances]);
+
+  const handleDeployWarMachine = useCallback(async (unit: Unit) => {
+    if (!isWarMachineUnit(unit)) { addError('That unit has no crew-served war machine.'); return; }
+    if (unit.deployedWarMachine) { addError('That war machine is already deployed.'); return; }
+    if ((unit.actionsAvailable ?? 0) < 2) { addError('Deploying a war machine costs 2 actions.'); return; }
+    const text = `${unit.unitName} deploys its war machine (2 actions).`;
+    await execute('OTHER_ACTION', [{
+      type: 'OTHER_ACTION',
+      unitId: unit.id,
+      description: text,
+      changes: [
+        { field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - 2 },
+        { field: 'deployedWarMachine', from: unit.deployedWarMachine ?? false, to: true },
+      ],
+    }], text, { message: text });
+  }, [execute, addError]);
 
   const resolvePendingShipAttack = useCallback(async () => {
     const pending = pendingShipDrop;
@@ -7807,6 +7823,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
               }], `${contextMenuUnit.unitName} lowered to the ground`);
             }
           } : undefined}
+          onDeployWarMachine={() => { void handleDeployWarMachine(contextMenuUnit); }}
           onDeleteUnit={async () => {
             const host = contextMenuUnit;
             const surface = structureSurfaceAt(host.hex, structures, structureTemplates);

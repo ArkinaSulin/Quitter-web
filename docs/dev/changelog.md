@@ -1,5 +1,17 @@
 # QuiTTER Changelog
 
+## Deployed warmachine state (2026-11-26)
+**Files:** src/types/gameProtocol.ts, src/hooks/{useGameEngine.ts,useSupabaseSync.ts}, src/components/ScenarioMap/{ContextMenu.tsx,ScenarioMap.tsx}, src/packages/units/lib/weaponParser.ts, supabase/migrations/184_unit_deployed_war_machine.sql, docs/dev/{outstanding,changelog}.md, AGENTS.md
+
+- Crew-served warmachine units gain a persistent **Deploy war machine** state:
+  context item **Deploy war machine (2 actions)**, disabled once deployed or
+  without 2 actions.
+- Deployed units rotate for **2 actions per 60°** regardless of formation.
+- Moving automatically packs up the machine, clears deployment and sets the unit
+  to **Scattered**.
+- Migration 184 adds `units.deployed_war_machine` and the field mapping.
+- The 5-step load/fire card and token card UI remain the next phase.
+
 ## Unit→ship attack damage v2 (2026-11-26)
 **Files:** src/components/ScenarioMap/ScenarioMap.tsx, docs/dev/{outstanding,changelog}.md, AGENTS.md
 

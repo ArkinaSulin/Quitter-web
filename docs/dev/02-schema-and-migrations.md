@@ -251,6 +251,7 @@ as applied in the notes — check the live DB before relying on it).
 | 181 | Drop `ship_weapons.damage_formula` (ship weapons use authored `damage`; ram uses a derived formula) | pending |
 | 182 | Ground movement + atmosphere pools + claw threat: `ship_components.is_terrain_legs`/`ground_mp`, `ship_weapons.threat`, `ship_spelljammer.mp_spent`/`fp_spent`, ship field mapping | pending |
 | 183 | Drop unused catalog `image_url` plus free-form `ship_components.effect` and `ship_weapons.special` notes | pending |
+| 184 | Land-unit deployed warmachine state: `units.deployed_war_machine` + field mapping | pending |
 
 ### Verify what's actually applied
 

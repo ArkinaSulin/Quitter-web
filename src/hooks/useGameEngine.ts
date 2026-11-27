@@ -563,6 +563,20 @@ export function useGameEngine({
         });
       }
 
+      // Deployed warmachines break down when the unit moves.
+      if (unit.deployedWarMachine) {
+        subSteps.push({
+          type: 'FORMATION',
+          description: `${unit.unitName} packs up its war machine and scatters`,
+          unitId: unit.id,
+          changes: [
+            { field: 'deployedWarMachine', from: true, to: false },
+            { field: 'currentFormation', from: unit.currentFormation, to: 'Scattered' },
+            { field: 'organizationLevel', from: unit.organizationLevel, to: 0 },
+          ],
+        });
+      }
+
       // Elevation change rides the MOVE command (one undo entry): taking off
       // auto-caps a formed flyer to Open Order, and a rider follows its mount.
       if (options?.elevation != null && options.elevation !== (unit.elevation ?? 0)) {
@@ -655,6 +669,18 @@ export function useGameEngine({
           unitId: unit.id,
           changes: [
             { field: 'currentFormation', from: unit.currentFormation, to: breakToFormation },
+          ],
+        });
+      }
+      if (unit.deployedWarMachine) {
+        subSteps.push({
+          type: 'FORMATION',
+          description: `${unit.unitName} packs up its war machine and scatters`,
+          unitId: unit.id,
+          changes: [
+            { field: 'deployedWarMachine', from: true, to: false },
+            { field: 'currentFormation', from: unit.currentFormation, to: 'Scattered' },
+            { field: 'organizationLevel', from: unit.organizationLevel, to: 0 },
           ],
         });
       }

@@ -57,6 +57,8 @@ interface ContextMenuProps {
   /** GM-only: lower to the ground with no fall damage. */
   canLowerToGround?: boolean;
   onLowerToGround?: () => void;
+  /** Crew-served warmachine: deploy costs 2 actions; hidden/disabled once deployed. */
+  onDeployWarMachine?: () => void;
   /** Rally (routed, non-fearless units/heroes): leave Routed for Scattered/Hero. */
   canRally?: boolean;
   rallyReason?: string;
@@ -97,6 +99,7 @@ export function ContextMenu({
   onDropToGround,
   canLowerToGround,
   onLowerToGround,
+  onDeployWarMachine,
   canRally,
   rallyReason,
   onRally,
@@ -263,6 +266,23 @@ export function ContextMenu({
         </div>
       )}
       {(attachedHero || hostUnit) && <div className="border-t border-gray-700 my-1" />}
+
+      {!unit.isHero && !unit.attachedToUnitId && isWarMachine && onDeployWarMachine && (
+        <div
+          className={`px-3 py-1 ${
+            unit.deployedWarMachine || unit.actionsAvailable < 2
+              ? 'text-gray-600 cursor-not-allowed'
+              : 'hover:bg-amber-900/60 cursor-pointer text-amber-200 font-semibold'
+          }`}
+          onClick={() => {
+            if (unit.deployedWarMachine || unit.actionsAvailable < 2) return;
+            onDeployWarMachine();
+            onClose();
+          }}
+        >
+          {unit.deployedWarMachine ? 'War machine deployed' : 'Deploy war machine (2 actions)'}
+        </div>
+      )}
 
       {!unit.isHero && !unit.attachedToUnitId && (
         <>
