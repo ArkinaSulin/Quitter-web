@@ -5,6 +5,10 @@
 
 - Deployed war machines now draw as a compact **card inside the unit token**:
   weapon name, reload state, numeric crew count, `steps n/5`, and a Fire button.
+- Clicking a deployed card loads it; once armed with steps left it enters a
+  **60° ship-fire mode**. Clicking a hostile ship in the facing arc resolves the
+  attack and consumes the war-machine steps. The whole card is the click target
+  for now; the small Fire-button hitbox is still a polish item.
 - Unit weapons gained an authored **Reload steps** field (serialized, default 1
   when absent), shown on the deployed card.
 - The card rotates with the unit in 60° steps, matching the deployed 60° arc.

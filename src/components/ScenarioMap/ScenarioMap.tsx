@@ -9,7 +9,7 @@ import { routRetreatPath, type RoutPath } from '@/packages/morale';
 import { findAttachedHero, heroRideMoveStep, heroDetachStep } from '@/packages/units';
 import { applyMoveCost, applyHeroMoveCost, moveBudgetUnit, isLooseUnit, canAdoptFormation } from '@/packages/movement';
 import { nextLowerFormation } from '@/packages/movement';
-import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost, classifyUnitShipAttack, unitShipAttackWeapon, isWarMachineUnit } from '@/packages/units';
+import { parseWeapons, damageDiceCount, withDamageDiceCount, warMachineTurnActionCost, classifyUnitShipAttack, unitShipAttackWeapon, isWarMachineUnit, normalizeWarMachineState, planWarMachineFire, planWarMachineLoad } from '@/packages/units';
 import { canReactWithWeapon, resolveSpellDamage } from '@/packages/combat';
 import { getFormations } from '@/packages/infra';
 import { loadSettings, getSetting } from '@/packages/infra';
@@ -1014,6 +1014,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     isFree: boolean;
     canBoard: boolean;
   } | null>(null);
+  const [warMachineFireMode, setWarMachineFireMode] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   // Context menu
@@ -1999,24 +2000,66 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     }], text, { message: text });
   }, [execute, addError]);
 
-  const resolvePendingShipAttack = useCallback(async () => {
-    const pending = pendingShipDrop;
+  const handleWarMachineFireClick = useCallback(async (unit: Unit) => {
+    if (!unit.deployedWarMachine) return;
+    const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
+    if (!weapon) { addError('No war machine weapon is selected.'); return; }
+    const reload = Math.max(0, Math.floor(weapon.reloadSteps ?? 1));
+    const state = normalizeWarMachineState(unit.warMachineState, turnNumber);
+    if (5 - state.stepsUsed <= 0) { addError('No war machine steps left this turn.'); return; }
+    if (!state.armed) {
+      const load = planWarMachineLoad(state, turnNumber, reload);
+      const text = `${unit.unitName} loads ${weapon.name} (${load.state.reloadProgress}/${reload || 0}, ${5 - load.state.stepsUsed} steps left).`;
+      await execute('OTHER_ACTION', [{
+        type: 'OTHER_ACTION',
+        unitId: unit.id,
+        description: text,
+        changes: [{ field: 'warMachineState', from: unit.warMachineState ?? {}, to: load.state }],
+      }], text, { message: text });
+      if (!load.state.armed) return;
+      if (5 - load.state.stepsUsed <= 0) return;
+    }
+    setWarMachineFireMode(unit.id);
+    addMessage(`Select a hostile ship in ${unit.unitName}'s 60° fire arc.`);
+  }, [turnNumber, execute, addError, addMessage]);
+
+  const resolvePendingShipAttack = useCallback(async (pendingArg?: {
+    unit: Unit;
+    ship: ShipRuntime;
+    cost: number;
+    maxMP: number;
+    isFree: boolean;
+    canBoard: boolean;
+  }) => {
+    const pending = pendingArg ?? pendingShipDrop;
     if (!pending) return;
-    setPendingShipDrop(null);
+    if (!pendingArg) setPendingShipDrop(null);
     const { unit, ship } = pending;
     if (!ship.hex) return;
     const weapon = unitShipAttackWeapon(parseWeapons(unit.weaponString), hexDistance(unit.hex, ship.hex));
     if (!weapon) { addError(`${unit.unitName} has no weapon that can reach ${ship.name}.`); return; }
     const cls = classifyUnitShipAttack(unit, weapon);
-    const actionCost = weapon.freeAction ? 0 : 1;
-    const actionSteps: SubStep[] = actionCost > 0
+    const deployed = !!unit.deployedWarMachine;
+    const reloadSteps = Math.max(0, Math.floor(weapon.reloadSteps ?? 1));
+    const wmPlan = deployed
+      ? planWarMachineFire(unit.warMachineState, turnNumber, reloadSteps)
+      : null;
+    const actionCost = deployed || weapon.freeAction ? 0 : 1;
+    const actionSteps: SubStep[] = deployed
       ? [{
           type: 'OTHER_ACTION',
           unitId: unit.id,
-          description: `${unit.unitName} spent an action attacking ${ship.name}`,
-          changes: [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - actionCost }],
+          description: `${unit.unitName} fired its deployed war machine`,
+          changes: [{ field: 'warMachineState', from: unit.warMachineState ?? {}, to: wmPlan?.state ?? {} }],
         }]
-      : [];
+      : actionCost > 0
+        ? [{
+            type: 'OTHER_ACTION',
+            unitId: unit.id,
+            description: `${unit.unitName} spent an action attacking ${ship.name}`,
+            changes: [{ field: 'actionsAvailable', from: unit.actionsAvailable, to: unit.actionsAvailable - actionCost }],
+          }]
+        : [];
     if (cls === 'personal') {
       const text = `${unit.unitName}'s personal weapons cannot damage ${shipDisplayName(ship)}.`;
       await execute('ATTACK', actionSteps, text, { message: text });
@@ -2227,7 +2270,7 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
         }]
       : [];
     await execute('ATTACK', [...actionSteps, ...extraSteps, ...shipSteps, ...zoneSteps], text, { message: text, verboseMessage: verbose });
-  }, [pendingShipDrop, execute, units, groundZones, scenarioId]);
+  }, [pendingShipDrop, execute, units, groundZones, scenarioId, turnNumber]);
 
   /** Non-hero drop on a ship: route to the ship-attack prompt when a weapon reaches. */
   const onAttackShip = useCallback(async (
@@ -6184,6 +6227,22 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onShipClick: (ship, clientX, clientY) => {
       if (controlsLocked) return;
+      if (warMachineFireMode) {
+        const unit = units.find(u => u.id === warMachineFireMode && !u.isDeleted);
+        const live = shipRuntime.find(s => s.id === ship.id && !s.isDeleted);
+        if (!unit || !live?.hex || !unit.hex) { setWarMachineFireMode(null); return; }
+        const weapon = parseWeapons(unit.weaponString || '')[unit.activeWeaponIndex ?? 0];
+        const dist = hexDistance(unit.hex, live.hex);
+        const inArc = facingToward(unit.hex, live.hex) === ((unit.facing % 6) + 6) % 6;
+        if (!weapon || !inArc || dist < (weapon.minRange ?? 0) || dist > weapon.maxRange) {
+          addError('That ship is outside the war machine’s 60° arc or range.');
+          setWarMachineFireMode(null);
+          return;
+        }
+        setWarMachineFireMode(null);
+        void resolvePendingShipAttack({ unit, ship: live, cost: 0, maxMP: 0, isFree: true, canBoard: false });
+        return;
+      }
       if (tryShipRam(ship.hex)) return;
       if (tryShipFire(ship.hex)) return;
       const live = shipRuntime.find(s => s.id === ship.id);
@@ -6259,6 +6318,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     },
     onUnitClick: (unit, _clientX, _clientY) => {
       if (controlsLocked || reactionMode) return;
+      if (unit.deployedWarMachine) {
+        void handleWarMachineFireClick(unit);
+        return;
+      }
       if (tryShipRam(unit.hex)) return;
       if (tryShipFire(unit.hex)) return;
       if (handleCloneClick(unit.hex)) return;
