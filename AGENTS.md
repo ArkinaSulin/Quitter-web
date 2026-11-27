@@ -31,9 +31,10 @@ reusable maps. Here's the state:
 ### Completed
 
 - **Unit→ship attack damage v2 (2026-11-26)**: per-attack AC→DT; siege/Huge fire
-  multiple shots (ship HP + `/10` component tons + one crew hit); AoE auto-hits
-  for component damage and 3/2/1 crew by radius; single-target magic HP only;
-  personal no damage with a message. Full siege cargo pipeline remains phased.
+  multiple shots (ship HP + `/10` component tons + one crew hit + Cargo-card
+  cargo loss); AoE auto-hits for component damage and 3/2/1 crew by radius;
+  single-target magic HP only; personal no damage with a message. Deployed
+  warmachine remains phased.
 - **Explicit unit weapon attack class (2026-11-26)**: weapons carry
   Personal/Magic/Siege; old strings infer Siege from war machine and Magic from
   area magic. Drives ship damage classification; no migration.

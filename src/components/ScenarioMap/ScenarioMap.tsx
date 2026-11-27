@@ -2019,6 +2019,10 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
     const stations = { ...(ship.stations ?? {}) };
     const extraSteps: SubStep[] = [];
     const detail: string[] = [];
+    let nextSnapshot = ship.snapshot;
+    let nextLoadedCargo = ship.loadedCargo ?? 0;
+    let cargoChanged = false;
+    let cargoLost = '';
     const componentHits = cls === 'siege' || cls === 'huge' || cls === 'magic-aoe';
     const cards = ship.snapshot?.build
       ? shipHitCards(ship.snapshot.build)
@@ -2074,11 +2078,42 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
       if (componentHits) {
         const card = pickShipComponent(cards.filter(c => c.tons > 0));
         if (card) {
+          const destroyedBefore = Number(boxState[card.key] ?? 0);
           const tons = cappedComponentTons(card.tons, damageRoll.total);
           if (tons > 0) {
             boxState[card.key] = Number(boxState[card.key] ?? 0) + tons;
             card.tons -= tons;
             detail.push(`${tons} ${card.name} box${tons === 1 ? '' : 'es'} destroyed`);
+          }
+          if (cls === 'magic-aoe' && tons <= 0) {
+            // AoE always affects a component even when the /10 ton roll is 0.
+            boxState[card.key] = destroyedBefore + 1;
+            detail.push(`1 ${card.name} box destroyed`);
+          }
+          if (card.name === 'Cargo' && ship.snapshot?.build) {
+            const build = ship.snapshot.build;
+            const manifest = normalizeCargoManifest(build.manifest ?? ship.snapshot.template.manifest ?? []);
+            const capacity = computeCargoCapacity(build);
+            const effectiveCapacity = Math.max(0, capacity - destroyedBefore);
+            const boxes = packCargoBoxes(manifest, effectiveCapacity);
+            const destroyedBoxes = rollDestroyedCargoBoxes(boxes, Math.max(1, tons), Math.random);
+            const result = removeCargoBoxes(manifest, destroyedBoxes);
+            const manifestMass = cargoManifestMass(result.items);
+            const nextBuild = {
+              ...build,
+              manifest: result.items,
+              performanceMass: Math.max(1, build.totalMass - capacity + manifestMass),
+            };
+            nextSnapshot = {
+              ...ship.snapshot,
+              template: { ...ship.snapshot.template, manifest: result.items },
+              build: nextBuild,
+              stats: computeShipBuild(nextBuild),
+            };
+            nextLoadedCargo = manifestMass;
+            cargoLost = cargoDamageSummary(result.destroyedItems);
+            cargoChanged = true;
+            if (cargoLost) detail.push(`cargo lost: ${cargoLost}`);
           }
           if (cls === 'magic-aoe') {
             const radius = weapon.magicDimension ?? 0;
@@ -2112,6 +2147,12 @@ export function ScenarioMap({ scenarioId, replayMode = false }: ScenarioMapProps
             { field: 'shipHp', from: ship.shipHp, to: newHp },
             { field: 'minHpAttained', from: ship.minHpAttained, to: minHpAfterDamage(ship.minHpAttained, newHp) },
             ...(componentHits ? [{ field: 'boxState', from: ship.boxState ?? {}, to: boxState }] : []),
+            ...(cargoChanged
+              ? [
+                  { field: 'snapshot', from: ship.snapshot, to: nextSnapshot },
+                  { field: 'loadedCargo', from: ship.loadedCargo ?? 0, to: nextLoadedCargo },
+                ]
+              : []),
             ...(componentHits
               ? [
                   { field: 'crewState', from: ship.crewState ?? {}, to: crewState },
